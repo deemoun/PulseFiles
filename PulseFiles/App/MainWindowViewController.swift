@@ -1,6 +1,12 @@
 import AppKit
 
 final class MainWindowViewController: NSViewController {
+    private enum SidebarMetrics {
+        static let minWidth: CGFloat = 180
+        static let maxWidth: CGFloat = 300
+        static let contentMinWidth: CGFloat = 620
+    }
+
     private let settings = SettingsService()
     private let accessPolicy = SandboxFileAccessPolicy.current
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy)
@@ -24,11 +30,13 @@ final class MainWindowViewController: NSViewController {
     private let paneSplitView = NSSplitView()
     private let mainStack = NSView()
     private weak var toolbarSearchField: NSSearchField?
+    private weak var sidebarToolbarItem: NSToolbarItem?
     private var activeFilterText = ""
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var sidebarMinWidthConstraint: NSLayoutConstraint?
     private var sidebarMaxWidthConstraint: NSLayoutConstraint?
+    private var isSidebarInstalled = false
     private var isTerminalInstalled = false
     private var terminalHeightConstraint: NSLayoutConstraint?
     private var activeOperationTask: Task<Void, Never>?
@@ -84,13 +92,12 @@ final class MainWindowViewController: NSViewController {
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         rootSplitView.addArrangedSubview(mainStack)
         addChild(sidebar)
-        rootSplitView.addArrangedSubview(sidebar.view)
-        mainStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 620).isActive = true
-        sidebarMinWidthConstraint = sidebar.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 180)
-        sidebarMaxWidthConstraint = sidebar.view.widthAnchor.constraint(lessThanOrEqualToConstant: 300)
-        sidebarMinWidthConstraint?.isActive = settings.isSidebarVisible
-        sidebarMaxWidthConstraint?.isActive = settings.isSidebarVisible
-        sidebar.view.isHidden = !settings.isSidebarVisible
+        mainStack.widthAnchor.constraint(greaterThanOrEqualToConstant: SidebarMetrics.contentMinWidth).isActive = true
+        sidebarMinWidthConstraint = sidebar.view.widthAnchor.constraint(greaterThanOrEqualToConstant: SidebarMetrics.minWidth)
+        sidebarMaxWidthConstraint = sidebar.view.widthAnchor.constraint(lessThanOrEqualToConstant: SidebarMetrics.maxWidth)
+        if settings.isSidebarVisible {
+            installSidebarView()
+        }
 
         contentSplitView.isVertical = false
         contentSplitView.dividerStyle = .paneSplitter
@@ -315,7 +322,7 @@ final class MainWindowViewController: NSViewController {
     }
 }
 
-extension MainWindowViewController: NSToolbarDelegate {
+extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.back, .forward, .flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
     }
@@ -342,7 +349,10 @@ extension MainWindowViewController: NSToolbarDelegate {
         case .toggleTerminal:
             return toolbarItem(itemIdentifier, label: "Terminal", symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
         case .toggleSidebar:
-            return toolbarItem(itemIdentifier, label: "Sidebar", symbol: "sidebar.right", action: #selector(toolbarToggleSidebar(_:)))
+            let item = toolbarItem(itemIdentifier, label: "Sidebar", symbol: "sidebar.right", action: #selector(toolbarToggleSidebar(_:)))
+            sidebarToolbarItem = item
+            updateSidebarToolbarItem()
+            return item
         case .viewOptions:
             return toolbarItem(itemIdentifier, label: "View", symbol: "line.3.horizontal.decrease.circle", action: #selector(toolbarUnavailable(_:)))
         case .settings:
@@ -362,6 +372,13 @@ extension MainWindowViewController: NSToolbarDelegate {
         item.target = self
         item.action = action
         return item
+    }
+
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        if item.itemIdentifier == .toggleSidebar {
+            updateSidebarToolbarItem()
+        }
+        return true
     }
 
     @objc private func toolbarBack(_ sender: Any?) {
@@ -423,25 +440,66 @@ extension MainWindowViewController: NSToolbarDelegate {
     }
 
     private func toggleSidebar() {
-        setSidebarVisible(sidebar.view.isHidden)
+        setSidebarVisible(!isSidebarInstalled)
     }
 
     private func setSidebarVisible(_ visible: Bool) {
-        sidebarMinWidthConstraint?.isActive = visible
-        sidebarMaxWidthConstraint?.isActive = visible
-        sidebar.view.isHidden = !visible
+        if visible {
+            installSidebarView()
+        } else {
+            persistSidebarWidthFromSplitPosition()
+            removeSidebarView()
+        }
         settings.isSidebarVisible = visible
         view.layoutSubtreeIfNeeded()
-        applySidebarSplitPosition()
+        if visible {
+            applySidebarSplitPosition()
+        }
+        updateSidebarToolbarItem()
     }
 
     private func applySidebarSplitPosition() {
-        guard rootSplitView.arrangedSubviews.count > 1 else { return }
-        if sidebar.view.isHidden {
-            rootSplitView.setPosition(rootSplitView.bounds.width, ofDividerAt: 0)
-        } else {
-            rootSplitView.setPosition(max(620, rootSplitView.bounds.width - 220), ofDividerAt: 0)
-        }
+        guard isSidebarInstalled, rootSplitView.arrangedSubviews.count > 1 else { return }
+        let width = clampedSidebarWidth(CGFloat(settings.sidebarWidth))
+        rootSplitView.setPosition(max(SidebarMetrics.contentMinWidth, rootSplitView.bounds.width - width), ofDividerAt: 0)
+    }
+
+    private func installSidebarView() {
+        guard !isSidebarInstalled else { return }
+        sidebar.view.isHidden = false
+        sidebarMinWidthConstraint?.isActive = true
+        sidebarMaxWidthConstraint?.isActive = true
+        rootSplitView.addArrangedSubview(sidebar.view)
+        isSidebarInstalled = true
+    }
+
+    private func removeSidebarView() {
+        guard isSidebarInstalled else { return }
+        sidebarMinWidthConstraint?.isActive = false
+        sidebarMaxWidthConstraint?.isActive = false
+        rootSplitView.removeArrangedSubview(sidebar.view)
+        sidebar.view.removeFromSuperview()
+        sidebar.view.isHidden = true
+        isSidebarInstalled = false
+    }
+
+    private func persistSidebarWidthFromSplitPosition() {
+        guard isSidebarInstalled, rootSplitView.arrangedSubviews.count > 1, rootSplitView.bounds.width > 0 else { return }
+        settings.sidebarWidth = Double(clampedSidebarWidth(rootSplitView.bounds.width - rootSplitView.positionOfDivider(at: 0)))
+    }
+
+    private func clampedSidebarWidth(_ width: CGFloat) -> CGFloat {
+        min(max(width, SidebarMetrics.minWidth), SidebarMetrics.maxWidth)
+    }
+
+    private func updateSidebarToolbarItem() {
+        guard let item = sidebarToolbarItem else { return }
+        let label = isSidebarInstalled ? "Hide Sidebar" : "Show Sidebar"
+        let symbol = isSidebarInstalled ? "sidebar.right" : "sidebar.left"
+        item.label = label
+        item.paletteLabel = "Sidebar"
+        item.toolTip = label
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
     }
 
     private func promptForNewFolder() {
@@ -734,7 +792,7 @@ extension MainWindowViewController: NSSplitViewDelegate {
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         switch splitView {
         case rootSplitView:
-            return 620
+            return SidebarMetrics.contentMinWidth
         case paneSplitView:
             return 260
         case contentSplitView:
@@ -747,10 +805,10 @@ extension MainWindowViewController: NSSplitViewDelegate {
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         switch splitView {
         case rootSplitView:
-            if sidebar.view.isHidden {
+            if !isSidebarInstalled {
                 return splitView.bounds.width
             }
-            return max(620, splitView.bounds.width - 180)
+            return max(SidebarMetrics.contentMinWidth, splitView.bounds.width - SidebarMetrics.minWidth)
         case paneSplitView:
             return max(260, splitView.bounds.width - 260)
         case contentSplitView:
@@ -759,9 +817,14 @@ extension MainWindowViewController: NSSplitViewDelegate {
             return proposedMaximumPosition
         }
     }
+
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard let splitView = notification.object as? NSSplitView, splitView === rootSplitView else { return }
+        persistSidebarWidthFromSplitPosition()
+    }
 }
 
-extension MainWindowViewController {
+extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
@@ -780,6 +843,19 @@ extension MainWindowViewController {
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
     @objc func menuFocusLeftPane(_ sender: Any?) { performCommand(.focusLeftPane) }
     @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(menuToggleSidebar(_:)) {
+            menuItem.state = isSidebarInstalled ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuToggleTerminal(_:)) {
+            menuItem.state = isTerminalInstalled ? .on : .off
+            return true
+        }
+        menuItem.state = .off
+        return true
+    }
 }
 
 private extension MainCommand {
