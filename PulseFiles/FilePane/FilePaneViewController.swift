@@ -10,6 +10,7 @@ final class FilePaneViewController: NSViewController {
     var onToggleTerminal: (() -> Void)?
     var onNewFolder: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
+    var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
 
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
@@ -222,6 +223,9 @@ final class FilePaneViewController: NSViewController {
     private func bindViewModel() {
         viewModel.onChange = { [weak self] in self?.reloadData() }
         viewModel.onDirectoryChanged = { [weak self] url in self?.onDirectoryChanged?(url) }
+        viewModel.onDisplayPreferencesChanged = { [weak self] showsHiddenFiles, sort in
+            self?.onDisplayPreferencesChanged?(showsHiddenFiles, sort)
+        }
         reloadData()
     }
 

@@ -14,12 +14,24 @@ final class FilePaneViewModel {
 
     var onChange: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
+    var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
 
-    init(initialDirectory: URL, showsHiddenFiles: Bool = false, fileSystem: FileSystemServicing, accessPolicy: SandboxFileAccessPolicy = .current) {
+    init(
+        initialDirectory: URL,
+        showsHiddenFiles: Bool = false,
+        sort: FileSortDescriptor = FileSortDescriptor(),
+        fileSystem: FileSystemServicing,
+        accessPolicy: SandboxFileAccessPolicy = .current
+    ) {
         self.fileSystem = fileSystem
         self.accessPolicy = accessPolicy
         let validatedDirectory = accessPolicy.validatedDirectory(initialDirectory)
-        state = PaneState(currentDirectory: validatedDirectory, history: NavigationHistory(initialURL: validatedDirectory), showsHiddenFiles: showsHiddenFiles)
+        state = PaneState(
+            currentDirectory: validatedDirectory,
+            history: NavigationHistory(initialURL: validatedDirectory),
+            sort: sort,
+            showsHiddenFiles: showsHiddenFiles
+        )
     }
 
     var currentDirectory: URL { state.currentDirectory }
@@ -69,6 +81,7 @@ final class FilePaneViewModel {
     func setShowsHiddenFiles(_ showsHiddenFiles: Bool) {
         guard state.showsHiddenFiles != showsHiddenFiles else { return }
         state.showsHiddenFiles = showsHiddenFiles
+        persistDisplayPreferences()
         loadCurrentDirectory()
     }
 
@@ -78,11 +91,15 @@ final class FilePaneViewModel {
         } else {
             state.sort = FileSortDescriptor(key: key, ascending: true)
         }
+        persistDisplayPreferences()
         applyCurrentSort()
     }
 
     func setSort(_ key: FileSortKey, ascending: Bool) {
-        state.sort = FileSortDescriptor(key: key, ascending: ascending)
+        let descriptor = FileSortDescriptor(key: key, ascending: ascending)
+        guard state.sort != descriptor else { return }
+        state.sort = descriptor
+        persistDisplayPreferences()
         applyCurrentSort()
     }
 
@@ -94,6 +111,10 @@ final class FilePaneViewModel {
     private func applyCurrentSort() {
         items = FileSystemService.sorted(items, descriptor: state.sort)
         onChange?()
+    }
+
+    private func persistDisplayPreferences() {
+        onDisplayPreferencesChanged?(state.showsHiddenFiles, state.sort)
     }
 
     private func load(directory: URL, addToHistory: Bool) {
