@@ -12,8 +12,6 @@ final class FilePaneViewController: NSViewController {
     var onNewFile: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
-    var onContextMenuCommand: ((MainCommand) -> Void)?
-    var onMoveDraggedItems: (([URL], URL) -> Void)?
 
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
@@ -38,12 +36,13 @@ final class FilePaneViewController: NSViewController {
     var sortDescriptor: FileSortDescriptor { viewModel.sortDescriptor }
     var showsHiddenFiles: Bool { viewModel.showsHiddenFiles }
     var selectedItems: [FileItem] {
-        tableView.selectedRowIndexes.compactMap { item(atTableRow: $0) }
+        tableView.selectedRowIndexes.compactMap { viewModel.visibleItems.indices.contains($0) ? viewModel.visibleItems[$0] : nil }
     }
 
     var focusedItem: FileItem? {
         let row = tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow
-        return item(atTableRow: row)
+        guard viewModel.visibleItems.indices.contains(row) else { return nil }
+        return viewModel.visibleItems[row]
     }
 
     override func loadView() {
@@ -105,10 +104,6 @@ final class FilePaneViewController: NSViewController {
     }
 
     func openFocusedItem() {
-        if tableView.clickedRow == 0 || tableView.selectedRow == 0, parentDirectoryURL != nil {
-            viewModel.goParent()
-            return
-        }
         guard let item = focusedItem else { return }
         if item.isDirectory {
             navigate(to: item.url)
@@ -162,9 +157,6 @@ final class FilePaneViewController: NSViewController {
         tableView.target = self
         tableView.headerView = NSTableHeaderView()
         tableView.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
-        tableView.registerForDraggedTypes([.fileURL])
-        tableView.setDraggingSourceOperationMask([.move, .copy], forLocal: false)
-        tableView.setDraggingSourceOperationMask([.move, .copy], forLocal: true)
 
         addColumn(identifier: "name", title: "Name", width: 360)
         addColumn(identifier: "size", title: "Size", width: 90)
@@ -267,7 +259,7 @@ final class FilePaneViewController: NSViewController {
 
 extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int {
-        viewModel.visibleItems.count + (parentDirectoryURL == nil ? 0 : 1)
+        viewModel.visibleItems.count
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
@@ -275,11 +267,8 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let identifier = tableColumn?.identifier.rawValue else { return nil }
-        if row == 0, let parentDirectoryURL {
-            return parentCell(for: identifier, parent: parentDirectoryURL)
-        }
-        guard let item = item(atTableRow: row) else { return nil }
+        guard viewModel.visibleItems.indices.contains(row), let identifier = tableColumn?.identifier.rawValue else { return nil }
+        let item = viewModel.visibleItems[row]
         let cell = NSTableCellView()
         let text = NSTextField(labelWithString: string(for: item, column: identifier))
         text.lineBreakMode = .byTruncatingMiddle
@@ -340,24 +329,6 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         return true
     }
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        guard let item = item(atTableRow: row) else { return nil }
-        return item.url as NSURL
-    }
-
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        guard dragURLs(from: info).isEmpty == false else { return [] }
-        let destination = dropDestination(forTableRow: row, operation: dropOperation)
-        return destination == nil ? [] : .move
-    }
-
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-        let urls = dragURLs(from: info)
-        guard !urls.isEmpty, let destination = dropDestination(forTableRow: row, operation: dropOperation) else { return false }
-        onMoveDraggedItems?(urls, destination)
-        return true
-    }
-
     private func string(for item: FileItem, column: String) -> String {
         switch column {
         case "name":
@@ -373,27 +344,6 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 }
 
 extension FilePaneViewController: FileTableViewActionDelegate {
-    func fileTableView(_ tableView: FileTableView, menuFor event: NSEvent) -> NSMenu? {
-        let row = tableView.row(at: tableView.convert(event.locationInWindow, from: nil))
-        if row >= 0, !tableView.selectedRowIndexes.contains(row), item(atTableRow: row) != nil {
-            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        }
-        let menu = NSMenu(title: "File Actions")
-        addContextItem("Open", .open, to: menu)
-        menu.addItem(.separator())
-        addContextItem("New Folder", .newFolder, to: menu)
-        addContextItem("New File", .newFile, to: menu)
-        addContextItem("Rename", .rename, to: menu)
-        menu.addItem(.separator())
-        addContextItem("Copy to Other Pane", .copy, to: menu)
-        addContextItem("Move to Other Pane", .move, to: menu)
-        addContextItem("Move to Trash", .trash, to: menu)
-        menu.addItem(.separator())
-        addContextItem("Refresh", .refresh, to: menu)
-        addContextItem("Go to Parent (..)", .parent, to: menu)
-        return menu
-    }
-
     func fileTableViewDidActivate(_ tableView: FileTableView) {
         onActivate?()
     }
@@ -436,66 +386,6 @@ extension FilePaneViewController: FileTableViewActionDelegate {
 
     func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView) {
         onSwitchPane?()
-    }
-}
-
-private extension FilePaneViewController {
-    var parentDirectoryURL: URL? {
-        let parent = viewModel.currentDirectory.deletingLastPathComponent()
-        return parent == viewModel.currentDirectory ? nil : parent
-    }
-
-    func item(atTableRow row: Int) -> FileItem? {
-        let itemIndex = row - (parentDirectoryURL == nil ? 0 : 1)
-        guard viewModel.visibleItems.indices.contains(itemIndex) else { return nil }
-        return viewModel.visibleItems[itemIndex]
-    }
-
-    func parentCell(for identifier: String, parent: URL) -> NSView {
-        let cell = NSTableCellView()
-        let text = NSTextField(labelWithString: identifier == "name" ? ".." : "")
-        text.textColor = LiquidGlassStyle.secondaryLabel
-        text.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(text)
-        if identifier == "name" {
-            let imageView = NSImageView(image: .fileIcon(for: parent))
-            imageView.imageScaling = .scaleProportionallyDown
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(imageView)
-            NSLayoutConstraint.activate([
-                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 18),
-                imageView.heightAnchor.constraint(equalToConstant: 18),
-                text.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-        } else {
-            NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6), text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
-        }
-        return cell
-    }
-
-    func addContextItem(_ title: String, _ command: MainCommand, to menu: NSMenu) {
-        let item = NSMenuItem(title: title, action: #selector(contextMenuItemSelected(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = command
-        menu.addItem(item)
-    }
-
-    @objc func contextMenuItemSelected(_ sender: NSMenuItem) {
-        guard let command = sender.representedObject as? MainCommand else { return }
-        onContextMenuCommand?(command)
-    }
-
-    func dragURLs(from info: NSDraggingInfo) -> [URL] {
-        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-    }
-
-    func dropDestination(forTableRow row: Int, operation: NSTableView.DropOperation) -> URL? {
-        if operation == .on, let item = item(atTableRow: row), item.isDirectory { return item.url }
-        return viewModel.currentDirectory
     }
 }
 

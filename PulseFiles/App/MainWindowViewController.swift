@@ -195,12 +195,6 @@ final class MainWindowViewController: NSViewController {
                 self?.settings.showHiddenFilesByDefault = showsHiddenFiles
                 self?.settings.defaultSortDescriptor = sort
             }
-            pane.onContextMenuCommand = { [weak self] command in
-                self?.performCommand(command)
-            }
-            pane.onMoveDraggedItems = { [weak self] urls, destination in
-                self?.moveDraggedItems(urls, to: destination)
-            }
         }
         sidebar.onOpenLocation = { [weak self] url, useInactive in
             self?.targetPane(useInactive: useInactive).navigate(to: url)
@@ -808,16 +802,6 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func moveSelectedItems() {
         performFileTransfer(kind: "Move") { [fileOperations] request, conflictHandler, progressHandler in
             try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
-        }
-    }
-
-    private func moveDraggedItems(_ urls: [URL], to destinationDirectory: URL) {
-        guard !isFileOperationActive else { return }
-        let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
-        startFileOperation(named: "Move") { [weak self, fileOperations] progressHandler in
-            try await fileOperations.move(request, conflictHandler: { destination in
-                self?.promptForConflict(destination: destination, operationName: "Move") ?? .cancel
-            }, progressHandler: progressHandler)
         }
     }
 
