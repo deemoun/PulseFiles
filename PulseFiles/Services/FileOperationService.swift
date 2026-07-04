@@ -39,9 +39,34 @@ struct FileOperationRequest {
     let destinationDirectory: URL
 }
 
+struct FileOperationProgress {
+    let currentItemName: String
+    let completedCount: Int
+    let totalCount: Int
+}
+
+struct FileOperationItemFailure {
+    let url: URL
+    let error: Error
+}
+
+struct FileOperationResult {
+    let completedItems: [URL]
+    let skippedItems: [URL]
+    let failedItems: [FileOperationItemFailure]
+    let wasCancelled: Bool
+
+    var succeededCompletely: Bool {
+        !wasCancelled && skippedItems.isEmpty && failedItems.isEmpty
+    }
+}
+
+typealias FileOperationProgressHandler = @MainActor (FileOperationProgress) -> Void
+
 protocol FileOperationServicing {
-    func copy(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution) throws
-    func move(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution) throws
+    func copy(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func move(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
 }
 
 final class FileOperationService: FileOperationServicing {
@@ -53,46 +78,134 @@ final class FileOperationService: FileOperationServicing {
         self.accessPolicy = accessPolicy
     }
 
-    func copy(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution) throws {
-        try validate(request)
-        for source in request.sources {
-            let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
-            try validateDestination(destination, for: source)
-            switch try resolveConflict(at: destination, conflictHandler: conflictHandler) {
-            case .replace:
-                try removeExistingItem(at: destination)
-            case .skip:
-                continue
-            case .cancel:
-                return
-            }
+    func copy(
+        _ request: FileOperationRequest,
+        conflictHandler: (URL) -> FileConflictResolution,
+        progressHandler: FileOperationProgressHandler? = nil
+    ) async throws -> FileOperationResult {
+        try validateTransferRequest(request)
+        return try await performTransfer(request, conflictHandler: conflictHandler, progressHandler: progressHandler) { fileManager, source, destination in
             try fileManager.copyItem(at: source, to: destination)
         }
     }
 
-    func move(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution) throws {
-        try validate(request)
-        for source in request.sources {
-            let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
-            try validateDestination(destination, for: source)
-            switch try resolveConflict(at: destination, conflictHandler: conflictHandler) {
-            case .replace:
-                try removeExistingItem(at: destination)
-            case .skip:
-                continue
-            case .cancel:
-                return
-            }
+    func move(
+        _ request: FileOperationRequest,
+        conflictHandler: (URL) -> FileConflictResolution,
+        progressHandler: FileOperationProgressHandler? = nil
+    ) async throws -> FileOperationResult {
+        try validateTransferRequest(request)
+        return try await performTransfer(request, conflictHandler: conflictHandler, progressHandler: progressHandler) { fileManager, source, destination in
             try fileManager.moveItem(at: source, to: destination)
         }
     }
 
-    private func validate(_ request: FileOperationRequest) throws {
+    func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+        guard !urls.isEmpty else { throw FileOperationError.emptySelection }
+        for url in urls {
+            try accessPolicy.validateAccess(to: url)
+        }
+
+        var completedItems: [URL] = []
+        var failedItems: [FileOperationItemFailure] = []
+        let totalCount = urls.count
+        var completedCount = 0
+
+        for url in urls {
+            if Task.isCancelled {
+                return FileOperationResult(completedItems: completedItems, skippedItems: [], failedItems: failedItems, wasCancelled: true)
+            }
+            await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+            do {
+                let fileManager = fileManager
+                try await Task.detached(priority: .utility) {
+                    #if os(macOS)
+                    var resultingURL: NSURL?
+                    try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
+                    #else
+                    throw CocoaError(.featureUnsupported)
+                    #endif
+                }.value
+                completedItems.append(url)
+            } catch is CancellationError {
+                return FileOperationResult(completedItems: completedItems, skippedItems: [], failedItems: failedItems, wasCancelled: true)
+            } catch {
+                failedItems.append(FileOperationItemFailure(url: url, error: error))
+            }
+            completedCount += 1
+            await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+        }
+
+        return FileOperationResult(completedItems: completedItems, skippedItems: [], failedItems: failedItems, wasCancelled: false)
+    }
+
+    private func performTransfer(
+        _ request: FileOperationRequest,
+        conflictHandler: (URL) -> FileConflictResolution,
+        progressHandler: FileOperationProgressHandler?,
+        operation: @escaping @Sendable (FileManager, URL, URL) throws -> Void
+    ) async throws -> FileOperationResult {
+        var completedItems: [URL] = []
+        var skippedItems: [URL] = []
+        var failedItems: [FileOperationItemFailure] = []
+        let totalCount = request.sources.count
+        var completedCount = 0
+
+        for source in request.sources {
+            if Task.isCancelled {
+                return FileOperationResult(completedItems: completedItems, skippedItems: skippedItems, failedItems: failedItems, wasCancelled: true)
+            }
+
+            let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
+            do {
+                try accessPolicy.validateAccess(to: source)
+                try validateDestination(destination, for: source)
+            } catch {
+                failedItems.append(FileOperationItemFailure(url: source, error: error))
+                completedCount += 1
+                await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+                continue
+            }
+            switch try resolveConflict(at: destination, conflictHandler: conflictHandler) {
+            case .replace:
+                do {
+                    try await removeExistingItem(at: destination)
+                } catch {
+                    failedItems.append(FileOperationItemFailure(url: source, error: error))
+                    completedCount += 1
+                    continue
+                }
+            case .skip:
+                skippedItems.append(source)
+                completedCount += 1
+                await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+                continue
+            case .cancel:
+                return FileOperationResult(completedItems: completedItems, skippedItems: skippedItems, failedItems: failedItems, wasCancelled: true)
+            }
+
+            await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+            do {
+                let fileManager = fileManager
+                try await Task.detached(priority: .utility) {
+                    try operation(fileManager, source, destination)
+                }.value
+                completedItems.append(source)
+            } catch is CancellationError {
+                return FileOperationResult(completedItems: completedItems, skippedItems: skippedItems, failedItems: failedItems, wasCancelled: true)
+            } catch {
+                failedItems.append(FileOperationItemFailure(url: source, error: error))
+            }
+            completedCount += 1
+            await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+        }
+
+        return FileOperationResult(completedItems: completedItems, skippedItems: skippedItems, failedItems: failedItems, wasCancelled: false)
+    }
+
+    private func validateTransferRequest(_ request: FileOperationRequest) throws {
         guard !request.sources.isEmpty else { throw FileOperationError.emptySelection }
         try accessPolicy.validateAccess(to: request.destinationDirectory)
-        for source in request.sources {
-            try accessPolicy.validateAccess(to: source)
-        }
     }
 
     private func validateDestination(_ destination: URL, for source: URL) throws {
@@ -109,8 +222,11 @@ final class FileOperationService: FileOperationServicing {
         return conflictHandler(destination)
     }
 
-    private func removeExistingItem(at url: URL) throws {
+    private func removeExistingItem(at url: URL) async throws {
         guard fileManager.fileExists(atPath: url.path) else { return }
-        try fileManager.removeItem(at: url)
+        let fileManager = fileManager
+        try await Task.detached(priority: .utility) {
+            try fileManager.removeItem(at: url)
+        }.value
     }
 }
