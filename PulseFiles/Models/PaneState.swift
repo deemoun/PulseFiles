@@ -27,4 +27,20 @@ struct PaneState {
     var history = NavigationHistory()
     var sort = FileSortDescriptor()
     var showsHiddenFiles = false
+
+    init(
+        currentDirectory: URL,
+        selectedURLs: Set<URL> = [],
+        focusedRow: Int = 0,
+        history: NavigationHistory = NavigationHistory(),
+        sort: FileSortDescriptor = FileSortDescriptor(),
+        showsHiddenFiles: Bool = false
+    ) {
+        self.currentDirectory = currentDirectory
+        self.selectedURLs = selectedURLs
+        self.focusedRow = focusedRow
+        self.history = history
+        self.sort = sort
+        self.showsHiddenFiles = showsHiddenFiles
+    }
 }

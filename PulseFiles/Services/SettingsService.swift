@@ -45,6 +45,11 @@ final class SettingsService {
         set { defaults.set(newValue, forKey: "showHiddenFilesByDefault") }
     }
 
+    var defaultSortDescriptor: FileSortDescriptor {
+        get { sortDescriptor(forKey: "defaultSortDescriptor", fallback: FileSortDescriptor()) }
+        set { setSortDescriptor(newValue, forKey: "defaultSortDescriptor") }
+    }
+
     var preferredSidebarWidth: Double {
         get { defaults.object(forKey: "preferredSidebarWidth") as? Double ?? defaults.object(forKey: "sidebarWidth") as? Double ?? 220 }
         set { defaults.set(min(max(newValue, 180), 300), forKey: "preferredSidebarWidth") }
@@ -88,5 +93,18 @@ final class SettingsService {
         } else {
             defaults.removeObject(forKey: key)
         }
+    }
+
+    private func sortDescriptor(forKey key: String, fallback: FileSortDescriptor) -> FileSortDescriptor {
+        guard let data = defaults.data(forKey: key),
+              let descriptor = try? JSONDecoder().decode(FileSortDescriptor.self, from: data) else {
+            return fallback
+        }
+        return descriptor
+    }
+
+    private func setSortDescriptor(_ descriptor: FileSortDescriptor, forKey key: String) {
+        guard let data = try? JSONEncoder().encode(descriptor) else { return }
+        defaults.set(data, forKey: key)
     }
 }

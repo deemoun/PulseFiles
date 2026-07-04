@@ -15,11 +15,23 @@ final class MainWindowViewController: NSViewController {
 
     private lazy var leftPane = FilePaneViewController(
         paneID: .left,
-        viewModel: FilePaneViewModel(initialDirectory: accessPolicy.validatedDirectory(settings.launchLeftDirectory), showsHiddenFiles: settings.showHiddenFilesByDefault, fileSystem: fileSystem, accessPolicy: accessPolicy)
+        viewModel: FilePaneViewModel(
+            initialDirectory: accessPolicy.validatedDirectory(settings.launchLeftDirectory),
+            showsHiddenFiles: settings.showHiddenFilesByDefault,
+            sort: settings.defaultSortDescriptor,
+            fileSystem: fileSystem,
+            accessPolicy: accessPolicy
+        )
     )
     private lazy var rightPane = FilePaneViewController(
         paneID: .right,
-        viewModel: FilePaneViewModel(initialDirectory: accessPolicy.validatedDirectory(settings.launchRightDirectory), showsHiddenFiles: settings.showHiddenFilesByDefault, fileSystem: fileSystem, accessPolicy: accessPolicy)
+        viewModel: FilePaneViewModel(
+            initialDirectory: accessPolicy.validatedDirectory(settings.launchRightDirectory),
+            showsHiddenFiles: settings.showHiddenFilesByDefault,
+            sort: settings.defaultSortDescriptor,
+            fileSystem: fileSystem,
+            accessPolicy: accessPolicy
+        )
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
@@ -170,6 +182,12 @@ final class MainWindowViewController: NSViewController {
             self?.recentLocations.record(url)
             if self?.activePaneID == .right {
                 self?.terminal.suggestedWorkingDirectory = url
+            }
+        }
+        [leftPane, rightPane].forEach { pane in
+            pane.onDisplayPreferencesChanged = { [weak self] showsHiddenFiles, sort in
+                self?.settings.showHiddenFilesByDefault = showsHiddenFiles
+                self?.settings.defaultSortDescriptor = sort
             }
         }
         sidebar.onOpenLocation = { [weak self] url, useInactive in
@@ -446,6 +464,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
         leftPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
         rightPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
+        leftPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
+        rightPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
         view.layoutSubtreeIfNeeded()
         applySidebarSplitPosition()
     }
