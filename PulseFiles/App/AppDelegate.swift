@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let submenu = NSMenu(title: "PulseFiles")
         submenu.addItem(withTitle: "About PulseFiles", action: nil, keyEquivalent: "")
         submenu.addItem(.separator())
+        submenu.addItem(menuItem("Settings…", action: #selector(MainWindowViewController.menuSettings(_:)), key: ",", modifiers: [.command]))
+        submenu.addItem(.separator())
         submenu.addItem(withTitle: "Quit PulseFiles", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = submenu
         return item

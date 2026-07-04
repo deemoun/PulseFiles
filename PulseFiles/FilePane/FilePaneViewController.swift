@@ -66,6 +66,10 @@ final class FilePaneViewController: NSViewController {
         viewModel.toggleHiddenFiles()
     }
 
+    func setShowsHiddenFiles(_ showsHiddenFiles: Bool) {
+        viewModel.setShowsHiddenFiles(showsHiddenFiles)
+    }
+
     func setSort(_ key: FileSortKey) {
         viewModel.setSort(key)
     }

@@ -15,11 +15,11 @@ final class MainWindowViewController: NSViewController {
 
     private lazy var leftPane = FilePaneViewController(
         paneID: .left,
-        viewModel: FilePaneViewModel(initialDirectory: accessPolicy.validatedDirectory(settings.lastLeftDirectory), fileSystem: fileSystem, accessPolicy: accessPolicy)
+        viewModel: FilePaneViewModel(initialDirectory: accessPolicy.validatedDirectory(settings.launchLeftDirectory), showsHiddenFiles: settings.showHiddenFilesByDefault, fileSystem: fileSystem, accessPolicy: accessPolicy)
     )
     private lazy var rightPane = FilePaneViewController(
         paneID: .right,
-        viewModel: FilePaneViewModel(initialDirectory: accessPolicy.validatedDirectory(settings.lastRightDirectory), fileSystem: fileSystem, accessPolicy: accessPolicy)
+        viewModel: FilePaneViewModel(initialDirectory: accessPolicy.validatedDirectory(settings.launchRightDirectory), showsHiddenFiles: settings.showHiddenFilesByDefault, fileSystem: fileSystem, accessPolicy: accessPolicy)
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
@@ -32,6 +32,7 @@ final class MainWindowViewController: NSViewController {
     private weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
     private var activeFilterText = ""
+    private var settingsPopover: NSPopover?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var sidebarMinWidthConstraint: NSLayoutConstraint?
@@ -368,7 +369,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         case .viewOptions:
             return toolbarItem(itemIdentifier, label: "View", symbol: "line.3.horizontal.decrease.circle", action: #selector(toolbarViewOptions(_:)))
         case .settings:
-            return toolbarItem(itemIdentifier, label: "Settings", symbol: "gearshape", action: #selector(toolbarUnavailable(_:)))
+            return toolbarItem(itemIdentifier, label: "Settings", symbol: "gearshape", action: #selector(toolbarSettings(_:)))
         default:
             return nil
         }
@@ -409,6 +410,46 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         performCommand(.toggleSidebar)
     }
 
+    @objc func toolbarSettings(_ sender: Any?) {
+        presentSettings(sender)
+    }
+
+    private func presentSettings(_ sender: Any?) {
+        if let settingsPopover, settingsPopover.isShown {
+            settingsPopover.close()
+            return
+        }
+
+        let controller = SettingsViewController(settings: settings)
+        controller.onChange = { [weak self] in self?.applySettingsChanges() }
+
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .semitransient
+        settingsPopover = popover
+
+        if let toolbarItem = sender as? NSToolbarItem, let button = toolbarItem.value(forKey: "view") as? NSView {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
+        } else if let control = sender as? NSView {
+            popover.show(relativeTo: control.bounds, of: control, preferredEdge: .maxY)
+        } else if let window = view.window {
+            let rect = NSRect(x: view.bounds.midX, y: view.bounds.maxY - 1, width: 1, height: 1)
+            popover.show(relativeTo: rect, of: view, preferredEdge: .maxY)
+            window.makeFirstResponder(view)
+        }
+    }
+
+    private func applySettingsChanges() {
+        setSidebarVisible(settings.defaultSidebarVisible)
+        if settings.defaultTerminalVisible != isTerminalInstalled {
+            settings.defaultTerminalVisible ? installTerminalPanel() : removeTerminalPanel()
+        }
+        leftPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
+        rightPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
+        view.layoutSubtreeIfNeeded()
+        applySidebarSplitPosition()
+    }
+
     @objc private func toolbarViewOptions(_ sender: Any?) {
         let menu = buildViewOptionsMenu()
         if let event = NSApp.currentEvent {
@@ -416,10 +457,6 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         } else {
             menu.popUp(positioning: nil, at: NSPoint(x: view.bounds.midX, y: view.bounds.midY), in: view)
         }
-    }
-
-    @objc private func toolbarUnavailable(_ sender: Any?) {
-        NSSound.beep()
     }
 
     private func buildViewOptionsMenu() -> NSMenu {
@@ -891,6 +928,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
     @objc func menuFocusLeftPane(_ sender: Any?) { performCommand(.focusLeftPane) }
     @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
+    @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(menuToggleSidebar(_:)) {
