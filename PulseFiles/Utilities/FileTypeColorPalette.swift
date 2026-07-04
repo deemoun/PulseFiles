@@ -35,13 +35,13 @@ enum FileTypeClassifier {
         "doc", "docx", "key", "md", "numbers", "pages", "pdf", "ppt", "pptx", "rtf", "txt", "xls", "xlsx"
     ]
     private static let sourceCodeExtensions: Set<String> = [
-        "c", "cc", "cpp", "css", "go", "h", "hpp", "html", "java", "js", "kt", "m", "mm", "php", "py", "rb", "rs", "sh", "swift", "ts"
+        "c", "cc", "cpp", "css", "go", "h", "hpp", "html", "java", "js", "jsx", "kt", "m", "mm", "php", "py", "rb", "rs", "scss", "sh", "swift", "ts", "tsx", "zsh"
     ]
     private static let dataExtensions: Set<String> = [
-        "csv", "json", "plist", "sqlite", "toml", "tsv", "xml", "yaml", "yml"
+        "csv", "db", "json", "plist", "sqlite", "toml", "tsv", "xml", "yaml", "yml"
     ]
     private static let diskImageExtensions: Set<String> = [
-        "dmg", "img", "iso"
+        "dmg", "img", "iso", "pkg"
     ]
 
     static func category(for item: FileItem) -> FileVisualCategory {
