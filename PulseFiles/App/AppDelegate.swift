@@ -62,6 +62,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "View")
         submenu.addItem(menuItem("Refresh", action: #selector(MainWindowViewController.menuRefresh(_:)), key: "r", modifiers: [.command]))
+        submenu.addItem(menuItem("Show Hidden Files", action: #selector(MainWindowViewController.menuToggleHiddenFiles(_:)), key: ".", modifiers: [.command, .shift]))
+        submenu.addItem(.separator())
+        let sortSubmenu = NSMenu(title: "Sort By")
+        sortSubmenu.addItem(menuItem("Name", action: #selector(MainWindowViewController.menuSortByName(_:)), key: "", modifiers: []))
+        sortSubmenu.addItem(menuItem("Size", action: #selector(MainWindowViewController.menuSortBySize(_:)), key: "", modifiers: []))
+        sortSubmenu.addItem(menuItem("Modified", action: #selector(MainWindowViewController.menuSortByModified(_:)), key: "", modifiers: []))
+        let sortItem = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
+        sortItem.submenu = sortSubmenu
+        submenu.addItem(sortItem)
+
+        let orderSubmenu = NSMenu(title: "Sort Direction")
+        orderSubmenu.addItem(menuItem("Ascending", action: #selector(MainWindowViewController.menuSortAscending(_:)), key: "", modifiers: []))
+        orderSubmenu.addItem(menuItem("Descending", action: #selector(MainWindowViewController.menuSortDescending(_:)), key: "", modifiers: []))
+        let orderItem = NSMenuItem(title: "Sort Direction", action: nil, keyEquivalent: "")
+        orderItem.submenu = orderSubmenu
+        submenu.addItem(orderItem)
+        submenu.addItem(.separator())
         submenu.addItem(menuItem("Toggle Terminal", action: #selector(MainWindowViewController.menuToggleTerminal(_:)), key: "`", modifiers: [.command]))
         submenu.addItem(menuItem("Toggle Sidebar", action: #selector(MainWindowViewController.menuToggleSidebar(_:)), key: "s", modifiers: [.command, .option]))
         item.submenu = submenu

@@ -9,6 +9,12 @@ enum MainCommand {
     case move
     case trash
     case refresh
+    case toggleHiddenFiles
+    case sortByName
+    case sortBySize
+    case sortByModified
+    case sortAscending
+    case sortDescending
     case toggleTerminal
     case toggleSidebar
     case back

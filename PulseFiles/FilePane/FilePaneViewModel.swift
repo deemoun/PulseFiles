@@ -73,12 +73,21 @@ final class FilePaneViewModel {
         } else {
             state.sort = FileSortDescriptor(key: key, ascending: true)
         }
-        items = FileSystemService.sorted(items, descriptor: state.sort)
-        onChange?()
+        applyCurrentSort()
+    }
+
+    func setSort(_ key: FileSortKey, ascending: Bool) {
+        state.sort = FileSortDescriptor(key: key, ascending: ascending)
+        applyCurrentSort()
     }
 
     func setSearchQuery(_ query: String) {
         searchQuery = query
+        onChange?()
+    }
+
+    private func applyCurrentSort() {
+        items = FileSystemService.sorted(items, descriptor: state.sort)
         onChange?()
     }
 

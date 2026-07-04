@@ -218,6 +218,18 @@ final class MainWindowViewController: NSViewController {
             confirmDeleteSelectedItems()
         case .refresh:
             targetPane().loadDirectory()
+        case .toggleHiddenFiles:
+            targetPane().toggleHiddenFiles()
+        case .sortByName:
+            targetPane().setSort(.name)
+        case .sortBySize:
+            targetPane().setSort(.size)
+        case .sortByModified:
+            targetPane().setSort(.modified)
+        case .sortAscending:
+            targetPane().setSort(targetPane().sortDescriptor.key, ascending: true)
+        case .sortDescending:
+            targetPane().setSort(targetPane().sortDescriptor.key, ascending: false)
         case .toggleTerminal:
             toggleTerminal()
         case .toggleSidebar:
@@ -354,7 +366,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             updateSidebarToolbarItem()
             return item
         case .viewOptions:
-            return toolbarItem(itemIdentifier, label: "View", symbol: "line.3.horizontal.decrease.circle", action: #selector(toolbarUnavailable(_:)))
+            return toolbarItem(itemIdentifier, label: "View", symbol: "line.3.horizontal.decrease.circle", action: #selector(toolbarViewOptions(_:)))
         case .settings:
             return toolbarItem(itemIdentifier, label: "Settings", symbol: "gearshape", action: #selector(toolbarUnavailable(_:)))
         default:
@@ -397,8 +409,38 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         performCommand(.toggleSidebar)
     }
 
+    @objc private func toolbarViewOptions(_ sender: Any?) {
+        let menu = buildViewOptionsMenu()
+        if let event = NSApp.currentEvent {
+            NSMenu.popUpContextMenu(menu, with: event, for: view)
+        } else {
+            menu.popUp(positioning: nil, at: NSPoint(x: view.bounds.midX, y: view.bounds.midY), in: view)
+        }
+    }
+
     @objc private func toolbarUnavailable(_ sender: Any?) {
         NSSound.beep()
+    }
+
+    private func buildViewOptionsMenu() -> NSMenu {
+        let menu = NSMenu(title: "View Options")
+        menu.addItem(menuItem("Refresh", action: #selector(menuRefresh(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Show Hidden Files", action: #selector(menuToggleHiddenFiles(_:)), key: "", modifiers: []))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Sort by Name", action: #selector(menuSortByName(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Size", action: #selector(menuSortBySize(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Modified", action: #selector(menuSortByModified(_:)), key: "", modifiers: []))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Ascending", action: #selector(menuSortAscending(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Descending", action: #selector(menuSortDescending(_:)), key: "", modifiers: []))
+        return menu
+    }
+
+    private func menuItem(_ title: String, action: Selector, key: String, modifiers: NSEvent.ModifierFlags) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        item.target = self
+        return item
     }
 
     @objc private func toolbarSearchChanged(_ sender: NSSearchField) {
@@ -832,6 +874,12 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuMove(_ sender: Any?) { performCommand(.move) }
     @objc func menuMoveToTrash(_ sender: Any?) { performCommand(.trash) }
     @objc func menuRefresh(_ sender: Any?) { performCommand(.refresh) }
+    @objc func menuToggleHiddenFiles(_ sender: Any?) { performCommand(.toggleHiddenFiles) }
+    @objc func menuSortByName(_ sender: Any?) { performCommand(.sortByName) }
+    @objc func menuSortBySize(_ sender: Any?) { performCommand(.sortBySize) }
+    @objc func menuSortByModified(_ sender: Any?) { performCommand(.sortByModified) }
+    @objc func menuSortAscending(_ sender: Any?) { performCommand(.sortAscending) }
+    @objc func menuSortDescending(_ sender: Any?) { performCommand(.sortDescending) }
     @objc func menuToggleTerminal(_ sender: Any?) { performCommand(.toggleTerminal) }
     @objc func menuToggleSidebar(_ sender: Any?) { performCommand(.toggleSidebar) }
     @objc func menuBack(_ sender: Any?) { performCommand(.back) }
@@ -851,6 +899,31 @@ extension MainWindowViewController: NSMenuItemValidation {
         }
         if menuItem.action == #selector(menuToggleTerminal(_:)) {
             menuItem.state = isTerminalInstalled ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuToggleHiddenFiles(_:)) {
+            menuItem.state = targetPane().showsHiddenFiles ? .on : .off
+            return true
+        }
+        let sort = targetPane().sortDescriptor
+        if menuItem.action == #selector(menuSortByName(_:)) {
+            menuItem.state = sort.key == .name ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuSortBySize(_:)) {
+            menuItem.state = sort.key == .size ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuSortByModified(_:)) {
+            menuItem.state = sort.key == .modified ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuSortAscending(_:)) {
+            menuItem.state = sort.ascending ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuSortDescending(_:)) {
+            menuItem.state = sort.ascending ? .off : .on
             return true
         }
         menuItem.state = .off
