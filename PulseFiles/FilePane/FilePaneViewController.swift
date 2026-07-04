@@ -70,6 +70,10 @@ final class FilePaneViewController: NSViewController {
         viewModel.goForward()
     }
 
+    func goParent() {
+        viewModel.goParent()
+    }
+
     func setActive(_ active: Bool) {
         activeStripe.layer?.backgroundColor = active ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
         view.layer?.borderWidth = active ? 1 : 0

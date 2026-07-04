@@ -4,6 +4,7 @@ final class MainWindowViewController: NSViewController {
     private let settings = SettingsService()
     private let accessPolicy = SandboxFileAccessPolicy.current
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy)
+    private lazy var fileOperations = FileOperationService(accessPolicy: accessPolicy)
     private let recentLocations = RecentLocationService()
 
     private lazy var leftPane = FilePaneViewController(
@@ -24,6 +25,8 @@ final class MainWindowViewController: NSViewController {
     private let mainStack = NSView()
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
+    private var sidebarMinWidthConstraint: NSLayoutConstraint?
+    private var sidebarMaxWidthConstraint: NSLayoutConstraint?
 
     private var activePaneID: PaneID = .left {
         didSet { updateActivePane() }
@@ -74,8 +77,10 @@ final class MainWindowViewController: NSViewController {
         addChild(sidebar)
         rootSplitView.addArrangedSubview(sidebar.view)
         mainStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 620).isActive = true
-        sidebar.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
-        sidebar.view.widthAnchor.constraint(lessThanOrEqualToConstant: 300).isActive = true
+        sidebarMinWidthConstraint = sidebar.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 180)
+        sidebarMaxWidthConstraint = sidebar.view.widthAnchor.constraint(lessThanOrEqualToConstant: 300)
+        sidebarMinWidthConstraint?.isActive = settings.isSidebarVisible
+        sidebarMaxWidthConstraint?.isActive = settings.isSidebarVisible
         sidebar.view.isHidden = !settings.isSidebarVisible
 
         contentSplitView.isVertical = false
@@ -117,7 +122,7 @@ final class MainWindowViewController: NSViewController {
         super.viewDidLayout()
         guard !didSetInitialSplitPositions, view.bounds.width > 0, view.bounds.height > 0 else { return }
         didSetInitialSplitPositions = true
-        rootSplitView.setPosition(max(620, rootSplitView.bounds.width - 220), ofDividerAt: 0)
+        applySidebarSplitPosition()
         paneSplitView.setPosition(max(260, paneSplitView.bounds.width / 2), ofDividerAt: 0)
         if !terminal.view.isHidden {
             contentSplitView.setPosition(max(220, contentSplitView.bounds.height - 180), ofDividerAt: 0)
@@ -125,6 +130,9 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func bindPaneCallbacks() {
+        terminal.workingDirectoryProvider = { [weak self] in
+            self?.targetPane().currentDirectory ?? ExperimentalFlags.appSandboxRoot
+        }
         leftPane.onActivate = { [weak self] in self?.activePaneID = .left }
         rightPane.onActivate = { [weak self] in self?.activePaneID = .right }
         leftPane.onSwitchPane = { [weak self] in self?.activePaneID = .right }
@@ -136,16 +144,22 @@ final class MainWindowViewController: NSViewController {
         leftPane.onDirectoryChanged = { [weak self] url in
             self?.settings.lastLeftDirectory = url
             self?.recentLocations.record(url)
+            if self?.activePaneID == .left {
+                self?.terminal.suggestedWorkingDirectory = url
+            }
         }
         rightPane.onDirectoryChanged = { [weak self] url in
             self?.settings.lastRightDirectory = url
             self?.recentLocations.record(url)
+            if self?.activePaneID == .right {
+                self?.terminal.suggestedWorkingDirectory = url
+            }
         }
         sidebar.onOpenLocation = { [weak self] url, useInactive in
             self?.targetPane(useInactive: useInactive).navigate(to: url)
         }
         commandBar.onAction = { [weak self] action in
-            self?.performCommand(action)
+            self?.performCommand(MainCommand(commandBarAction: action))
         }
     }
 
@@ -161,8 +175,8 @@ final class MainWindowViewController: NSViewController {
         view.window?.makeFirstResponder(targetPane().tableView)
     }
 
-    private func performCommand(_ action: CommandBarAction) {
-        switch action {
+    private func performCommand(_ command: MainCommand) {
+        switch command {
         case .open:
             targetPane().openFocusedItem()
         case .newFile:
@@ -171,10 +185,36 @@ final class MainWindowViewController: NSViewController {
             promptForNewFolder()
         case .rename:
             promptForRename()
-        case .delete:
+        case .copy:
+            copySelectedItems()
+        case .move:
+            moveSelectedItems()
+        case .trash:
             confirmDeleteSelectedItems()
-        case .view, .edit, .copy, .move, .more:
-            showUnavailable(action.rawValue)
+        case .refresh:
+            targetPane().loadDirectory()
+        case .toggleTerminal:
+            toggleTerminal()
+        case .toggleSidebar:
+            toggleSidebar()
+        case .back:
+            targetPane().goBack()
+        case .forward:
+            targetPane().goForward()
+        case .parent:
+            targetPane().goParent()
+        case .home:
+            targetPane().navigate(to: ExperimentalFlags.appSandboxRoot)
+        case .downloads:
+            targetPane().navigate(to: ExperimentalFlags.appSandboxRoot.appendingPathComponent("Downloads", isDirectory: true))
+        case .applications:
+            targetPane().navigate(to: ExperimentalFlags.appSandboxRoot)
+        case .switchPane:
+            activePaneID = activePaneID.opposite
+        case .focusLeftPane:
+            activePaneID = .left
+        case .focusRightPane:
+            activePaneID = .right
         }
     }
 
@@ -196,48 +236,64 @@ final class MainWindowViewController: NSViewController {
         let command = event.modifierFlags.contains(.command)
         let shift = event.modifierFlags.contains(.shift)
         let option = event.modifierFlags.contains(.option)
+        if isTextInputFirstResponder, !(command && event.keyCode == 50) {
+            return false
+        }
         if command && event.keyCode == 50 {
-            toggleTerminal()
+            performCommand(.toggleTerminal)
             return true
         }
         if event.keyCode == 48 {
-            activePaneID = activePaneID.opposite
+            performCommand(.switchPane)
             return true
         }
         if shift && event.keyCode == 98 {
-            promptForNewFile()
+            performCommand(.newFile)
             return true
         }
         if event.keyCode == 98 {
-            promptForNewFolder()
+            performCommand(.newFolder)
             return true
         }
         if event.keyCode == 120 {
-            promptForRename()
+            performCommand(.rename)
+            return true
+        }
+        if event.keyCode == 96 {
+            performCommand(.copy)
+            return true
+        }
+        if event.keyCode == 97 {
+            performCommand(.move)
             return true
         }
         if event.keyCode == 100 {
-            confirmDeleteSelectedItems()
+            performCommand(.trash)
             return true
         }
         if command && event.keyCode == 15 {
-            targetPane().loadDirectory()
+            performCommand(.refresh)
             return true
         }
         if command && shift && event.keyCode == 123 {
-            activePaneID = .left
+            performCommand(.focusLeftPane)
             return true
         }
         if command && shift && event.keyCode == 124 {
-            activePaneID = .right
+            performCommand(.focusRightPane)
             return true
         }
         if command && option && event.keyCode == 37 {
-            targetPane().navigate(to: ExperimentalFlags.appSandboxRoot.appendingPathComponent("Downloads", isDirectory: true))
+            performCommand(.downloads)
             return true
         }
 
         return false
+    }
+
+    private var isTextInputFirstResponder: Bool {
+        guard let firstResponder = view.window?.firstResponder else { return false }
+        return firstResponder is NSTextView || firstResponder is NSTextField
     }
 }
 
@@ -286,19 +342,19 @@ extension MainWindowViewController: NSToolbarDelegate {
     }
 
     @objc private func toolbarBack(_ sender: Any?) {
-        targetPane().goBack()
+        performCommand(.back)
     }
 
     @objc private func toolbarForward(_ sender: Any?) {
-        targetPane().goForward()
+        performCommand(.forward)
     }
 
     @objc private func toolbarToggleTerminal(_ sender: Any?) {
-        toggleTerminal()
+        performCommand(.toggleTerminal)
     }
 
     @objc private func toolbarToggleSidebar(_ sender: Any?) {
-        toggleSidebar()
+        performCommand(.toggleSidebar)
     }
 
     @objc private func toolbarUnavailable(_ sender: Any?) {
@@ -319,8 +375,25 @@ extension MainWindowViewController: NSToolbarDelegate {
     }
 
     private func toggleSidebar() {
-        sidebar.view.isHidden.toggle()
-        settings.isSidebarVisible = !sidebar.view.isHidden
+        setSidebarVisible(sidebar.view.isHidden)
+    }
+
+    private func setSidebarVisible(_ visible: Bool) {
+        sidebarMinWidthConstraint?.isActive = visible
+        sidebarMaxWidthConstraint?.isActive = visible
+        sidebar.view.isHidden = !visible
+        settings.isSidebarVisible = visible
+        view.layoutSubtreeIfNeeded()
+        applySidebarSplitPosition()
+    }
+
+    private func applySidebarSplitPosition() {
+        guard rootSplitView.arrangedSubviews.count > 1 else { return }
+        if sidebar.view.isHidden {
+            rootSplitView.setPosition(rootSplitView.bounds.width, ofDividerAt: 0)
+        } else {
+            rootSplitView.setPosition(max(620, rootSplitView.bounds.width - 220), ofDividerAt: 0)
+        }
     }
 
     private func promptForNewFolder() {
@@ -518,8 +591,58 @@ extension MainWindowViewController: NSToolbarDelegate {
         }
     }
 
-    private func showUnavailable(_ action: String) {
-        showError(message: "\(action) Is Not Implemented Yet", detail: "This control is wired, but the operation is still scheduled for the next implementation phase.")
+    private func copySelectedItems() {
+        performFileTransfer(kind: "Copy") { [fileOperations] request, conflictHandler in
+            try fileOperations.copy(request, conflictHandler: conflictHandler)
+        }
+    }
+
+    private func moveSelectedItems() {
+        performFileTransfer(kind: "Move") { [fileOperations] request, conflictHandler in
+            try fileOperations.move(request, conflictHandler: conflictHandler)
+        }
+    }
+
+    private func performFileTransfer(kind: String, operation: (FileOperationRequest, (URL) -> FileConflictResolution) throws -> Void) {
+        let sources = targetPane().selectedItems.map(\.url)
+        guard !sources.isEmpty else {
+            showError(message: "Nothing Selected", detail: "Select one or more items in the active pane.")
+            return
+        }
+
+        let destinationDirectory = targetPane(useInactive: true).currentDirectory
+        let request = FileOperationRequest(sources: sources, destinationDirectory: destinationDirectory)
+        do {
+            try operation(request) { [weak self] destination in
+                self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+            }
+            refreshBothPanes()
+        } catch {
+            showError(message: "Could Not \(kind) Items", detail: error.localizedDescription)
+        }
+    }
+
+    private func promptForConflict(destination: URL, operationName: String) -> FileConflictResolution {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "\(destination.lastPathComponent) Already Exists"
+        alert.informativeText = "\(operationName) would replace an item in \(destination.deletingLastPathComponent().path)."
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Skip")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return .replace
+        case .alertSecondButtonReturn:
+            return .skip
+        default:
+            return .cancel
+        }
+    }
+
+    private func refreshBothPanes() {
+        leftPane.loadDirectory()
+        rightPane.loadDirectory()
     }
 
     private func showError(message: String, detail: String) {
@@ -553,6 +676,9 @@ extension MainWindowViewController: NSSplitViewDelegate {
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         switch splitView {
         case rootSplitView:
+            if sidebar.view.isHidden {
+                return splitView.bounds.width
+            }
             return max(620, splitView.bounds.width - 180)
         case paneSplitView:
             return max(260, splitView.bounds.width - 260)
@@ -562,6 +688,27 @@ extension MainWindowViewController: NSSplitViewDelegate {
             return proposedMaximumPosition
         }
     }
+}
+
+extension MainWindowViewController {
+    @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
+    @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
+    @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
+    @objc func menuCopy(_ sender: Any?) { performCommand(.copy) }
+    @objc func menuMove(_ sender: Any?) { performCommand(.move) }
+    @objc func menuMoveToTrash(_ sender: Any?) { performCommand(.trash) }
+    @objc func menuRefresh(_ sender: Any?) { performCommand(.refresh) }
+    @objc func menuToggleTerminal(_ sender: Any?) { performCommand(.toggleTerminal) }
+    @objc func menuToggleSidebar(_ sender: Any?) { performCommand(.toggleSidebar) }
+    @objc func menuBack(_ sender: Any?) { performCommand(.back) }
+    @objc func menuForward(_ sender: Any?) { performCommand(.forward) }
+    @objc func menuParent(_ sender: Any?) { performCommand(.parent) }
+    @objc func menuHome(_ sender: Any?) { performCommand(.home) }
+    @objc func menuDownloads(_ sender: Any?) { performCommand(.downloads) }
+    @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
+    @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
+    @objc func menuFocusLeftPane(_ sender: Any?) { performCommand(.focusLeftPane) }
+    @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
 }
 
 private extension NSToolbarItem.Identifier {

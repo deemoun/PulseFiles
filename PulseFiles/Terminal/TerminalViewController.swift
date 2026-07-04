@@ -10,6 +10,7 @@ final class TerminalViewController: NSViewController {
     private let scrollView = NSScrollView()
 
     private var runningProcess: Process?
+    var workingDirectoryProvider: (() -> URL)?
 
     var suggestedWorkingDirectory: URL = ExperimentalFlags.appSandboxRoot {
         didSet { updateWorkingDirectoryLabel() }
@@ -110,6 +111,9 @@ final class TerminalViewController: NSViewController {
     @objc private func runCommand() {
         let command = commandField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty, runningProcess == nil else { return }
+        if let workingDirectoryProvider {
+            suggestedWorkingDirectory = workingDirectoryProvider()
+        }
 
         appendOutput("\n$ \(command)\n")
 
