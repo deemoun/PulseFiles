@@ -3,6 +3,9 @@ import AppKit
 final class CommandBarView: NSVisualEffectView {
     var onAction: ((CommandBarAction) -> Void)?
 
+    private let stack = NSStackView()
+    private var isShowingShiftActions = false
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         material = .hudWindow
@@ -18,7 +21,6 @@ final class CommandBarView: NSVisualEffectView {
     }
 
     private func build() {
-        let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = 8
         stack.distribution = .fillEqually
@@ -30,7 +32,23 @@ final class CommandBarView: NSVisualEffectView {
             stack.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
 
-        for action in CommandBarAction.allCases {
+        reloadButtons()
+    }
+
+    func setShiftPressed(_ isShiftPressed: Bool) {
+        guard isShowingShiftActions != isShiftPressed else { return }
+        isShowingShiftActions = isShiftPressed
+        reloadButtons()
+    }
+
+    private func reloadButtons() {
+        stack.arrangedSubviews.forEach { view in
+            stack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+
+        let actions: [CommandBarAction] = [.rename, .view, .edit, .copy, .move, isShowingShiftActions ? .newFile : .newFolder, .delete]
+        for action in actions {
             let button = NSButton(title: "\(action.shortcut)  \(action.rawValue)", target: self, action: #selector(runAction(_:)))
             LiquidGlassStyle.applyButtonChrome(to: button)
             button.font = .systemFont(ofSize: 12, weight: .medium)

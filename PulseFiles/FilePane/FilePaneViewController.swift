@@ -9,6 +9,7 @@ final class FilePaneViewController: NSViewController {
     var onSwitchPane: (() -> Void)?
     var onToggleTerminal: (() -> Void)?
     var onNewFolder: (() -> Void)?
+    var onNewFile: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
 
@@ -377,6 +378,10 @@ extension FilePaneViewController: FileTableViewActionDelegate {
 
     func fileTableViewDidRequestNewFolder(_ tableView: FileTableView) {
         onNewFolder?()
+    }
+
+    func fileTableViewDidRequestNewFile(_ tableView: FileTableView) {
+        onNewFile?()
     }
 
     func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView) {
