@@ -12,6 +12,7 @@ protocol FileTableViewActionDelegate: AnyObject {
     func fileTableViewDidRequestNewFolder(_ tableView: FileTableView)
     func fileTableViewDidRequestNewFile(_ tableView: FileTableView)
     func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView)
+    func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu?
 }
 
 final class FileTableView: NSTableView {
@@ -20,6 +21,13 @@ final class FileTableView: NSTableView {
     override func mouseDown(with event: NSEvent) {
         actionDelegate?.fileTableViewDidActivate(self)
         super.mouseDown(with: event)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        actionDelegate?.fileTableViewDidActivate(self)
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        return actionDelegate?.fileTableView(self, contextMenuForRow: row)
     }
 
     override func keyDown(with event: NSEvent) {

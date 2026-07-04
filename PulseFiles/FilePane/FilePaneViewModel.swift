@@ -104,6 +104,7 @@ final class FilePaneViewModel {
     }
 
     func setSearchQuery(_ query: String) {
+        guard searchQuery != query else { return }
         searchQuery = query
         onChange?()
     }

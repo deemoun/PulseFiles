@@ -45,6 +45,21 @@ final class SettingsService {
         set { defaults.set(newValue, forKey: "showHiddenFilesByDefault") }
     }
 
+    var confirmCopyOperations: Bool {
+        get { defaults.object(forKey: "confirmCopyOperations") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "confirmCopyOperations") }
+    }
+
+    var confirmMoveOperations: Bool {
+        get { defaults.object(forKey: "confirmMoveOperations") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "confirmMoveOperations") }
+    }
+
+    var confirmDeleteOperations: Bool {
+        get { defaults.object(forKey: "confirmDeleteOperations") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "confirmDeleteOperations") }
+    }
+
     var defaultSortDescriptor: FileSortDescriptor {
         get { sortDescriptor(forKey: "defaultSortDescriptor", fallback: FileSortDescriptor()) }
         set { setSortDescriptor(newValue, forKey: "defaultSortDescriptor") }

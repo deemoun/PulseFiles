@@ -7,6 +7,9 @@ final class SettingsViewController: NSViewController {
     private let sidebarCheckbox = NSButton(checkboxWithTitle: "Show sidebar by default", target: nil, action: nil)
     private let terminalCheckbox = NSButton(checkboxWithTitle: "Show terminal by default", target: nil, action: nil)
     private let hiddenFilesCheckbox = NSButton(checkboxWithTitle: "Show hidden files by default", target: nil, action: nil)
+    private let confirmCopyCheckbox = NSButton(checkboxWithTitle: "Confirm copy operations", target: nil, action: nil)
+    private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations", target: nil, action: nil)
+    private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations", target: nil, action: nil)
     private let sidebarWidthSlider = NSSlider(value: 220, minValue: 180, maxValue: 300, target: nil, action: nil)
     private let sidebarWidthLabel = NSTextField(labelWithString: "220 pt")
     private let leftDirectoryField = NSTextField()
@@ -15,7 +18,7 @@ final class SettingsViewController: NSViewController {
     init(settings: SettingsService = SettingsService()) {
         self.settings = settings
         super.init(nibName: nil, bundle: nil)
-        preferredContentSize = NSSize(width: 460, height: 330)
+        preferredContentSize = NSSize(width: 460, height: 420)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -34,7 +37,7 @@ final class SettingsViewController: NSViewController {
         let title = NSTextField(labelWithString: "Settings")
         title.font = .preferredFont(forTextStyle: .title2)
 
-        [sidebarCheckbox, terminalCheckbox, hiddenFilesCheckbox].forEach {
+        [sidebarCheckbox, terminalCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox].forEach {
             $0.target = self
             $0.action = #selector(controlChanged(_:))
         }
@@ -58,7 +61,19 @@ final class SettingsViewController: NSViewController {
         let leftRow = directoryRow(title: "Left startup folder", field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:)))
         let rightRow = directoryRow(title: "Right startup folder", field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
 
-        let stack = NSStackView(views: [title, sidebarCheckbox, terminalCheckbox, hiddenFilesCheckbox, widthRow, separator(), leftRow, rightRow])
+        let stack = NSStackView(views: [
+            title,
+            sidebarCheckbox,
+            terminalCheckbox,
+            hiddenFilesCheckbox,
+            confirmCopyCheckbox,
+            confirmMoveCheckbox,
+            confirmDeleteCheckbox,
+            widthRow,
+            separator(),
+            leftRow,
+            rightRow
+        ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
@@ -102,6 +117,9 @@ final class SettingsViewController: NSViewController {
         sidebarCheckbox.state = settings.defaultSidebarVisible ? .on : .off
         terminalCheckbox.state = settings.defaultTerminalVisible ? .on : .off
         hiddenFilesCheckbox.state = settings.showHiddenFilesByDefault ? .on : .off
+        confirmCopyCheckbox.state = settings.confirmCopyOperations ? .on : .off
+        confirmMoveCheckbox.state = settings.confirmMoveOperations ? .on : .off
+        confirmDeleteCheckbox.state = settings.confirmDeleteOperations ? .on : .off
         sidebarWidthSlider.doubleValue = settings.preferredSidebarWidth
         updateSidebarWidthLabel()
         updateDirectoryFields()
@@ -120,6 +138,9 @@ final class SettingsViewController: NSViewController {
         settings.defaultSidebarVisible = sidebarCheckbox.state == .on
         settings.defaultTerminalVisible = terminalCheckbox.state == .on
         settings.showHiddenFilesByDefault = hiddenFilesCheckbox.state == .on
+        settings.confirmCopyOperations = confirmCopyCheckbox.state == .on
+        settings.confirmMoveOperations = confirmMoveCheckbox.state == .on
+        settings.confirmDeleteOperations = confirmDeleteCheckbox.state == .on
         settings.preferredSidebarWidth = sidebarWidthSlider.doubleValue
         updateSidebarWidthLabel()
         onChange?()

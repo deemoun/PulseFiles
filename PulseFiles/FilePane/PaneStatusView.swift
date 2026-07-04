@@ -23,7 +23,7 @@ final class PaneStatusView: NSVisualEffectView {
         nil
     }
 
-    func configure(items: [FileItem], selectedRows: IndexSet, isLoading: Bool, errorMessage: String?) {
+    func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?) {
         if isLoading {
             label.stringValue = "Loading..."
             return
@@ -32,10 +32,9 @@ final class PaneStatusView: NSVisualEffectView {
             label.stringValue = "Unable to read folder: \(errorMessage)"
             return
         }
-        let selected = selectedRows.compactMap { items.indices.contains($0) ? items[$0] : nil }
-        let selectedSize = selected.reduce(Int64(0)) { $0 + $1.size }
+        let selectedSize = selectedItems.reduce(Int64(0)) { $0 + $1.size }
         let folderCount = items.filter(\.isDirectory).count
-        let size = selected.isEmpty ? "" : " · \(FileSizeFormatter.string(fromByteCount: selectedSize)) selected"
-        label.stringValue = "\(items.count) items · \(folderCount) folders · \(selected.count) selected\(size)"
+        let size = selectedItems.isEmpty ? "" : " · \(FileSizeFormatter.string(fromByteCount: selectedSize)) selected"
+        label.stringValue = "\(items.count) items · \(folderCount) folders · \(selectedItems.count) selected\(size)"
     }
 }

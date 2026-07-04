@@ -10,6 +10,8 @@ final class FilePaneViewController: NSViewController {
     var onToggleTerminal: (() -> Void)?
     var onNewFolder: (() -> Void)?
     var onNewFile: (() -> Void)?
+    var onCommand: ((MainCommand) -> Void)?
+    var onDropURLs: (([URL], URL, Bool) -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
 
@@ -21,6 +23,8 @@ final class FilePaneViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let statusView = PaneStatusView()
     private let activeStripe = NSView()
+    private var isReloadingData = false
+    private var isPaneActive = false
 
     init(paneID: PaneID, viewModel: FilePaneViewModel) {
         self.paneID = paneID
@@ -36,14 +40,26 @@ final class FilePaneViewController: NSViewController {
     var sortDescriptor: FileSortDescriptor { viewModel.sortDescriptor }
     var showsHiddenFiles: Bool { viewModel.showsHiddenFiles }
     var selectedItems: [FileItem] {
-        tableView.selectedRowIndexes.compactMap { viewModel.visibleItems.indices.contains($0) ? viewModel.visibleItems[$0] : nil }
+        tableView.selectedRowIndexes.compactMap { item(forRow: $0) }
     }
 
     var focusedItem: FileItem? {
         let row = tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow
-        guard viewModel.visibleItems.indices.contains(row) else { return nil }
-        return viewModel.visibleItems[row]
+        return item(forRow: row)
     }
+
+    private var parentURL: URL {
+        viewModel.currentDirectory.deletingLastPathComponent()
+    }
+
+    private var canShowParentRow: Bool {
+        guard viewModel.searchQuery.isEmpty else { return false }
+        let current = viewModel.currentDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+        let root = ExperimentalFlags.appSandboxRoot.standardizedFileURL.resolvingSymlinksInPath().path
+        return current != root && parentURL != viewModel.currentDirectory
+    }
+
+    private var realRowOffset: Int { canShowParentRow ? 1 : 0 }
 
     override func loadView() {
         let paneView = PaneContainerView()
@@ -97,13 +113,19 @@ final class FilePaneViewController: NSViewController {
     }
 
     func setActive(_ active: Bool) {
+        isPaneActive = active
         activeStripe.layer?.backgroundColor = active ? NSColor.systemBlue.cgColor : NSColor.clear.cgColor
         view.layer?.borderWidth = 1
         view.layer?.borderColor = active ? LiquidGlassStyle.activeStroke.cgColor : LiquidGlassStyle.panelStroke.cgColor
         view.layer?.backgroundColor = active ? LiquidGlassStyle.activeFill.cgColor : LiquidGlassStyle.panelFill.cgColor
+        tableView.reloadData()
     }
 
     func openFocusedItem() {
+        if isParentRow(tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow) {
+            goParent()
+            return
+        }
         guard let item = focusedItem else { return }
         if item.isDirectory {
             navigate(to: item.url)
@@ -147,6 +169,7 @@ final class FilePaneViewController: NSViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.actionDelegate = self
+        tableView.registerForDraggedTypes([.fileURL])
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.backgroundColor = .clear
         tableView.allowsMultipleSelection = true
@@ -230,13 +253,29 @@ final class FilePaneViewController: NSViewController {
         reloadData()
     }
 
+    private func item(forRow row: Int) -> FileItem? {
+        let index = row - realRowOffset
+        guard viewModel.visibleItems.indices.contains(index) else { return nil }
+        return viewModel.visibleItems[index]
+    }
+
+    private func isParentRow(_ row: Int) -> Bool {
+        canShowParentRow && row == 0
+    }
+
     private func reloadData() {
+        isReloadingData = true
+        defer { isReloadingData = false }
         breadcrumb.configure(url: viewModel.currentDirectory)
         directoryIcon.image = .fileIcon(for: viewModel.currentDirectory)
         tableView.reloadData()
+        pruneInvalidSelection()
+        if tableView.selectedRow == -1, tableView.numberOfRows > 0 {
+            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        }
         statusView.configure(
             items: viewModel.visibleItems,
-            selectedRows: tableView.selectedRowIndexes,
+            selectedItems: selectedItems,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage
         )
@@ -259,16 +298,21 @@ final class FilePaneViewController: NSViewController {
 
 extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int {
-        viewModel.visibleItems.count
+        viewModel.visibleItems.count + realRowOffset
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        FileTableRowView()
+        let rowView = FileTableRowView()
+        rowView.drawsActiveSelection = isPaneActive
+        return rowView
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard viewModel.visibleItems.indices.contains(row), let identifier = tableColumn?.identifier.rawValue else { return nil }
-        let item = viewModel.visibleItems[row]
+        guard let identifier = tableColumn?.identifier.rawValue else { return nil }
+        if isParentRow(row) {
+            return parentCell(for: identifier)
+        }
+        guard let item = item(forRow: row) else { return nil }
         let cell = NSTableCellView()
         let text = NSTextField(labelWithString: string(for: item, column: identifier))
         text.lineBreakMode = .byTruncatingMiddle
@@ -306,11 +350,13 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         statusView.configure(
             items: viewModel.visibleItems,
-            selectedRows: tableView.selectedRowIndexes,
+            selectedItems: selectedItems,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage
         )
-        onActivate?()
+        if !isReloadingData {
+            onActivate?()
+        }
     }
 
     func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
@@ -325,8 +371,93 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        onActivate?()
+        if !isReloadingData {
+            onActivate?()
+        }
         return true
+    }
+
+    private func pruneInvalidSelection() {
+        guard tableView.numberOfRows > 0 else {
+            tableView.deselectAll(nil)
+            return
+        }
+        let validRows = IndexSet(tableView.selectedRowIndexes.filter { row in
+            row >= 0 && row < tableView.numberOfRows
+        })
+        if validRows != tableView.selectedRowIndexes {
+            tableView.selectRowIndexes(validRows, byExtendingSelection: false)
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard let item = item(forRow: row) else { return nil }
+        return item.url as NSURL
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .move]
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        guard dropDestination(forRow: row, operation: dropOperation) != nil else { return [] }
+        return NSApp.currentEvent?.modifierFlags.contains(.option) == true ? .copy : .move
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return false }
+        let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
+            .compactMap { object -> URL? in
+                if let url = object as? URL { return url }
+                return (object as? NSURL)?.absoluteURL
+            } ?? []
+        guard !urls.isEmpty else { return false }
+        let destinationPath = destination.standardizedFileURL.resolvingSymlinksInPath().path
+        let isSameDirectoryMove = urls.allSatisfy {
+            $0.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == destinationPath
+        }
+        let shouldCopy = NSApp.currentEvent?.modifierFlags.contains(.option) == true
+        guard shouldCopy || !isSameDirectoryMove else { return false }
+        onDropURLs?(urls, destination, shouldCopy)
+        return true
+    }
+
+    private func dropDestination(forRow row: Int, operation: NSTableView.DropOperation) -> URL? {
+        guard !isParentRow(row) else { return nil }
+        if operation == .on, let item = item(forRow: row), item.isDirectory {
+            return item.url
+        }
+        return currentDirectory
+    }
+
+    private func parentCell(for identifier: String) -> NSView {
+        let cell = NSTableCellView()
+        let text = NSTextField(labelWithString: identifier == "name" ? ".." : "--")
+        text.textColor = LiquidGlassStyle.secondaryLabel
+        text.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(text)
+        if identifier == "name" {
+            let imageView = NSImageView(image: NSImage(systemSymbolName: "arrow.up.folder", accessibilityDescription: "Parent Folder") ?? NSImage())
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(imageView)
+            NSLayoutConstraint.activate([
+                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                imageView.widthAnchor.constraint(equalToConstant: 18),
+                imageView.heightAnchor.constraint(equalToConstant: 18),
+                text.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
+        }
+        cell.textField = text
+        return cell
     }
 
     private func string(for item: FileItem, column: String) -> String {
@@ -353,15 +484,15 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     }
 
     func fileTableViewDidRequestParent(_ tableView: FileTableView) {
-        viewModel.goParent()
+        onCommand?(.parent)
     }
 
     func fileTableViewDidRequestBack(_ tableView: FileTableView) {
-        viewModel.goBack()
+        onCommand?(.back)
     }
 
     func fileTableViewDidRequestForward(_ tableView: FileTableView) {
-        viewModel.goForward()
+        onCommand?(.forward)
     }
 
     func fileTableView(_ tableView: FileTableView, didRequestLocation url: URL) {
@@ -369,23 +500,76 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     }
 
     func fileTableViewDidRequestToggleHidden(_ tableView: FileTableView) {
-        toggleHiddenFiles()
+        onCommand?(.toggleHiddenFiles)
     }
 
     func fileTableViewDidRequestTerminalToggle(_ tableView: FileTableView) {
-        onToggleTerminal?()
+        onCommand?(.toggleTerminal)
     }
 
     func fileTableViewDidRequestNewFolder(_ tableView: FileTableView) {
-        onNewFolder?()
+        onCommand?(.newFolder)
     }
 
     func fileTableViewDidRequestNewFile(_ tableView: FileTableView) {
-        onNewFile?()
+        onCommand?(.newFile)
     }
 
     func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView) {
-        onSwitchPane?()
+        onCommand?(.switchPane)
+    }
+
+    func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu? {
+        if row >= 0, !tableView.selectedRowIndexes.contains(row) {
+            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        }
+
+        let menu = NSMenu(title: "File")
+        if isParentRow(row) {
+            menu.addItem(contextMenuItem("Open Parent Folder", action: #selector(contextOpenParent)))
+            return menu
+        }
+
+        if item(forRow: row) != nil {
+            menu.addItem(contextMenuItem("Open", action: #selector(contextOpen)))
+            menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
+            menu.addItem(.separator())
+            menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
+            menu.addItem(contextMenuItem("Move to Opposite Pane", action: #selector(contextMove)))
+            menu.addItem(.separator())
+            menu.addItem(contextMenuItem("Copy Path", action: #selector(contextCopyPath)))
+            menu.addItem(contextMenuItem("Move to Trash", action: #selector(contextTrash)))
+        } else {
+            menu.addItem(contextMenuItem("New File", action: #selector(contextNewFile)))
+            menu.addItem(contextMenuItem("New Folder", action: #selector(contextNewFolder)))
+            menu.addItem(.separator())
+            menu.addItem(contextMenuItem("Refresh", action: #selector(contextRefresh)))
+            menu.addItem(contextMenuItem(viewModel.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", action: #selector(contextToggleHidden)))
+        }
+        return menu
+    }
+
+    private func contextMenuItem(_ title: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    @objc private func contextOpenParent() { onCommand?(.parent) }
+    @objc private func contextOpen() { onCommand?(.open) }
+    @objc private func contextRename() { onCommand?(.rename) }
+    @objc private func contextCopy() { onCommand?(.copy) }
+    @objc private func contextMove() { onCommand?(.move) }
+    @objc private func contextTrash() { onCommand?(.trash) }
+    @objc private func contextNewFile() { onCommand?(.newFile) }
+    @objc private func contextNewFolder() { onCommand?(.newFolder) }
+    @objc private func contextRefresh() { onCommand?(.refresh) }
+    @objc private func contextToggleHidden() { onCommand?(.toggleHiddenFiles) }
+    @objc private func contextCopyPath() {
+        let paths = selectedItems.map(\.url.path)
+        guard !paths.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
     }
 }
 

@@ -59,7 +59,10 @@ final class MainWindowViewController: NSViewController {
     }
 
     private var activePaneID: PaneID = .left {
-        didSet { updateActivePane() }
+        didSet {
+            guard oldValue != activePaneID else { return }
+            updateActivePane()
+        }
     }
 
     override func loadView() {
@@ -176,6 +179,22 @@ final class MainWindowViewController: NSViewController {
         rightPane.onNewFolder = { [weak self] in self?.promptForNewFolder() }
         leftPane.onNewFile = { [weak self] in self?.promptForNewFile() }
         rightPane.onNewFile = { [weak self] in self?.promptForNewFile() }
+        leftPane.onCommand = { [weak self] command in
+            self?.activePaneID = .left
+            self?.performCommand(command)
+        }
+        rightPane.onCommand = { [weak self] command in
+            self?.activePaneID = .right
+            self?.performCommand(command)
+        }
+        leftPane.onDropURLs = { [weak self] urls, destination, shouldCopy in
+            self?.activePaneID = .left
+            self?.transferDroppedItems(urls, to: destination, copy: shouldCopy)
+        }
+        rightPane.onDropURLs = { [weak self] urls, destination, shouldCopy in
+            self?.activePaneID = .right
+            self?.transferDroppedItems(urls, to: destination, copy: shouldCopy)
+        }
         leftPane.onDirectoryChanged = { [weak self] url in
             self?.settings.lastLeftDirectory = url
             self?.recentLocations.record(url)
@@ -767,11 +786,19 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             showError(message: "Nothing Selected", detail: "Select one or more items to delete.")
             return
         }
+        guard settings.confirmDeleteOperations else {
+            trash(items: items)
+            return
+        }
 
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Move to Trash?"
-        alert.informativeText = items.map(\.displayName).joined(separator: "\n")
+        alert.informativeText = confirmationSummary(
+            operationName: "Move to Trash",
+            urls: items.map(\.url),
+            destinationDirectory: nil
+        )
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
 
@@ -794,19 +821,20 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func copySelectedItems() {
-        performFileTransfer(kind: "Copy") { [fileOperations] request, conflictHandler, progressHandler in
+        performFileTransfer(kind: "Copy", shouldConfirm: settings.confirmCopyOperations) { [fileOperations] request, conflictHandler, progressHandler in
             try await fileOperations.copy(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
 
     private func moveSelectedItems() {
-        performFileTransfer(kind: "Move") { [fileOperations] request, conflictHandler, progressHandler in
+        performFileTransfer(kind: "Move", shouldConfirm: settings.confirmMoveOperations) { [fileOperations] request, conflictHandler, progressHandler in
             try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
 
     private func performFileTransfer(
         kind: String,
+        shouldConfirm: Bool,
         operation: @escaping (FileOperationRequest, @escaping (URL) -> FileConflictResolution, FileOperationProgressHandler?) async throws -> FileOperationResult
     ) {
         let sources = targetPane().selectedItems.map(\.url)
@@ -817,11 +845,94 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
         let destinationDirectory = targetPane(useInactive: true).currentDirectory
         let request = FileOperationRequest(sources: sources, destinationDirectory: destinationDirectory)
-        startFileOperation(named: kind) { [weak self] progressHandler in
-            try await operation(request, { destination in
-                self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
-            }, progressHandler)
+        let start: () -> Void = { [weak self] in
+            self?.startFileOperation(named: kind) { [weak self] progressHandler in
+                try await operation(request, { destination in
+                    self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+                }, progressHandler)
+            }
         }
+
+        if shouldConfirm {
+            confirmFileOperation(kind, urls: sources, destinationDirectory: destinationDirectory, confirmButtonTitle: kind, completion: start)
+        } else {
+            start()
+        }
+    }
+
+    private func transferDroppedItems(_ urls: [URL], to destinationDirectory: URL, copy: Bool) {
+        guard !urls.isEmpty else { return }
+        guard !isFileOperationActive else {
+            showError(message: "Operation in Progress", detail: "Wait for the current file operation to finish before starting another file-changing action.")
+            return
+        }
+
+        let kind = copy ? "Copy" : "Move"
+        let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
+        let start: () -> Void = { [weak self, fileOperations] in
+            self?.startFileOperation(named: kind) { [weak self] progressHandler in
+                if copy {
+                    return try await fileOperations.copy(request, conflictHandler: { destination in
+                        self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+                    }, progressHandler: progressHandler)
+                }
+                return try await fileOperations.move(request, conflictHandler: { destination in
+                    self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+                }, progressHandler: progressHandler)
+            }
+        }
+        let shouldConfirm = copy ? settings.confirmCopyOperations : settings.confirmMoveOperations
+        if shouldConfirm {
+            confirmFileOperation(kind, urls: urls, destinationDirectory: destinationDirectory, confirmButtonTitle: kind, completion: start)
+        } else {
+            start()
+        }
+    }
+
+    private func confirmFileOperation(
+        _ operationName: String,
+        urls: [URL],
+        destinationDirectory: URL?,
+        confirmButtonTitle: String,
+        completion: @escaping () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        let itemLabel = urls.count == 1 ? "Item" : "\(urls.count) Items"
+        alert.messageText = "\(operationName) \(itemLabel)?"
+        alert.informativeText = confirmationSummary(
+            operationName: operationName,
+            urls: urls,
+            destinationDirectory: destinationDirectory
+        )
+        alert.addButton(withTitle: confirmButtonTitle)
+        alert.addButton(withTitle: "Cancel")
+
+        let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .alertFirstButtonReturn else { return }
+            completion()
+        }
+
+        if let window = view.window {
+            alert.beginSheetModal(for: window, completionHandler: handleResponse)
+        } else {
+            handleResponse(alert.runModal())
+        }
+    }
+
+    private func confirmationSummary(operationName: String, urls: [URL], destinationDirectory: URL?) -> String {
+        let itemLabel = urls.count == 1 ? "1 item" : "\(urls.count) items"
+        var lines = ["\(operationName) \(itemLabel):"]
+        let visibleNames = urls.prefix(8).map { "- \($0.lastPathComponent)" }
+        lines.append(contentsOf: visibleNames)
+        if urls.count > visibleNames.count {
+            lines.append("- ...and \(urls.count - visibleNames.count) more")
+        }
+        if let destinationDirectory {
+            lines.append("")
+            lines.append("Destination: \(destinationDirectory.path)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func startFileOperation(named operationName: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
