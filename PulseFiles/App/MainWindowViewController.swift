@@ -47,6 +47,7 @@ final class MainWindowViewController: NSViewController {
     private var settingsPopover: NSPopover?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
+    private var flagsChangedEventMonitor: Any?
     private var sidebarMinWidthConstraint: NSLayoutConstraint?
     private var sidebarMaxWidthConstraint: NSLayoutConstraint?
     private var isSidebarInstalled = false
@@ -79,13 +80,16 @@ final class MainWindowViewController: NSViewController {
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        installKeyEventMonitor()
+        installKeyEventMonitors()
         view.window?.makeFirstResponder(targetPane().tableView)
     }
 
     deinit {
         if let keyEventMonitor {
             NSEvent.removeMonitor(keyEventMonitor)
+        }
+        if let flagsChangedEventMonitor {
+            NSEvent.removeMonitor(flagsChangedEventMonitor)
         }
     }
 
@@ -170,6 +174,8 @@ final class MainWindowViewController: NSViewController {
         rightPane.onToggleTerminal = { [weak self] in self?.toggleTerminal() }
         leftPane.onNewFolder = { [weak self] in self?.promptForNewFolder() }
         rightPane.onNewFolder = { [weak self] in self?.promptForNewFolder() }
+        leftPane.onNewFile = { [weak self] in self?.promptForNewFile() }
+        rightPane.onNewFile = { [weak self] in self?.promptForNewFile() }
         leftPane.onDirectoryChanged = { [weak self] url in
             self?.settings.lastLeftDirectory = url
             self?.recentLocations.record(url)
@@ -280,12 +286,22 @@ final class MainWindowViewController: NSViewController {
         }
     }
 
-    private func installKeyEventMonitor() {
-        guard keyEventMonitor == nil else { return }
+    private func installKeyEventMonitors() {
+        guard keyEventMonitor == nil, flagsChangedEventMonitor == nil else { return }
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.view.window else { return event }
+            self.updateCommandBarModifierState(from: event)
             return self.handleGlobalKeyDown(event) ? nil : event
         }
+        flagsChangedEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            guard let self, event.window === self.view.window else { return event }
+            self.updateCommandBarModifierState(from: event)
+            return event
+        }
+    }
+
+    private func updateCommandBarModifierState(from event: NSEvent) {
+        commandBar.setShiftPressed(event.modifierFlags.contains(.shift))
     }
 
     private func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
@@ -323,7 +339,7 @@ final class MainWindowViewController: NSViewController {
             performCommand(.move)
             return true
         }
-        if event.keyCode == 100 {
+        if event.keyCode == 101 {
             performCommand(.trash)
             return true
         }
