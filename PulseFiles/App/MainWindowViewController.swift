@@ -517,38 +517,28 @@ extension MainWindowViewController: NSToolbarDelegate {
     }
 
     private func createFolder(named rawName: String) {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !name.contains("/") else {
-            showError(message: "Invalid Folder Name", detail: "Folder names cannot be empty or contain slashes.")
-            return
-        }
-
-        let destination = targetPane().currentDirectory.appendingPathComponent(name, isDirectory: true)
         do {
+            let name = try FileNameValidator.validate(rawName, in: targetPane().currentDirectory)
+            let destination = targetPane().currentDirectory.appendingPathComponent(name, isDirectory: true)
             try accessPolicy.validateAccess(to: destination)
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
             targetPane().loadDirectory()
+        } catch let error as FileNameValidator.ValidationError {
+            showError(message: "Invalid Folder Name", detail: error.localizedDescription)
         } catch {
             showError(message: "Could Not Create Folder", detail: error.localizedDescription)
         }
     }
 
     private func createFile(named rawName: String) {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !name.contains("/") else {
-            showError(message: "Invalid File Name", detail: "File names cannot be empty or contain slashes.")
-            return
-        }
-
-        let destination = targetPane().currentDirectory.appendingPathComponent(name)
         do {
+            let name = try FileNameValidator.validate(rawName, in: targetPane().currentDirectory)
+            let destination = targetPane().currentDirectory.appendingPathComponent(name)
             try accessPolicy.validateAccess(to: destination)
-            guard !FileManager.default.fileExists(atPath: destination.path) else {
-                showError(message: "File Already Exists", detail: destination.lastPathComponent)
-                return
-            }
             try Data().write(to: destination, options: .withoutOverwriting)
             targetPane().loadDirectory()
+        } catch let error as FileNameValidator.ValidationError {
+            showError(message: "Invalid File Name", detail: error.localizedDescription)
         } catch {
             showError(message: "Could Not Create File", detail: error.localizedDescription)
         }
@@ -584,17 +574,15 @@ extension MainWindowViewController: NSToolbarDelegate {
     }
 
     private func rename(item: FileItem, to rawName: String) {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !name.contains("/") else {
-            showError(message: "Invalid Name", detail: "Names cannot be empty or contain slashes.")
-            return
-        }
-
-        let destination = item.url.deletingLastPathComponent().appendingPathComponent(name, isDirectory: item.isDirectory)
         do {
+            let parentDirectory = item.url.deletingLastPathComponent()
+            let name = try FileNameValidator.validate(rawName, in: parentDirectory, replacing: item.url)
+            let destination = parentDirectory.appendingPathComponent(name, isDirectory: item.isDirectory)
             try accessPolicy.validateAccess(to: destination)
             try FileManager.default.moveItem(at: item.url, to: destination)
             targetPane().loadDirectory()
+        } catch let error as FileNameValidator.ValidationError {
+            showError(message: "Invalid Name", detail: error.localizedDescription)
         } catch {
             showError(message: "Could Not Rename Item", detail: error.localizedDescription)
         }
