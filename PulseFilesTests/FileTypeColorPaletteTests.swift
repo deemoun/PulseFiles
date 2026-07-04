@@ -37,13 +37,40 @@ final class FileTypeClassifierTests: XCTestCase {
         }
     }
 
-    func testMediaDocumentSourceDataAndDiskImageExtensionsUseSemanticCategories() {
-        XCTAssertEqual(FileTypeClassifier.category(for: item("song.mp3")), .audio)
-        XCTAssertEqual(FileTypeClassifier.category(for: item("movie.mp4")), .video)
-        XCTAssertEqual(FileTypeClassifier.category(for: item("README.md")), .document)
-        XCTAssertEqual(FileTypeClassifier.category(for: item("main.swift")), .sourceCode)
-        XCTAssertEqual(FileTypeClassifier.category(for: item("config.json")), .data)
-        XCTAssertEqual(FileTypeClassifier.category(for: item("installer.dmg")), .diskImage)
+    func testAudioExtensionsUseAudioCategory() {
+        for filename in ["song.mp3", "voice.m4a", "sample.aac", "recording.wav", "mix.flac", "podcast.ogg", "render.aiff"] {
+            XCTAssertEqual(FileTypeClassifier.category(for: item(filename)), .audio, filename)
+        }
+    }
+
+    func testVideoExtensionsUseVideoCategory() {
+        for filename in ["clip.mp4", "trailer.mov", "export.m4v", "movie.mkv", "capture.avi", "stream.webm"] {
+            XCTAssertEqual(FileTypeClassifier.category(for: item(filename)), .video, filename)
+        }
+    }
+
+    func testDocumentExtensionsUseDocumentCategory() {
+        for filename in ["report.pdf", "draft.doc", "proposal.docx", "notes.rtf", "design.pages", "budget.xls", "forecast.xlsx", "slides.ppt", "deck.pptx", "talk.key", "ledger.numbers"] {
+            XCTAssertEqual(FileTypeClassifier.category(for: item(filename)), .document, filename)
+        }
+    }
+
+    func testSourceCodeExtensionsUseSourceCodeCategory() {
+        for filename in ["App.swift", "main.c", "vector.cpp", "header.h", "template.hpp", "View.m", "Bridge.mm", "lib.rs", "server.go", "script.py", "task.rb", "Controller.java", "Screen.kt", "index.js", "types.ts", "Component.tsx", "Widget.jsx", "page.html", "style.css", "theme.scss", "install.sh", "profile.zsh"] {
+            XCTAssertEqual(FileTypeClassifier.category(for: item(filename)), .sourceCode, filename)
+        }
+    }
+
+    func testDataExtensionsUseDataCategory() {
+        for filename in ["config.json", "compose.yaml", "metadata.yml", "settings.toml", "Info.plist", "layout.xml", "export.csv", "store.sqlite", "cache.db"] {
+            XCTAssertEqual(FileTypeClassifier.category(for: item(filename)), .data, filename)
+        }
+    }
+
+    func testDiskImageExtensionsUseDiskImageCategory() {
+        for filename in ["installer.dmg", "archive.iso", "backup.img", "distribution.pkg"] {
+            XCTAssertEqual(FileTypeClassifier.category(for: item(filename)), .diskImage, filename)
+        }
     }
 
     func testUnknownExtensionUsesFallbackCategory() {
