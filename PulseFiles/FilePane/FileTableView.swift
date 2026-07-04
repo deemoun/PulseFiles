@@ -1,7 +1,6 @@
 import AppKit
 
 protocol FileTableViewActionDelegate: AnyObject {
-    func fileTableView(_ tableView: FileTableView, menuFor event: NSEvent) -> NSMenu?
     func fileTableViewDidActivate(_ tableView: FileTableView)
     func fileTableViewDidRequestOpen(_ tableView: FileTableView)
     func fileTableViewDidRequestParent(_ tableView: FileTableView)
@@ -21,11 +20,6 @@ final class FileTableView: NSTableView {
     override func mouseDown(with event: NSEvent) {
         actionDelegate?.fileTableViewDidActivate(self)
         super.mouseDown(with: event)
-    }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        actionDelegate?.fileTableViewDidActivate(self)
-        return actionDelegate?.fileTableView(self, menuFor: event) ?? super.menu(for: event)
     }
 
     override func keyDown(with event: NSEvent) {
