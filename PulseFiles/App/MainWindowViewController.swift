@@ -584,7 +584,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func persistSidebarWidthFromSplitPosition() {
         guard isSidebarInstalled, rootSplitView.arrangedSubviews.count > 1, rootSplitView.bounds.width > 0 else { return }
-        settings.sidebarWidth = Double(clampedSidebarWidth(rootSplitView.bounds.width - rootSplitView.positionOfDivider(at: 0)))
+        settings.sidebarWidth = Double(clampedSidebarWidth(sidebar.view.frame.width))
     }
 
     private func clampedSidebarWidth(_ width: CGFloat) -> CGFloat {
