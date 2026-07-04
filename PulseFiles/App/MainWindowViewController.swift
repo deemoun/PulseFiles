@@ -31,6 +31,10 @@ final class MainWindowViewController: NSViewController {
     private var sidebarMaxWidthConstraint: NSLayoutConstraint?
     private var isTerminalInstalled = false
     private var terminalHeightConstraint: NSLayoutConstraint?
+    private var activeOperationTask: Task<Void, Never>?
+    private var isFileOperationActive = false {
+        didSet { setConflictingFileActionsEnabled(!isFileOperationActive) }
+    }
 
     private var activePaneID: PaneID = .left {
         didSet { updateActivePane() }
@@ -185,6 +189,11 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func performCommand(_ command: MainCommand) {
+        guard !isFileOperationActive || !command.conflictsWithFileOperation else {
+            showError(message: "Operation in Progress", detail: "Wait for the current file operation to finish before starting another file-changing action.")
+            return
+        }
+
         switch command {
         case .open:
             targetPane().openFocusedItem()
@@ -618,31 +627,27 @@ extension MainWindowViewController: NSToolbarDelegate {
     }
 
     private func trash(items: [FileItem]) {
-        do {
-            for item in items {
-                try accessPolicy.validateAccess(to: item.url)
-                var resultingURL: NSURL?
-                try FileManager.default.trashItem(at: item.url, resultingItemURL: &resultingURL)
-            }
-            targetPane().loadDirectory()
-        } catch {
-            showError(message: "Could Not Move Item to Trash", detail: error.localizedDescription)
+        startFileOperation(named: "Move to Trash") { [fileOperations] progressHandler in
+            try await fileOperations.trash(items.map(\.url), progressHandler: progressHandler)
         }
     }
 
     private func copySelectedItems() {
-        performFileTransfer(kind: "Copy") { [fileOperations] request, conflictHandler in
-            try fileOperations.copy(request, conflictHandler: conflictHandler)
+        performFileTransfer(kind: "Copy") { [fileOperations] request, conflictHandler, progressHandler in
+            try await fileOperations.copy(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
 
     private func moveSelectedItems() {
-        performFileTransfer(kind: "Move") { [fileOperations] request, conflictHandler in
-            try fileOperations.move(request, conflictHandler: conflictHandler)
+        performFileTransfer(kind: "Move") { [fileOperations] request, conflictHandler, progressHandler in
+            try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
 
-    private func performFileTransfer(kind: String, operation: (FileOperationRequest, (URL) -> FileConflictResolution) throws -> Void) {
+    private func performFileTransfer(
+        kind: String,
+        operation: @escaping (FileOperationRequest, @escaping (URL) -> FileConflictResolution, FileOperationProgressHandler?) async throws -> FileOperationResult
+    ) {
         let sources = targetPane().selectedItems.map(\.url)
         guard !sources.isEmpty else {
             showError(message: "Nothing Selected", detail: "Select one or more items in the active pane.")
@@ -651,13 +656,52 @@ extension MainWindowViewController: NSToolbarDelegate {
 
         let destinationDirectory = targetPane(useInactive: true).currentDirectory
         let request = FileOperationRequest(sources: sources, destinationDirectory: destinationDirectory)
-        do {
-            try operation(request) { [weak self] destination in
+        startFileOperation(named: kind) { [weak self] progressHandler in
+            try await operation(request, { destination in
                 self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+            }, progressHandler)
+        }
+    }
+
+    private func startFileOperation(named operationName: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
+        guard !isFileOperationActive else { return }
+        isFileOperationActive = true
+        activeOperationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await operation { [weak self] progress in
+                    self?.updateFileOperationProgress(progress, operationName: operationName)
+                }
+                self.refreshBothPanes()
+                self.showOperationResult(result, operationName: operationName)
+            } catch {
+                self.showError(message: "Could Not \(operationName) Items", detail: error.localizedDescription)
             }
-            refreshBothPanes()
-        } catch {
-            showError(message: "Could Not \(kind) Items", detail: error.localizedDescription)
+            self.isFileOperationActive = false
+            self.activeOperationTask = nil
+        }
+    }
+
+    private func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
+        view.window?.title = "\(operationName): \(progress.currentItemName) (\(progress.completedCount)/\(progress.totalCount))"
+    }
+
+    private func showOperationResult(_ result: FileOperationResult, operationName: String) {
+        guard !result.succeededCompletely else { return }
+        var details = [
+            "Completed: \(result.completedItems.count)",
+            "Skipped: \(result.skippedItems.count)",
+            "Failed: \(result.failedItems.count)"
+        ]
+        if result.wasCancelled { details.append("The operation was cancelled before all items completed.") }
+        details.append(contentsOf: result.failedItems.map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" })
+        showError(message: "\(operationName) Finished With Issues", detail: details.joined(separator: "\n"))
+    }
+
+    private func setConflictingFileActionsEnabled(_ isEnabled: Bool) {
+        commandBar.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton }.forEach { button in
+            guard let rawValue = button.identifier?.rawValue, let action = CommandBarAction(rawValue: rawValue) else { return }
+            button.isEnabled = !MainCommand(commandBarAction: action).conflictsWithFileOperation || isEnabled
         }
     }
 
@@ -748,6 +792,17 @@ extension MainWindowViewController {
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
     @objc func menuFocusLeftPane(_ sender: Any?) { performCommand(.focusLeftPane) }
     @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
+}
+
+private extension MainCommand {
+    var conflictsWithFileOperation: Bool {
+        switch self {
+        case .newFile, .newFolder, .rename, .copy, .move, .trash:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 private extension NSToolbarItem.Identifier {
