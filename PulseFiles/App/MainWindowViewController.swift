@@ -39,7 +39,7 @@ final class MainWindowViewController: NSViewController {
 
     private let rootSplitView = NSSplitView()
     private let contentSplitView = NSSplitView()
-    private let paneSplitView = NSSplitView()
+    private let paneSplitView = MinimalDividerSplitView()
     private let mainStack = NSView()
     private weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
@@ -53,6 +53,7 @@ final class MainWindowViewController: NSViewController {
     private var isSidebarInstalled = false
     private var isTerminalInstalled = false
     private var terminalHeightConstraint: NSLayoutConstraint?
+    private var isSinglePaneMode = false
     private var activeOperationTask: Task<Void, Never>?
     private var isFileOperationActive = false {
         didSet { setConflictingFileActionsEnabled(!isFileOperationActive) }
@@ -138,15 +139,14 @@ final class MainWindowViewController: NSViewController {
         ])
 
         paneSplitView.isVertical = true
-        paneSplitView.dividerStyle = .paneSplitter
+        paneSplitView.dividerStyle = .thin
         paneSplitView.delegate = self
         addChild(leftPane)
         addChild(rightPane)
-        paneSplitView.addArrangedSubview(leftPane.view)
-        paneSplitView.addArrangedSubview(rightPane.view)
         leftPane.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
         rightPane.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
         contentSplitView.addArrangedSubview(paneSplitView)
+        setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)
 
         addChild(terminal)
         if settings.isTerminalVisible {
@@ -159,7 +159,9 @@ final class MainWindowViewController: NSViewController {
         guard !didSetInitialSplitPositions, view.bounds.width > 0, view.bounds.height > 0 else { return }
         didSetInitialSplitPositions = true
         applySidebarSplitPosition()
-        paneSplitView.setPosition(max(260, paneSplitView.bounds.width / 2), ofDividerAt: 0)
+        if !isSinglePaneMode {
+            paneSplitView.setPosition(max(260, paneSplitView.bounds.width / 2), ofDividerAt: 0)
+        }
         if isTerminalInstalled {
             contentSplitView.setPosition(max(220, contentSplitView.bounds.height - 180), ofDividerAt: 0)
         }
@@ -234,6 +236,7 @@ final class MainWindowViewController: NSViewController {
         terminal.suggestedWorkingDirectory = targetPane().currentDirectory
         leftPane.setSearchQuery(activePaneID == .left ? activeFilterText : "")
         rightPane.setSearchQuery(activePaneID == .right ? activeFilterText : "")
+        targetPane().focusDefaultRowForActivation()
         if view.window?.firstResponder !== toolbarSearchField {
             view.window?.makeFirstResponder(targetPane().tableView)
         }
@@ -278,6 +281,8 @@ final class MainWindowViewController: NSViewController {
             toggleTerminal()
         case .toggleSidebar:
             toggleSidebar()
+        case .togglePaneLayout:
+            setSinglePaneMode(!isSinglePaneMode, focusPane: activePaneID)
         case .back:
             targetPane().goBack()
         case .forward:
@@ -292,10 +297,22 @@ final class MainWindowViewController: NSViewController {
             targetPane().navigate(to: ExperimentalFlags.appSandboxRoot)
         case .switchPane:
             activePaneID = activePaneID.opposite
+            if isSinglePaneMode {
+                rebuildPaneArrangement()
+                updateActivePane()
+            }
         case .focusLeftPane:
             activePaneID = .left
+            if isSinglePaneMode {
+                rebuildPaneArrangement()
+                updateActivePane()
+            }
         case .focusRightPane:
             activePaneID = .right
+            if isSinglePaneMode {
+                rebuildPaneArrangement()
+                updateActivePane()
+            }
         }
     }
 
@@ -327,55 +344,72 @@ final class MainWindowViewController: NSViewController {
         let command = event.modifierFlags.contains(.command)
         let shift = event.modifierFlags.contains(.shift)
         let option = event.modifierFlags.contains(.option)
+        let control = event.modifierFlags.contains(.control)
+        let plain = !command && !shift && !option && !control
+        let shiftOnly = shift && !command && !option && !control
+        if event.keyCode == 53 {
+            view.window?.makeFirstResponder(targetPane().tableView)
+            return true
+        }
+        if command && event.keyCode == 48 {
+            return false
+        }
         if isTextInputFirstResponder, !(command && event.keyCode == 50) {
             return false
         }
-        if command && event.keyCode == 50 {
+        if command && !shift && !option && !control && event.keyCode == 50 {
             performCommand(.toggleTerminal)
             return true
         }
-        if event.keyCode == 48 {
+        if command && !shift && !option && !control && event.keyCode == 17 {
+            performCommand(.togglePaneLayout)
+            return true
+        }
+        if plain && event.keyCode == 48 {
             performCommand(.switchPane)
             return true
         }
-        if shift && event.keyCode == 98 {
+        if shiftOnly && event.keyCode == 98 {
             performCommand(.newFile)
             return true
         }
-        if event.keyCode == 98 {
+        if plain && event.keyCode == 98 {
             performCommand(.newFolder)
             return true
         }
-        if event.keyCode == 120 {
+        if plain && event.keyCode == 120 {
             performCommand(.rename)
             return true
         }
-        if event.keyCode == 96 {
+        if plain && event.keyCode == 96 {
             performCommand(.copy)
             return true
         }
-        if event.keyCode == 97 {
+        if plain && event.keyCode == 97 {
             performCommand(.move)
             return true
         }
-        if event.keyCode == 101 {
+        if plain && event.keyCode == 100 {
             performCommand(.trash)
             return true
         }
-        if command && event.keyCode == 15 {
+        if command && !shift && !option && !control && event.keyCode == 15 {
             performCommand(.refresh)
             return true
         }
-        if command && shift && event.keyCode == 123 {
+        if command && shift && !option && !control && event.keyCode == 123 {
             performCommand(.focusLeftPane)
             return true
         }
-        if command && shift && event.keyCode == 124 {
+        if command && shift && !option && !control && event.keyCode == 124 {
             performCommand(.focusRightPane)
             return true
         }
-        if command && option && event.keyCode == 37 {
+        if command && option && !shift && !control && event.keyCode == 37 {
             performCommand(.downloads)
+            return true
+        }
+        if event.isFunctionKey {
             return true
         }
 
@@ -497,6 +531,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         if settings.defaultTerminalVisible != isTerminalInstalled {
             settings.defaultTerminalVisible ? installTerminalPanel() : removeTerminalPanel()
         }
+        setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)
         leftPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
         rightPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
         leftPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
@@ -538,6 +573,32 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     @objc private func toolbarSearchChanged(_ sender: NSSearchField) {
         activeFilterText = sender.stringValue
         targetPane().setSearchQuery(activeFilterText)
+    }
+
+    private func setSinglePaneMode(_ singlePane: Bool, focusPane: PaneID) {
+        isSinglePaneMode = singlePane
+        activePaneID = focusPane
+        rebuildPaneArrangement()
+        updateActivePane()
+    }
+
+    private func rebuildPaneArrangement() {
+        paneSplitView.arrangedSubviews.forEach { subview in
+            paneSplitView.removeArrangedSubview(subview)
+            subview.removeFromSuperview()
+        }
+
+        if isSinglePaneMode {
+            paneSplitView.addArrangedSubview(targetPane().view)
+        } else {
+            paneSplitView.addArrangedSubview(leftPane.view)
+            paneSplitView.addArrangedSubview(rightPane.view)
+        }
+
+        view.layoutSubtreeIfNeeded()
+        if !isSinglePaneMode, paneSplitView.bounds.width > 0 {
+            paneSplitView.setPosition(max(260, paneSplitView.bounds.width / 2), ofDividerAt: 0)
+        }
     }
 
     private func toggleTerminal() {
@@ -786,25 +847,28 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             showError(message: "Nothing Selected", detail: "Select one or more items to delete.")
             return
         }
+        let permanentlyDelete = settings.permanentlyDeleteInsteadOfTrash
+        let operationName = permanentlyDelete ? "Permanently Delete" : "Move to Trash"
+        let confirmButtonTitle = permanentlyDelete ? "Delete" : "Move to Trash"
         guard settings.confirmDeleteOperations else {
-            trash(items: items)
+            delete(items: items, permanently: permanentlyDelete)
             return
         }
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Move to Trash?"
+        alert.messageText = "\(operationName)?"
         alert.informativeText = confirmationSummary(
-            operationName: "Move to Trash",
+            operationName: operationName,
             urls: items.map(\.url),
             destinationDirectory: nil
         )
-        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: confirmButtonTitle)
         alert.addButton(withTitle: "Cancel")
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            self.trash(items: items)
+            self.delete(items: items, permanently: permanentlyDelete)
         }
 
         if let window = view.window {
@@ -814,9 +878,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
-    private func trash(items: [FileItem]) {
-        startFileOperation(named: "Move to Trash") { [fileOperations] progressHandler in
-            try await fileOperations.trash(items.map(\.url), progressHandler: progressHandler)
+    private func delete(items: [FileItem], permanently: Bool) {
+        let operationName = permanently ? "Permanently Delete" : "Move to Trash"
+        startFileOperation(named: operationName) { [fileOperations] progressHandler in
+            if permanently {
+                return try await fileOperations.delete(items.map(\.url), progressHandler: progressHandler)
+            }
+            return try await fileOperations.trash(items.map(\.url), progressHandler: progressHandler)
         }
     }
 
@@ -938,7 +1006,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func startFileOperation(named operationName: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
         guard !isFileOperationActive else { return }
         isFileOperationActive = true
-        activeOperationTask = Task { [weak self] in
+        activeOperationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let result = try await operation { [weak self] progress in
@@ -978,6 +1046,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func promptForConflict(destination: URL, operationName: String) -> FileConflictResolution {
+        if !Thread.isMainThread {
+            return DispatchQueue.main.sync {
+                promptForConflict(destination: destination, operationName: operationName)
+            }
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "\(destination.lastPathComponent) Already Exists"
@@ -1001,6 +1074,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func showError(message: String, detail: String) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.showError(message: message, detail: detail)
+            }
+            return
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = message
@@ -1066,6 +1145,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuSortDescending(_ sender: Any?) { performCommand(.sortDescending) }
     @objc func menuToggleTerminal(_ sender: Any?) { performCommand(.toggleTerminal) }
     @objc func menuToggleSidebar(_ sender: Any?) { performCommand(.toggleSidebar) }
+    @objc func menuTogglePaneLayout(_ sender: Any?) { performCommand(.togglePaneLayout) }
     @objc func menuBack(_ sender: Any?) { performCommand(.back) }
     @objc func menuForward(_ sender: Any?) { performCommand(.forward) }
     @objc func menuParent(_ sender: Any?) { performCommand(.parent) }
@@ -1086,8 +1166,17 @@ extension MainWindowViewController: NSMenuItemValidation {
             menuItem.state = isTerminalInstalled ? .on : .off
             return true
         }
+        if menuItem.action == #selector(menuTogglePaneLayout(_:)) {
+            menuItem.title = isSinglePaneMode ? "Use Dual Pane" : "Use Single Pane"
+            menuItem.state = isSinglePaneMode ? .on : .off
+            return true
+        }
         if menuItem.action == #selector(menuToggleHiddenFiles(_:)) {
             menuItem.state = targetPane().showsHiddenFiles ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuMoveToTrash(_:)) {
+            menuItem.title = settings.permanentlyDeleteInsteadOfTrash ? "Permanently Delete" : "Move to Trash"
             return true
         }
         let sort = targetPane().sortDescriptor
@@ -1135,4 +1224,22 @@ private extension NSToolbarItem.Identifier {
     static let toggleSidebar = NSToolbarItem.Identifier("PulseFilesToolbarSidebar")
     static let viewOptions = NSToolbarItem.Identifier("PulseFilesToolbarViewOptions")
     static let settings = NSToolbarItem.Identifier("PulseFilesToolbarSettings")
+}
+
+private final class MinimalDividerSplitView: NSSplitView {
+    override var dividerThickness: CGFloat { 7 }
+
+    override func drawDivider(in rect: NSRect) {
+        NSColor.clear.setFill()
+        rect.fill()
+        let lineWidth = 1 / max(window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2, 1)
+        let lineRect = NSRect(
+            x: rect.midX - lineWidth / 2,
+            y: rect.minY + 8,
+            width: lineWidth,
+            height: max(0, rect.height - 16)
+        )
+        LiquidGlassStyle.subtleStroke.setFill()
+        lineRect.fill()
+    }
 }

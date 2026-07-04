@@ -40,6 +40,11 @@ final class SettingsService {
         set { defaults.set(newValue, forKey: "defaultTerminalVisible") }
     }
 
+    var defaultSinglePaneMode: Bool {
+        get { defaults.object(forKey: "defaultSinglePaneMode") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "defaultSinglePaneMode") }
+    }
+
     var showHiddenFilesByDefault: Bool {
         get { defaults.object(forKey: "showHiddenFilesByDefault") as? Bool ?? false }
         set { defaults.set(newValue, forKey: "showHiddenFilesByDefault") }
@@ -58,6 +63,11 @@ final class SettingsService {
     var confirmDeleteOperations: Bool {
         get { defaults.object(forKey: "confirmDeleteOperations") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "confirmDeleteOperations") }
+    }
+
+    var permanentlyDeleteInsteadOfTrash: Bool {
+        get { defaults.object(forKey: "permanentlyDeleteInsteadOfTrash") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "permanentlyDeleteInsteadOfTrash") }
     }
 
     var defaultSortDescriptor: FileSortDescriptor {

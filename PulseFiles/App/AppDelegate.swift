@@ -82,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(orderItem)
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Toggle Terminal", action: #selector(MainWindowViewController.menuToggleTerminal(_:)), key: "`", modifiers: [.command]))
+        submenu.addItem(menuItem("Toggle Single Pane", action: #selector(MainWindowViewController.menuTogglePaneLayout(_:)), key: "t", modifiers: [.command]))
         submenu.addItem(menuItem("Toggle Sidebar", action: #selector(MainWindowViewController.menuToggleSidebar(_:)), key: "s", modifiers: [.command, .option]))
         item.submenu = submenu
         return item

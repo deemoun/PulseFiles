@@ -33,60 +33,70 @@ final class FileTableView: NSTableView {
     override func keyDown(with event: NSEvent) {
         let command = event.modifierFlags.contains(.command)
         let shift = event.modifierFlags.contains(.shift)
-        if event.keyCode == 48 {
+        let option = event.modifierFlags.contains(.option)
+        let control = event.modifierFlags.contains(.control)
+        let plain = !command && !shift && !option && !control
+        let shiftOnly = shift && !command && !option && !control
+        if event.keyCode == 53 {
+            return
+        }
+        if plain && event.keyCode == 48 {
             actionDelegate?.fileTableViewDidRequestPaneSwitch(self)
             return
         }
-        if shift && event.keyCode == 98 {
+        if shiftOnly && event.keyCode == 98 {
             actionDelegate?.fileTableViewDidRequestNewFile(self)
             return
         }
-        if event.keyCode == 98 {
+        if plain && event.keyCode == 98 {
             actionDelegate?.fileTableViewDidRequestNewFolder(self)
             return
         }
-        if command && event.keyCode == 50 {
+        if command && !shift && !option && !control && event.keyCode == 50 {
             actionDelegate?.fileTableViewDidRequestTerminalToggle(self)
             return
         }
-        if event.keyCode == 36 {
+        if plain && event.keyCode == 36 {
             actionDelegate?.fileTableViewDidRequestOpen(self)
             return
         }
-        if event.keyCode == 51 || (command && event.keyCode == 126) {
+        if (plain && event.keyCode == 51) || (command && !shift && !option && !control && event.keyCode == 126) {
             actionDelegate?.fileTableViewDidRequestParent(self)
             return
         }
-        if command && event.keyCode == 33 {
+        if command && !shift && !option && !control && event.keyCode == 33 {
             actionDelegate?.fileTableViewDidRequestBack(self)
             return
         }
-        if command && event.keyCode == 30 {
+        if command && !shift && !option && !control && event.keyCode == 30 {
             actionDelegate?.fileTableViewDidRequestForward(self)
             return
         }
-        if command && shift && event.keyCode == 4 {
+        if command && shift && !option && !control && event.keyCode == 4 {
             actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.home)
             return
         }
-        if command && shift && event.keyCode == 2 {
+        if command && shift && !option && !control && event.keyCode == 2 {
             actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.desktop)
             return
         }
-        if command && shift && event.keyCode == 31 {
+        if command && shift && !option && !control && event.keyCode == 31 {
             actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.documents)
             return
         }
-        if command && event.modifierFlags.contains(.option) && event.keyCode == 37 {
+        if command && option && !shift && !control && event.keyCode == 37 {
             actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.downloads)
             return
         }
-        if command && shift && event.keyCode == 0 {
+        if command && shift && !option && !control && event.keyCode == 0 {
             actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.applications)
             return
         }
-        if command && shift && event.charactersIgnoringModifiers == "." {
+        if command && shift && !option && !control && event.charactersIgnoringModifiers == "." {
             actionDelegate?.fileTableViewDidRequestToggleHidden(self)
+            return
+        }
+        if command || option || control || event.isFunctionKey {
             return
         }
         super.keyDown(with: event)
@@ -122,5 +132,16 @@ private enum ShortcutLocations {
         ExperimentalFlags.restrictFileAccessToAppSandboxRoot
             ? ExperimentalFlags.appSandboxRoot
             : URL(fileURLWithPath: "/Applications")
+    }
+}
+
+extension NSEvent {
+    var isFunctionKey: Bool {
+        switch keyCode {
+        case 122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64, 79, 80, 90:
+            return true
+        default:
+            return false
+        }
     }
 }

@@ -17,6 +17,7 @@ enum MainCommand {
     case sortDescending
     case toggleTerminal
     case toggleSidebar
+    case togglePaneLayout
     case back
     case forward
     case parent

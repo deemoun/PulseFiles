@@ -113,12 +113,18 @@ final class FilePaneViewController: NSViewController {
     }
 
     func setActive(_ active: Bool) {
+        guard isPaneActive != active else { return }
         isPaneActive = active
         activeStripe.layer?.backgroundColor = active ? NSColor.systemBlue.cgColor : NSColor.clear.cgColor
         view.layer?.borderWidth = 1
         view.layer?.borderColor = active ? LiquidGlassStyle.activeStroke.cgColor : LiquidGlassStyle.panelStroke.cgColor
         view.layer?.backgroundColor = active ? LiquidGlassStyle.activeFill.cgColor : LiquidGlassStyle.panelFill.cgColor
         tableView.reloadData()
+    }
+
+    func focusDefaultRowForActivation() {
+        selectDefaultRow()
+        view.window?.makeFirstResponder(tableView)
     }
 
     func openFocusedItem() {
@@ -263,6 +269,25 @@ final class FilePaneViewController: NSViewController {
         canShowParentRow && row == 0
     }
 
+    private func defaultFocusRow() -> Int? {
+        if !viewModel.visibleItems.isEmpty {
+            return realRowOffset
+        }
+        if canShowParentRow {
+            return 0
+        }
+        return nil
+    }
+
+    private func selectDefaultRow() {
+        guard let row = defaultFocusRow(), row >= 0, row < tableView.numberOfRows else {
+            tableView.deselectAll(nil)
+            return
+        }
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        tableView.scrollRowToVisible(row)
+    }
+
     private func reloadData() {
         isReloadingData = true
         defer { isReloadingData = false }
@@ -271,7 +296,7 @@ final class FilePaneViewController: NSViewController {
         tableView.reloadData()
         pruneInvalidSelection()
         if tableView.selectedRow == -1, tableView.numberOfRows > 0 {
-            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+            selectDefaultRow()
         }
         statusView.configure(
             items: viewModel.visibleItems,
@@ -538,7 +563,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             menu.addItem(contextMenuItem("Move to Opposite Pane", action: #selector(contextMove)))
             menu.addItem(.separator())
             menu.addItem(contextMenuItem("Copy Path", action: #selector(contextCopyPath)))
-            menu.addItem(contextMenuItem("Move to Trash", action: #selector(contextTrash)))
+            menu.addItem(contextMenuItem("Delete", action: #selector(contextTrash)))
         } else {
             menu.addItem(contextMenuItem("New File", action: #selector(contextNewFile)))
             menu.addItem(contextMenuItem("New Folder", action: #selector(contextNewFolder)))

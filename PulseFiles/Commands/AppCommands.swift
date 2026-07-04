@@ -19,7 +19,7 @@ enum CommandBarAction: String, CaseIterable {
         case .edit: return "F4"
         case .copy: return "F5"
         case .move: return "F6"
-        case .delete: return "F9"
+        case .delete: return "F8"
         }
     }
 }

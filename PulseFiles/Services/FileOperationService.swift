@@ -67,6 +67,7 @@ protocol FileOperationServicing {
     func copy(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func move(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
 }
 
 final class FileOperationService: FileOperationServicing {
@@ -101,6 +102,27 @@ final class FileOperationService: FileOperationServicing {
     }
 
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+        try await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
+            #if os(macOS)
+            var resultingURL: NSURL?
+            try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
+            #else
+            throw CocoaError(.featureUnsupported)
+            #endif
+        }
+    }
+
+    func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+        try await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
+            try fileManager.removeItem(at: url)
+        }
+    }
+
+    private func performDelete(
+        _ urls: [URL],
+        progressHandler: FileOperationProgressHandler?,
+        operation: @escaping @Sendable (FileManager, URL) throws -> Void
+    ) async throws -> FileOperationResult {
         guard !urls.isEmpty else { throw FileOperationError.emptySelection }
         for url in urls {
             try accessPolicy.validateAccess(to: url)
@@ -119,12 +141,7 @@ final class FileOperationService: FileOperationServicing {
             do {
                 let fileManager = fileManager
                 try await Task.detached(priority: .utility) {
-                    #if os(macOS)
-                    var resultingURL: NSURL?
-                    try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
-                    #else
-                    throw CocoaError(.featureUnsupported)
-                    #endif
+                    try operation(fileManager, url)
                 }.value
                 completedItems.append(url)
             } catch is CancellationError {
