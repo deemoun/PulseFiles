@@ -17,6 +17,18 @@ enum FileVisualCategory: Equatable {
     case fallback
 }
 
+enum FileVisualModifier: Hashable {
+    case hidden
+    case executable
+    case symbolicLink
+    case package
+}
+
+struct FileVisualStyle: Equatable {
+    let category: FileVisualCategory
+    let modifiers: Set<FileVisualModifier>
+}
+
 enum FileTypeClassifier {
     private static let executableMask = 0o111
     private static let archiveExtensions: Set<String> = [
@@ -40,11 +52,36 @@ enum FileTypeClassifier {
     private static let dataExtensions: Set<String> = [
         "csv", "db", "json", "plist", "sqlite", "toml", "tsv", "xml", "yaml", "yml"
     ]
+    private static let dataFilenames: Set<String> = [
+        ".env"
+    ]
     private static let diskImageExtensions: Set<String> = [
         "dmg", "img", "iso", "pkg"
     ]
 
     static func category(for item: FileItem) -> FileVisualCategory {
+        style(for: item).category
+    }
+
+    static func style(for item: FileItem) -> FileVisualStyle {
+        var modifiers = Set<FileVisualModifier>()
+        if item.isHidden {
+            modifiers.insert(.hidden)
+        }
+        if isExecutable(item) {
+            modifiers.insert(.executable)
+        }
+        if item.isSymbolicLink || item.fileType == .symbolicLink {
+            modifiers.insert(.symbolicLink)
+        }
+        if item.fileType == .package {
+            modifiers.insert(.package)
+        }
+
+        return FileVisualStyle(category: primaryCategory(for: item), modifiers: modifiers)
+    }
+
+    private static func primaryCategory(for item: FileItem) -> FileVisualCategory {
         if item.isDirectory || item.fileType == .folder {
             return .folder
         }
@@ -57,12 +94,9 @@ enum FileTypeClassifier {
             return .package
         }
 
-        if item.isHidden {
-            return .hidden
-        }
-
-        if isExecutable(item) {
-            return .executable
+        let normalizedFilename = item.filename.lowercased()
+        if dataFilenames.contains(normalizedFilename) {
+            return .data
         }
 
         let fileExtension = item.fileExtension.lowercased()
@@ -98,6 +132,14 @@ enum FileTypeClassifier {
             return .diskImage
         }
 
+        if isExecutable(item) {
+            return .executable
+        }
+
+        if item.isHidden {
+            return .hidden
+        }
+
         return .fallback
     }
 
@@ -122,6 +164,13 @@ enum FileTypeColorPalette {
     static let data = LiquidGlassStyle.label
     static let diskImage = NSColor.systemBrown
     static let fallback = LiquidGlassStyle.label
+    private static let hiddenAlpha: CGFloat = 0.62
+
+    static func color(for style: FileVisualStyle, appearance: NSAppearance?) -> NSColor {
+        let categoryColor = color(for: style.category, appearance: appearance)
+        guard style.modifiers.contains(.hidden) else { return categoryColor }
+        return categoryColor.withAlphaComponent(hiddenAlpha)
+    }
 
     static func color(for category: FileVisualCategory, appearance: NSAppearance?) -> NSColor {
         let resolvedColor: NSColor

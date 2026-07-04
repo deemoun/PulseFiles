@@ -15,8 +15,42 @@ final class FileTypeClassifierTests: XCTestCase {
         XCTAssertEqual(FileTypeClassifier.category(for: item("Example.app", type: .package)), .package)
     }
 
-    func testHiddenFileUsesHiddenCategory() {
-        XCTAssertEqual(FileTypeClassifier.category(for: item(".env", isHidden: true)), .hidden)
+    func testHiddenFileKeepsPrimaryCategoryWithHiddenModifier() {
+        let style = FileTypeClassifier.style(for: item(".env", isHidden: true))
+
+        XCTAssertEqual(style.category, .data)
+        XCTAssertEqual(style.modifiers, [.hidden])
+    }
+
+    func testHiddenArchiveKeepsArchiveCategoryWithHiddenModifier() {
+        let style = FileTypeClassifier.style(for: item(".backup.zip", isHidden: true))
+
+        XCTAssertEqual(style.category, .archive)
+        XCTAssertEqual(style.modifiers, [.hidden])
+    }
+
+    func testHiddenSourceAndConfigFilesKeepPrimaryCategoryWithHiddenModifier() {
+        let sourceStyle = FileTypeClassifier.style(for: item(".hooks.swift", isHidden: true))
+        let configStyle = FileTypeClassifier.style(for: item(".config.json", isHidden: true))
+
+        XCTAssertEqual(sourceStyle.category, .sourceCode)
+        XCTAssertEqual(sourceStyle.modifiers, [.hidden])
+        XCTAssertEqual(configStyle.category, .data)
+        XCTAssertEqual(configStyle.modifiers, [.hidden])
+    }
+
+    func testHiddenFolderKeepsFolderCategoryWithHiddenModifier() {
+        let style = FileTypeClassifier.style(for: item(".cache", type: .folder, isDirectory: true, isHidden: true))
+
+        XCTAssertEqual(style.category, .folder)
+        XCTAssertEqual(style.modifiers, [.hidden])
+    }
+
+    func testHiddenExecutableUsesExecutableCategoryAndHiddenModifier() {
+        let style = FileTypeClassifier.style(for: item(".build-tool", isHidden: true, permissions: 0o100))
+
+        XCTAssertEqual(style.category, .executable)
+        XCTAssertEqual(style.modifiers, [.hidden, .executable])
     }
 
     func testExecutableFileUsesExecutableCategoryWhenAnyExecuteBitIsSet() {
@@ -79,6 +113,14 @@ final class FileTypeClassifierTests: XCTestCase {
 }
 
 final class FileTypeColorPaletteTests: XCTestCase {
+
+    func testHiddenStyleAppliesReducedAlphaToPrimaryCategoryColor() {
+        let style = FileVisualStyle(category: .archive, modifiers: [.hidden])
+        let color = FileTypeColorPalette.color(for: style, appearance: nil)
+
+        XCTAssertEqual(color.alphaComponent, 0.62, accuracy: 0.001)
+    }
+
     func testColorMappingForEachCategory() {
         XCTAssertSameColor(FileTypeColorPalette.color(for: .folder, appearance: nil), FileTypeColorPalette.folder)
         XCTAssertSameColor(FileTypeColorPalette.color(for: .symbolicLink, appearance: nil), FileTypeColorPalette.symbolicLink)
