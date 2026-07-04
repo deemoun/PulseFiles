@@ -9,6 +9,6 @@ enum FileSizeFormatter {
     }()
 
     static func string(fromByteCount byteCount: Int64) -> String {
-        byteCount == 0 ? "--" : formatter.string(fromByteCount: byteCount)
+        formatter.string(fromByteCount: byteCount)
     }
 }

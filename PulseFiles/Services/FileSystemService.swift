@@ -83,6 +83,7 @@ final class FileSystemService: FileSystemServicing {
         }
 
         let filename = values.name ?? url.lastPathComponent
+        let size = measuredSize(for: url, isDirectory: isDirectory, isSymbolicLink: isLink)
         return FileItem(
             url: url,
             filename: filename,
@@ -92,7 +93,7 @@ final class FileSystemService: FileSystemServicing {
             isDirectory: isDirectory,
             isSymbolicLink: isLink,
             isHidden: values.isHidden == true || filename.hasPrefix("."),
-            size: Int64(values.totalFileSize ?? values.fileSize ?? 0),
+            size: size,
             creationDate: values.creationDate,
             modificationDate: values.contentModificationDate,
             posixPermissions: permissions,
@@ -101,6 +102,47 @@ final class FileSystemService: FileSystemServicing {
             localizedTypeDescription: values.localizedTypeDescription ?? (isDirectory ? "Folder" : "File"),
             icon: .fileIcon(for: url)
         )
+    }
+
+    private func measuredSize(for url: URL, isDirectory: Bool, isSymbolicLink: Bool) -> Int64 {
+        if isDirectory && !isSymbolicLink {
+            return directorySize(at: url)
+        }
+
+        let resourceValues = try? url.resourceValues(forKeys: [.totalFileSizeKey, .fileSizeKey])
+        if let totalFileSize = resourceValues?.totalFileSize {
+            return Int64(totalFileSize)
+        }
+        if let fileSize = resourceValues?.fileSize {
+            return Int64(fileSize)
+        }
+        if let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+           let attributeSize = attributes[.size] as? NSNumber {
+            return attributeSize.int64Value
+        }
+        return 0
+    }
+
+    private func directorySize(at url: URL) -> Int64 {
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .totalFileSizeKey, .fileSizeKey],
+            options: [],
+            errorHandler: { _, _ in true }
+        ) else {
+            return 0
+        }
+
+        var total: Int64 = 0
+        for case let childURL as URL in enumerator {
+            guard !Task.isCancelled else { break }
+            let values = try? childURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .totalFileSizeKey, .fileSizeKey])
+            if values?.isDirectory == true && values?.isSymbolicLink != true {
+                continue
+            }
+            total += measuredSize(for: childURL, isDirectory: false, isSymbolicLink: values?.isSymbolicLink == true)
+        }
+        return total
     }
 
     static func sorted(_ items: [FileItem], descriptor: FileSortDescriptor) -> [FileItem] {

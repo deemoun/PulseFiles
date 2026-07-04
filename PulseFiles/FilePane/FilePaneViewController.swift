@@ -333,7 +333,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         case "name":
             return item.displayName
         case "size":
-            return item.isDirectory ? "--" : FileSizeFormatter.string(fromByteCount: item.size)
+            return FileSizeFormatter.string(fromByteCount: item.size)
         case "modified":
             return item.modificationDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
         default:
