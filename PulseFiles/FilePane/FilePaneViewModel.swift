@@ -10,6 +10,7 @@ final class FilePaneViewModel {
     private(set) var items: [FileItem] = []
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    private(set) var searchQuery = ""
 
     var onChange: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
@@ -24,6 +25,15 @@ final class FilePaneViewModel {
     var currentDirectory: URL { state.currentDirectory }
     var sortDescriptor: FileSortDescriptor { state.sort }
     var showsHiddenFiles: Bool { state.showsHiddenFiles }
+    var visibleItems: [FileItem] {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return items }
+        return items.filter { item in
+            item.displayName.localizedCaseInsensitiveContains(query)
+                || item.filename.localizedCaseInsensitiveContains(query)
+                || item.fileExtension.localizedCaseInsensitiveContains(query)
+        }
+    }
 
     func loadCurrentDirectory() {
         load(directory: state.currentDirectory, addToHistory: false)
@@ -64,6 +74,11 @@ final class FilePaneViewModel {
             state.sort = FileSortDescriptor(key: key, ascending: true)
         }
         items = FileSystemService.sorted(items, descriptor: state.sort)
+        onChange?()
+    }
+
+    func setSearchQuery(_ query: String) {
+        searchQuery = query
         onChange?()
     }
 

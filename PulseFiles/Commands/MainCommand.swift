@@ -23,14 +23,13 @@ enum MainCommand {
 
     init(commandBarAction: CommandBarAction) {
         switch commandBarAction {
-        case .open: self = .open
         case .newFile: self = .newFile
         case .newFolder: self = .newFolder
         case .rename: self = .rename
         case .copy: self = .copy
         case .move: self = .move
         case .delete: self = .trash
-        case .view, .edit, .more: self = .open
+        case .view, .edit: self = .open
         }
     }
 }

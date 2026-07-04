@@ -32,17 +32,19 @@ final class FilePaneViewController: NSViewController {
 
     var currentDirectory: URL { viewModel.currentDirectory }
     var selectedItems: [FileItem] {
-        tableView.selectedRowIndexes.compactMap { viewModel.items.indices.contains($0) ? viewModel.items[$0] : nil }
+        tableView.selectedRowIndexes.compactMap { viewModel.visibleItems.indices.contains($0) ? viewModel.visibleItems[$0] : nil }
     }
 
     var focusedItem: FileItem? {
         let row = tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow
-        guard viewModel.items.indices.contains(row) else { return nil }
-        return viewModel.items[row]
+        guard viewModel.visibleItems.indices.contains(row) else { return nil }
+        return viewModel.visibleItems[row]
     }
 
     override func loadView() {
-        view = NSView()
+        let paneView = PaneContainerView()
+        paneView.onMouseDown = { [weak self] in self?.onActivate?() }
+        view = paneView
         LiquidGlassStyle.applyPanelChrome(to: view)
     }
 
@@ -92,6 +94,10 @@ final class FilePaneViewController: NSViewController {
 
     func handleKeyDown(_ event: NSEvent) {
         tableView.keyDown(with: event)
+    }
+
+    func setSearchQuery(_ query: String) {
+        viewModel.setSearchQuery(query)
     }
 
     private func buildHeader() {
@@ -206,7 +212,7 @@ final class FilePaneViewController: NSViewController {
         directoryIcon.image = .fileIcon(for: viewModel.currentDirectory)
         tableView.reloadData()
         statusView.configure(
-            items: viewModel.items,
+            items: viewModel.visibleItems,
             selectedRows: tableView.selectedRowIndexes,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage
@@ -230,7 +236,7 @@ final class FilePaneViewController: NSViewController {
 
 extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int {
-        viewModel.items.count
+        viewModel.visibleItems.count
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
@@ -238,8 +244,8 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard viewModel.items.indices.contains(row), let identifier = tableColumn?.identifier.rawValue else { return nil }
-        let item = viewModel.items[row]
+        guard viewModel.visibleItems.indices.contains(row), let identifier = tableColumn?.identifier.rawValue else { return nil }
+        let item = viewModel.visibleItems[row]
         let cell = NSTableCellView()
         let text = NSTextField(labelWithString: string(for: item, column: identifier))
         text.lineBreakMode = .byTruncatingMiddle
@@ -276,7 +282,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         statusView.configure(
-            items: viewModel.items,
+            items: viewModel.visibleItems,
             selectedRows: tableView.selectedRowIndexes,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage
@@ -315,6 +321,10 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 }
 
 extension FilePaneViewController: FileTableViewActionDelegate {
+    func fileTableViewDidActivate(_ tableView: FileTableView) {
+        onActivate?()
+    }
+
     func fileTableViewDidRequestOpen(_ tableView: FileTableView) {
         openFocusedItem()
     }
@@ -349,5 +359,14 @@ extension FilePaneViewController: FileTableViewActionDelegate {
 
     func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView) {
         onSwitchPane?()
+    }
+}
+
+private final class PaneContainerView: NSView {
+    var onMouseDown: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onMouseDown?()
+        super.mouseDown(with: event)
     }
 }

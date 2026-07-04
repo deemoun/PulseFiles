@@ -23,10 +23,14 @@ final class MainWindowViewController: NSViewController {
     private let contentSplitView = NSSplitView()
     private let paneSplitView = NSSplitView()
     private let mainStack = NSView()
+    private weak var toolbarSearchField: NSSearchField?
+    private var activeFilterText = ""
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var sidebarMinWidthConstraint: NSLayoutConstraint?
     private var sidebarMaxWidthConstraint: NSLayoutConstraint?
+    private var isTerminalInstalled = false
+    private var terminalHeightConstraint: NSLayoutConstraint?
 
     private var activePaneID: PaneID = .left {
         didSet { updateActivePane() }
@@ -114,9 +118,9 @@ final class MainWindowViewController: NSViewController {
         contentSplitView.addArrangedSubview(paneSplitView)
 
         addChild(terminal)
-        contentSplitView.addArrangedSubview(terminal.view)
-        terminal.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
-        terminal.view.isHidden = !settings.isTerminalVisible
+        if settings.isTerminalVisible {
+            installTerminalPanel()
+        }
     }
 
     override func viewDidLayout() {
@@ -125,7 +129,7 @@ final class MainWindowViewController: NSViewController {
         didSetInitialSplitPositions = true
         applySidebarSplitPosition()
         paneSplitView.setPosition(max(260, paneSplitView.bounds.width / 2), ofDividerAt: 0)
-        if !terminal.view.isHidden {
+        if isTerminalInstalled {
             contentSplitView.setPosition(max(220, contentSplitView.bounds.height - 180), ofDividerAt: 0)
         }
     }
@@ -173,7 +177,11 @@ final class MainWindowViewController: NSViewController {
         leftPane.setActive(activePaneID == .left)
         rightPane.setActive(activePaneID == .right)
         terminal.suggestedWorkingDirectory = targetPane().currentDirectory
-        view.window?.makeFirstResponder(targetPane().tableView)
+        leftPane.setSearchQuery(activePaneID == .left ? activeFilterText : "")
+        rightPane.setSearchQuery(activePaneID == .right ? activeFilterText : "")
+        if view.window?.firstResponder !== toolbarSearchField {
+            view.window?.makeFirstResponder(targetPane().tableView)
+        }
     }
 
     private func performCommand(_ command: MainCommand) {
@@ -313,6 +321,10 @@ extension MainWindowViewController: NSToolbarDelegate {
             let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "Search"
             item.searchField.placeholderString = "Filter active pane"
+            item.searchField.target = self
+            item.searchField.action = #selector(toolbarSearchChanged(_:))
+            item.searchField.sendsSearchStringImmediately = true
+            toolbarSearchField = item.searchField
             return item
         case .back:
             return toolbarItem(itemIdentifier, label: "Back", symbol: "chevron.left", action: #selector(toolbarBack(_:)))
@@ -363,17 +375,42 @@ extension MainWindowViewController: NSToolbarDelegate {
         NSSound.beep()
     }
 
+    @objc private func toolbarSearchChanged(_ sender: NSSearchField) {
+        activeFilterText = sender.stringValue
+        targetPane().setSearchQuery(activeFilterText)
+    }
+
     private func toggleTerminal() {
-        terminal.view.isHidden.toggle()
-        settings.isTerminalVisible = !terminal.view.isHidden
-        if !terminal.view.isHidden {
+        if isTerminalInstalled {
+            removeTerminalPanel()
+            settings.isTerminalVisible = false
+            view.window?.makeFirstResponder(targetPane().tableView)
+        } else {
+            installTerminalPanel()
+            settings.isTerminalVisible = true
             terminal.suggestedWorkingDirectory = targetPane().currentDirectory
             view.layoutSubtreeIfNeeded()
             contentSplitView.setPosition(max(220, contentSplitView.bounds.height - 180), ofDividerAt: 0)
             terminal.focusCommandField()
-        } else {
-            view.window?.makeFirstResponder(targetPane().tableView)
         }
+    }
+
+    private func installTerminalPanel() {
+        guard !isTerminalInstalled else { return }
+        contentSplitView.addArrangedSubview(terminal.view)
+        if terminalHeightConstraint == nil {
+            terminalHeightConstraint = terminal.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
+        }
+        terminalHeightConstraint?.isActive = true
+        isTerminalInstalled = true
+    }
+
+    private func removeTerminalPanel() {
+        guard isTerminalInstalled else { return }
+        terminalHeightConstraint?.isActive = false
+        contentSplitView.removeArrangedSubview(terminal.view)
+        terminal.view.removeFromSuperview()
+        isTerminalInstalled = false
     }
 
     private func toggleSidebar() {

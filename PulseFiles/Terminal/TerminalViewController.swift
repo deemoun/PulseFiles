@@ -2,124 +2,76 @@ import AppKit
 
 final class TerminalViewController: NSViewController {
     private let terminalService = TerminalService()
-    private let workingDirectoryLabel = NSTextField(labelWithString: "")
-    private let commandField = NSTextField(string: "pwd")
-    private let runButton = NSButton(title: "Run", target: nil, action: nil)
-    private let stopButton = NSButton(title: "Stop", target: nil, action: nil)
-    private let outputView = NSTextView()
+    private let terminalView = TerminalTextView()
     private let scrollView = NSScrollView()
 
     private var runningProcess: Process?
+    private var promptStartIndex = 0
     var workingDirectoryProvider: (() -> URL)?
 
-    var suggestedWorkingDirectory: URL = ExperimentalFlags.appSandboxRoot {
-        didSet { updateWorkingDirectoryLabel() }
-    }
+    var suggestedWorkingDirectory: URL = ExperimentalFlags.appSandboxRoot
 
     override func loadView() {
-        view = NSVisualEffectView()
-        (view as? NSVisualEffectView)?.material = .hudWindow
-        (view as? NSVisualEffectView)?.blendingMode = .withinWindow
-        LiquidGlassStyle.applyPanelChrome(to: view)
+        view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.cornerRadius = LiquidGlassStyle.cornerRadius
+        view.layer?.cornerCurve = .continuous
+        view.layer?.masksToBounds = true
+        view.layer?.borderWidth = 1
+        view.layer?.borderColor = LiquidGlassStyle.panelStroke.cgColor
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         buildLayout()
-        updateWorkingDirectoryLabel()
-        appendOutput("Ready. Commands run in the active pane folder.\n")
+        terminalView.onSubmit = { [weak self] command in
+            self?.run(command)
+        }
+        appendLine("PulseFiles terminal")
+        appendPrompt()
     }
 
     func focusCommandField() {
-        view.window?.makeFirstResponder(commandField)
+        view.window?.makeFirstResponder(terminalView)
     }
 
     private func buildLayout() {
-        let tabs = NSSegmentedControl(labels: ["Terminal", "Output"], trackingMode: .selectOne, target: nil, action: nil)
-        tabs.selectedSegment = 0
-        tabs.translatesAutoresizingMaskIntoConstraints = false
+        terminalView.isEditable = true
+        terminalView.isSelectable = true
+        terminalView.allowsUndo = false
+        terminalView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        terminalView.textColor = .systemGreen
+        terminalView.insertionPointColor = .systemGreen
+        terminalView.backgroundColor = .black
+        terminalView.drawsBackground = true
+        terminalView.textContainerInset = NSSize(width: 12, height: 10)
 
-        workingDirectoryLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        workingDirectoryLabel.textColor = LiquidGlassStyle.secondaryLabel
-        workingDirectoryLabel.lineBreakMode = .byTruncatingMiddle
-        workingDirectoryLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        commandField.placeholderString = "Enter shell command"
-        commandField.textColor = LiquidGlassStyle.label
-        commandField.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.08)
-        commandField.target = self
-        commandField.action = #selector(runCommand)
-        commandField.translatesAutoresizingMaskIntoConstraints = false
-
-        runButton.target = self
-        runButton.action = #selector(runCommand)
-        LiquidGlassStyle.applyButtonChrome(to: runButton)
-        runButton.translatesAutoresizingMaskIntoConstraints = false
-
-        stopButton.target = self
-        stopButton.action = #selector(stopCommand)
-        LiquidGlassStyle.applyButtonChrome(to: stopButton)
-        stopButton.isEnabled = false
-        stopButton.translatesAutoresizingMaskIntoConstraints = false
-
-        outputView.isEditable = false
-        outputView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        outputView.textColor = LiquidGlassStyle.label
-        outputView.backgroundColor = .clear
-
-        scrollView.documentView = outputView
+        scrollView.documentView = terminalView
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        view.addSubview(tabs)
-        view.addSubview(workingDirectoryLabel)
-        view.addSubview(commandField)
-        view.addSubview(runButton)
-        view.addSubview(stopButton)
         view.addSubview(scrollView)
-
         NSLayoutConstraint.activate([
-            tabs.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            tabs.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
-
-            workingDirectoryLabel.leadingAnchor.constraint(equalTo: tabs.trailingAnchor, constant: 12),
-            workingDirectoryLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            workingDirectoryLabel.centerYAnchor.constraint(equalTo: tabs.centerYAnchor),
-
-            commandField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            commandField.trailingAnchor.constraint(equalTo: runButton.leadingAnchor, constant: -8),
-            commandField.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 10),
-
-            runButton.trailingAnchor.constraint(equalTo: stopButton.leadingAnchor, constant: -8),
-            runButton.centerYAnchor.constraint(equalTo: commandField.centerYAnchor),
-            runButton.widthAnchor.constraint(equalToConstant: 64),
-
-            stopButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            stopButton.centerYAnchor.constraint(equalTo: commandField.centerYAnchor),
-            stopButton.widthAnchor.constraint(equalToConstant: 64),
-
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            scrollView.topAnchor.constraint(equalTo: commandField.bottomAnchor, constant: 10),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10)
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
-    private func updateWorkingDirectoryLabel() {
-        guard isViewLoaded else { return }
-        workingDirectoryLabel.stringValue = "\(terminalService.shellPath) - \(suggestedWorkingDirectory.path)"
-    }
+    private func run(_ rawCommand: String) {
+        let command = rawCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty, runningProcess == nil else {
+            appendPrompt()
+            return
+        }
 
-    @objc private func runCommand() {
-        let command = commandField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty, runningProcess == nil else { return }
         if let workingDirectoryProvider {
             suggestedWorkingDirectory = workingDirectoryProvider()
         }
-
-        appendOutput("\n$ \(command)\n")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -130,43 +82,82 @@ final class TerminalViewController: NSViewController {
         process.standardOutput = pipe
         process.standardError = pipe
         runningProcess = process
-        runButton.isEnabled = false
-        stopButton.isEnabled = true
 
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             DispatchQueue.main.async {
-                self?.appendOutput(text)
+                self?.append(text)
             }
         }
 
         process.terminationHandler = { [weak self] process in
             pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
-                self?.appendOutput("\n[exit \(process.terminationStatus)]\n")
                 self?.runningProcess = nil
-                self?.runButton.isEnabled = true
-                self?.stopButton.isEnabled = false
+                if process.terminationStatus != 0 {
+                    self?.appendLine("[exit \(process.terminationStatus)]")
+                }
+                self?.appendPrompt()
             }
         }
 
         do {
             try process.run()
         } catch {
-            appendOutput("Could not run command: \(error.localizedDescription)\n")
+            appendLine("Could not run command: \(error.localizedDescription)")
             runningProcess = nil
-            runButton.isEnabled = true
-            stopButton.isEnabled = false
+            appendPrompt()
         }
     }
 
-    @objc private func stopCommand() {
-        runningProcess?.terminate()
+    private func appendPrompt() {
+        if let workingDirectoryProvider {
+            suggestedWorkingDirectory = workingDirectoryProvider()
+        }
+        let folder = suggestedWorkingDirectory.lastPathComponent.isEmpty ? suggestedWorkingDirectory.path : suggestedWorkingDirectory.lastPathComponent
+        append("\n\(terminalService.shellPath.components(separatedBy: "/").last ?? "zsh") \(folder) $ ")
+        promptStartIndex = terminalView.string.count
+        terminalView.currentPromptStart = promptStartIndex
     }
 
-    private func appendOutput(_ text: String) {
-        outputView.textStorage?.append(NSAttributedString(string: text))
-        outputView.scrollRangeToVisible(NSRange(location: outputView.string.count, length: 0))
+    private func appendLine(_ text: String) {
+        append(text + "\n")
+    }
+
+    private func append(_ text: String) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.systemGreen,
+            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        ]
+        terminalView.textStorage?.append(NSAttributedString(string: text, attributes: attributes))
+        terminalView.currentPromptStart = promptStartIndex
+        let end = terminalView.string.count
+        terminalView.setSelectedRange(NSRange(location: end, length: 0))
+        terminalView.scrollRangeToVisible(NSRange(location: end, length: 0))
+    }
+}
+
+private final class TerminalTextView: NSTextView {
+    var onSubmit: ((String) -> Void)?
+    var currentPromptStart = 0
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 {
+            let command = currentCommand()
+            insertNewline(nil)
+            onSubmit?(command)
+            return
+        }
+        if event.keyCode == 51, selectedRange().location <= currentPromptStart {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    private func currentCommand() -> String {
+        let nsString = string as NSString
+        guard currentPromptStart <= nsString.length else { return "" }
+        return nsString.substring(from: currentPromptStart)
     }
 }
