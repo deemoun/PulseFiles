@@ -31,6 +31,8 @@ final class FilePaneViewController: NSViewController {
     }
 
     var currentDirectory: URL { viewModel.currentDirectory }
+    var sortDescriptor: FileSortDescriptor { viewModel.sortDescriptor }
+    var showsHiddenFiles: Bool { viewModel.showsHiddenFiles }
     var selectedItems: [FileItem] {
         tableView.selectedRowIndexes.compactMap { viewModel.visibleItems.indices.contains($0) ? viewModel.visibleItems[$0] : nil }
     }
@@ -58,6 +60,18 @@ final class FilePaneViewController: NSViewController {
 
     func loadDirectory() {
         viewModel.loadCurrentDirectory()
+    }
+
+    func toggleHiddenFiles() {
+        viewModel.toggleHiddenFiles()
+    }
+
+    func setSort(_ key: FileSortKey) {
+        viewModel.setSort(key)
+    }
+
+    func setSort(_ key: FileSortKey, ascending: Bool) {
+        viewModel.setSort(key, ascending: ascending)
     }
 
     func navigate(to url: URL) {
@@ -226,7 +240,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     @objc private func toggleHidden() {
-        viewModel.toggleHiddenFiles()
+        toggleHiddenFiles()
     }
 
     @objc private func openDoubleClickedItem() {
@@ -293,11 +307,11 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
         switch tableColumn.identifier.rawValue {
         case "size":
-            viewModel.setSort(.size)
+            setSort(.size)
         case "modified":
-            viewModel.setSort(.modified)
+            setSort(.modified)
         default:
-            viewModel.setSort(.name)
+            setSort(.name)
         }
     }
 
@@ -346,7 +360,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     }
 
     func fileTableViewDidRequestToggleHidden(_ tableView: FileTableView) {
-        viewModel.toggleHiddenFiles()
+        toggleHiddenFiles()
     }
 
     func fileTableViewDidRequestTerminalToggle(_ tableView: FileTableView) {
