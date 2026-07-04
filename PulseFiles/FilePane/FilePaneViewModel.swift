@@ -15,11 +15,11 @@ final class FilePaneViewModel {
     var onChange: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
 
-    init(initialDirectory: URL, fileSystem: FileSystemServicing, accessPolicy: SandboxFileAccessPolicy = .current) {
+    init(initialDirectory: URL, showsHiddenFiles: Bool = false, fileSystem: FileSystemServicing, accessPolicy: SandboxFileAccessPolicy = .current) {
         self.fileSystem = fileSystem
         self.accessPolicy = accessPolicy
         let validatedDirectory = accessPolicy.validatedDirectory(initialDirectory)
-        state = PaneState(currentDirectory: validatedDirectory, history: NavigationHistory(initialURL: validatedDirectory))
+        state = PaneState(currentDirectory: validatedDirectory, history: NavigationHistory(initialURL: validatedDirectory), showsHiddenFiles: showsHiddenFiles)
     }
 
     var currentDirectory: URL { state.currentDirectory }
@@ -63,7 +63,12 @@ final class FilePaneViewModel {
     }
 
     func toggleHiddenFiles() {
-        state.showsHiddenFiles.toggle()
+        setShowsHiddenFiles(!state.showsHiddenFiles)
+    }
+
+    func setShowsHiddenFiles(_ showsHiddenFiles: Bool) {
+        guard state.showsHiddenFiles != showsHiddenFiles else { return }
+        state.showsHiddenFiles = showsHiddenFiles
         loadCurrentDirectory()
     }
 
