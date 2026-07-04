@@ -34,6 +34,11 @@ final class SettingsService {
         set { defaults.set(newValue, forKey: "isSidebarVisible") }
     }
 
+    var sidebarWidth: Double {
+        get { defaults.object(forKey: "sidebarWidth") as? Double ?? 220 }
+        set { defaults.set(newValue, forKey: "sidebarWidth") }
+    }
+
     var isTerminalVisible: Bool {
         get { defaults.object(forKey: "isTerminalVisible") as? Bool ?? false }
         set { defaults.set(newValue, forKey: "isTerminalVisible") }
