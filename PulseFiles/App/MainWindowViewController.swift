@@ -35,6 +35,7 @@ final class MainWindowViewController: NSViewController {
     override func loadView() {
         view = NSView()
         view.wantsLayer = true
+        view.layer?.backgroundColor = LiquidGlassStyle.windowBackground.cgColor
     }
 
     override func viewDidLoad() {
@@ -61,15 +62,15 @@ final class MainWindowViewController: NSViewController {
 
     private func buildLayout() {
         rootSplitView.isVertical = true
-        rootSplitView.dividerStyle = .thin
+        rootSplitView.dividerStyle = .paneSplitter
         rootSplitView.delegate = self
         rootSplitView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(rootSplitView)
         NSLayoutConstraint.activate([
-            rootSplitView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            rootSplitView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            rootSplitView.topAnchor.constraint(equalTo: view.topAnchor),
-            rootSplitView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            rootSplitView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            rootSplitView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            rootSplitView.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
+            rootSplitView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10)
         ])
 
         mainStack.translatesAutoresizingMaskIntoConstraints = false
@@ -84,7 +85,7 @@ final class MainWindowViewController: NSViewController {
         sidebar.view.isHidden = !settings.isSidebarVisible
 
         contentSplitView.isVertical = false
-        contentSplitView.dividerStyle = .thin
+        contentSplitView.dividerStyle = .paneSplitter
         contentSplitView.delegate = self
         contentSplitView.translatesAutoresizingMaskIntoConstraints = false
         commandBar.translatesAutoresizingMaskIntoConstraints = false
@@ -98,11 +99,11 @@ final class MainWindowViewController: NSViewController {
             commandBar.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor),
             commandBar.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor),
             commandBar.bottomAnchor.constraint(equalTo: mainStack.bottomAnchor),
-            commandBar.heightAnchor.constraint(equalToConstant: 40)
+            commandBar.heightAnchor.constraint(equalToConstant: 50)
         ])
 
         paneSplitView.isVertical = true
-        paneSplitView.dividerStyle = .thin
+        paneSplitView.dividerStyle = .paneSplitter
         paneSplitView.delegate = self
         addChild(leftPane)
         addChild(rightPane)
@@ -336,6 +337,7 @@ extension MainWindowViewController: NSToolbarDelegate {
         item.paletteLabel = label
         item.toolTip = label
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        item.isBordered = true
         item.target = self
         item.action = action
         return item

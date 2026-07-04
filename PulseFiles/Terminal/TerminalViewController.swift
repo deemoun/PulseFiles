@@ -20,6 +20,7 @@ final class TerminalViewController: NSViewController {
         view = NSVisualEffectView()
         (view as? NSVisualEffectView)?.material = .hudWindow
         (view as? NSVisualEffectView)?.blendingMode = .withinWindow
+        LiquidGlassStyle.applyPanelChrome(to: view)
     }
 
     override func viewDidLoad() {
@@ -39,34 +40,37 @@ final class TerminalViewController: NSViewController {
         tabs.translatesAutoresizingMaskIntoConstraints = false
 
         workingDirectoryLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        workingDirectoryLabel.textColor = .secondaryLabelColor
+        workingDirectoryLabel.textColor = LiquidGlassStyle.secondaryLabel
         workingDirectoryLabel.lineBreakMode = .byTruncatingMiddle
         workingDirectoryLabel.translatesAutoresizingMaskIntoConstraints = false
 
         commandField.placeholderString = "Enter shell command"
+        commandField.textColor = LiquidGlassStyle.label
+        commandField.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.08)
         commandField.target = self
         commandField.action = #selector(runCommand)
         commandField.translatesAutoresizingMaskIntoConstraints = false
 
         runButton.target = self
         runButton.action = #selector(runCommand)
-        runButton.bezelStyle = .rounded
+        LiquidGlassStyle.applyButtonChrome(to: runButton)
         runButton.translatesAutoresizingMaskIntoConstraints = false
 
         stopButton.target = self
         stopButton.action = #selector(stopCommand)
-        stopButton.bezelStyle = .rounded
+        LiquidGlassStyle.applyButtonChrome(to: stopButton)
         stopButton.isEnabled = false
         stopButton.translatesAutoresizingMaskIntoConstraints = false
 
         outputView.isEditable = false
         outputView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        outputView.textColor = .labelColor
+        outputView.textColor = LiquidGlassStyle.label
         outputView.backgroundColor = .clear
 
         scrollView.documentView = outputView
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(tabs)

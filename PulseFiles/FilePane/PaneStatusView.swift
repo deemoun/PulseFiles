@@ -5,11 +5,11 @@ final class PaneStatusView: NSVisualEffectView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        material = .underWindowBackground
+        material = .hudWindow
         blendingMode = .withinWindow
         state = .active
         label.font = .systemFont(ofSize: 12)
-        label.textColor = .secondaryLabelColor
+        label.textColor = LiquidGlassStyle.secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([

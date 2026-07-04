@@ -7,8 +7,10 @@ final class MainWindowController: NSWindowController {
         window.title = "PulseFiles"
         window.setFrame(NSRect(x: 120, y: 120, width: 1280, height: 820), display: false)
         window.minSize = NSSize(width: 920, height: 560)
+        window.backgroundColor = LiquidGlassStyle.windowBackground
+        window.isMovableByWindowBackground = true
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .visible
+        window.titleVisibility = .hidden
         window.toolbarStyle = .unified
         window.toolbar = PulseToolbar(owner: content)
         super.init(window: window)
@@ -23,7 +25,7 @@ private final class PulseToolbar: NSToolbar {
     init(owner: MainWindowViewController) {
         super.init(identifier: "PulseFilesToolbar")
         delegate = owner
-        displayMode = .iconAndLabel
+        displayMode = .iconOnly
         allowsUserCustomization = false
     }
 }

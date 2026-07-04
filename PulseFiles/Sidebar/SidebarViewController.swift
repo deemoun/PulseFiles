@@ -20,20 +20,21 @@ final class SidebarViewController: NSViewController {
 
     override func loadView() {
         view = NSVisualEffectView()
-        (view as? NSVisualEffectView)?.material = .sidebar
+        (view as? NSVisualEffectView)?.material = .hudWindow
         (view as? NSVisualEffectView)?.blendingMode = .withinWindow
+        LiquidGlassStyle.applyPanelChrome(to: view)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
+        stack.alignment = .width
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 16)
         ])
         rebuild()
@@ -66,20 +67,22 @@ final class SidebarViewController: NSViewController {
 
     private func addSection(_ title: String) {
         let label = NSTextField(labelWithString: title.uppercased())
-        label.font = .systemFont(ofSize: 11, weight: .semibold)
-        label.textColor = .secondaryLabelColor
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.textColor = LiquidGlassStyle.secondaryLabel
         stack.addArrangedSubview(label)
     }
 
     private func addLocation(_ title: String, url: URL, symbol: String) {
-        let button = NSButton(title: title, target: self, action: #selector(openLocation(_:)))
+        let subtitle = url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        let button = NSButton(title: "\(title)\n\(subtitle)", target: self, action: #selector(openLocation(_:)))
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
         button.imagePosition = .imageLeading
         button.alignment = .left
-        button.bezelStyle = .inline
-        button.isBordered = false
+        LiquidGlassStyle.applyButtonChrome(to: button)
+        button.font = .systemFont(ofSize: 13, weight: .medium)
         button.identifier = NSUserInterfaceItemIdentifier(url.path)
         button.toolTip = url.path
+        button.heightAnchor.constraint(equalToConstant: 48).isActive = true
         stack.addArrangedSubview(button)
     }
 

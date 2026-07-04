@@ -43,7 +43,7 @@ final class FilePaneViewController: NSViewController {
 
     override func loadView() {
         view = NSView()
-        view.wantsLayer = true
+        LiquidGlassStyle.applyPanelChrome(to: view)
     }
 
     override func viewDidLoad() {
@@ -75,9 +75,10 @@ final class FilePaneViewController: NSViewController {
     }
 
     func setActive(_ active: Bool) {
-        activeStripe.layer?.backgroundColor = active ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
-        view.layer?.borderWidth = active ? 1 : 0
-        view.layer?.borderColor = active ? NSColor.controlAccentColor.withAlphaComponent(0.45).cgColor : nil
+        activeStripe.layer?.backgroundColor = active ? NSColor.systemBlue.cgColor : NSColor.clear.cgColor
+        view.layer?.borderWidth = 1
+        view.layer?.borderColor = active ? LiquidGlassStyle.activeStroke.cgColor : LiquidGlassStyle.panelStroke.cgColor
+        view.layer?.backgroundColor = active ? LiquidGlassStyle.activeFill.cgColor : LiquidGlassStyle.panelFill.cgColor
     }
 
     func openFocusedItem() {
@@ -94,7 +95,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func buildHeader() {
-        header.material = .headerView
+        header.material = .hudWindow
         header.blendingMode = .withinWindow
         header.state = .active
 
@@ -102,13 +103,13 @@ final class FilePaneViewController: NSViewController {
         directoryIcon.setContentHuggingPriority(.required, for: .horizontal)
 
         refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
-        refreshButton.bezelStyle = .texturedRounded
+        LiquidGlassStyle.applyButtonChrome(to: refreshButton)
         refreshButton.target = self
         refreshButton.action = #selector(refresh)
         refreshButton.toolTip = "Refresh"
 
         hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Toggle Hidden Files")
-        hiddenButton.bezelStyle = .texturedRounded
+        LiquidGlassStyle.applyButtonChrome(to: hiddenButton)
         hiddenButton.target = self
         hiddenButton.action = #selector(toggleHidden)
         hiddenButton.toolTip = "Toggle hidden files"
@@ -121,6 +122,7 @@ final class FilePaneViewController: NSViewController {
         tableView.dataSource = self
         tableView.actionDelegate = self
         tableView.usesAlternatingRowBackgroundColors = false
+        tableView.backgroundColor = .clear
         tableView.allowsMultipleSelection = true
         tableView.allowsColumnReordering = false
         tableView.allowsColumnResizing = true
@@ -138,6 +140,7 @@ final class FilePaneViewController: NSViewController {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
     }
 
     private func addColumn(identifier: String, title: String, width: CGFloat) {
@@ -240,6 +243,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         let cell = NSTableCellView()
         let text = NSTextField(labelWithString: string(for: item, column: identifier))
         text.lineBreakMode = .byTruncatingMiddle
+        text.textColor = LiquidGlassStyle.label
         text.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text)
 

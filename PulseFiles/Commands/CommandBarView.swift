@@ -5,9 +5,11 @@ final class CommandBarView: NSVisualEffectView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        material = .underWindowBackground
+        material = .hudWindow
         blendingMode = .withinWindow
         state = .active
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
         build()
     }
 
@@ -30,8 +32,8 @@ final class CommandBarView: NSVisualEffectView {
 
         for action in CommandBarAction.allCases {
             let button = NSButton(title: "\(action.shortcut)  \(action.rawValue)", target: self, action: #selector(runAction(_:)))
-            button.bezelStyle = .rounded
-            button.font = .systemFont(ofSize: 12)
+            LiquidGlassStyle.applyButtonChrome(to: button)
+            button.font = .systemFont(ofSize: 12, weight: .medium)
             button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
             button.lineBreakMode = .byTruncatingTail
             button.toolTip = action.rawValue
