@@ -30,11 +30,12 @@ final class CommandBarView: NSVisualEffectView {
 
         for action in CommandBarAction.allCases {
             let button = NSButton(title: "\(action.shortcut)  \(action.rawValue)", target: self, action: #selector(runAction(_:)))
-            button.bezelStyle = .inline
+            button.bezelStyle = .rounded
             button.font = .systemFont(ofSize: 12)
             button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
             button.lineBreakMode = .byTruncatingTail
             button.toolTip = action.rawValue
+            button.setButtonType(.momentaryPushIn)
             stack.addArrangedSubview(button)
         }
     }

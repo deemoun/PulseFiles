@@ -7,6 +7,8 @@ protocol FileTableViewActionDelegate: AnyObject {
     func fileTableViewDidRequestForward(_ tableView: FileTableView)
     func fileTableView(_ tableView: FileTableView, didRequestLocation url: URL)
     func fileTableViewDidRequestToggleHidden(_ tableView: FileTableView)
+    func fileTableViewDidRequestTerminalToggle(_ tableView: FileTableView)
+    func fileTableViewDidRequestNewFolder(_ tableView: FileTableView)
     func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView)
 }
 
@@ -18,6 +20,14 @@ final class FileTableView: NSTableView {
         let shift = event.modifierFlags.contains(.shift)
         if event.keyCode == 48 {
             actionDelegate?.fileTableViewDidRequestPaneSwitch(self)
+            return
+        }
+        if event.keyCode == 98 {
+            actionDelegate?.fileTableViewDidRequestNewFolder(self)
+            return
+        }
+        if command && event.keyCode == 50 {
+            actionDelegate?.fileTableViewDidRequestTerminalToggle(self)
             return
         }
         if event.keyCode == 36 {

@@ -7,6 +7,8 @@ final class FilePaneViewController: NSViewController {
 
     var onActivate: (() -> Void)?
     var onSwitchPane: (() -> Void)?
+    var onToggleTerminal: (() -> Void)?
+    var onNewFolder: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
 
     private let header = NSVisualEffectView()
@@ -29,6 +31,15 @@ final class FilePaneViewController: NSViewController {
     }
 
     var currentDirectory: URL { viewModel.currentDirectory }
+    var selectedItems: [FileItem] {
+        tableView.selectedRowIndexes.compactMap { viewModel.items.indices.contains($0) ? viewModel.items[$0] : nil }
+    }
+
+    var focusedItem: FileItem? {
+        let row = tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow
+        guard viewModel.items.indices.contains(row) else { return nil }
+        return viewModel.items[row]
+    }
 
     override func loadView() {
         view = NSView()
@@ -66,9 +77,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func openFocusedItem() {
-        let row = tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow
-        guard viewModel.items.indices.contains(row) else { return }
-        let item = viewModel.items[row]
+        guard let item = focusedItem else { return }
         if item.isDirectory {
             navigate(to: item.url)
         } else {
@@ -320,6 +329,14 @@ extension FilePaneViewController: FileTableViewActionDelegate {
 
     func fileTableViewDidRequestToggleHidden(_ tableView: FileTableView) {
         viewModel.toggleHiddenFiles()
+    }
+
+    func fileTableViewDidRequestTerminalToggle(_ tableView: FileTableView) {
+        onToggleTerminal?()
+    }
+
+    func fileTableViewDidRequestNewFolder(_ tableView: FileTableView) {
+        onNewFolder?()
     }
 
     func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView) {
