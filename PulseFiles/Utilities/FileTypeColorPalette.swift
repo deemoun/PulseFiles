@@ -251,6 +251,24 @@ enum FileTypeColorPalette {
 
     private static let hiddenAlpha: CGFloat = 0.62
 
+    static func textColor(for item: FileItem, isSelected: Bool, isActivePane: Bool, appearance: NSAppearance?) -> NSColor {
+        textColor(
+            for: FileTypeClassifier.style(for: item),
+            isSelected: isSelected,
+            isActivePane: isActivePane,
+            appearance: appearance
+        )
+    }
+
+    static func textColor(for style: FileVisualStyle, isSelected: Bool, isActivePane: Bool, appearance: NSAppearance?) -> NSColor {
+        let categoryColor = color(for: style, appearance: appearance)
+        guard isSelected else { return categoryColor }
+
+        let selectedTextColor = (isActivePane ? NSColor.selectedTextColor : NSColor.unemphasizedSelectedTextColor)
+            .resolvedColorIfNeeded(with: appearance)
+        return blend(categoryColor, over: selectedTextColor, fraction: 0.28)
+    }
+
     static func color(for style: FileVisualStyle, appearance: NSAppearance?) -> NSColor {
         let categoryColor = color(for: style.category, appearance: appearance)
         guard style.modifiers.contains(.hidden) else { return categoryColor }
@@ -261,5 +279,28 @@ enum FileTypeColorPalette {
         let resolvedColor = activeScheme.color(for: category)
         guard let appearance else { return resolvedColor }
         return resolvedColor.resolvedColor(with: appearance)
+    }
+
+    private static func blend(_ categoryColor: NSColor, over selectedTextColor: NSColor, fraction: CGFloat) -> NSColor {
+        let clampedFraction = max(0, min(1, fraction))
+        guard let foreground = categoryColor.usingColorSpace(.deviceRGB),
+              let background = selectedTextColor.usingColorSpace(.deviceRGB) else {
+            return selectedTextColor
+        }
+
+        return NSColor(
+            deviceRed: (foreground.redComponent * clampedFraction) + (background.redComponent * (1 - clampedFraction)),
+            green: (foreground.greenComponent * clampedFraction) + (background.greenComponent * (1 - clampedFraction)),
+            blue: (foreground.blueComponent * clampedFraction) + (background.blueComponent * (1 - clampedFraction)),
+            alpha: max(foreground.alphaComponent, background.alphaComponent)
+        )
+    }
+}
+
+
+private extension NSColor {
+    func resolvedColorIfNeeded(with appearance: NSAppearance?) -> NSColor {
+        guard let appearance else { return self }
+        return resolvedColor(with: appearance)
     }
 }

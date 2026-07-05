@@ -25,6 +25,7 @@ final class FilePaneViewController: NSViewController {
     private let activeStripe = NSView()
     private var isReloadingData = false
     private var isPaneActive = false
+    private var previousSelectedRowIndexes = IndexSet()
 
     init(paneID: PaneID, viewModel: FilePaneViewModel) {
         self.paneID = paneID
@@ -295,6 +296,7 @@ final class FilePaneViewController: NSViewController {
         directoryIcon.image = .fileIcon(for: viewModel.currentDirectory)
         tableView.reloadData()
         pruneInvalidSelection()
+        previousSelectedRowIndexes = tableView.selectedRowIndexes
         if tableView.selectedRow == -1, tableView.numberOfRows > 0 {
             selectDefaultRow()
         }
@@ -342,8 +344,12 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         let text = NSTextField(labelWithString: string(for: item, column: identifier))
         text.lineBreakMode = .byTruncatingMiddle
         if identifier == "name" {
-            let style = FileTypeClassifier.style(for: item)
-            text.textColor = FileTypeColorPalette.color(for: style, appearance: view.effectiveAppearance)
+            text.textColor = FileTypeColorPalette.textColor(
+                for: item,
+                isSelected: tableView.isRowSelected(row),
+                isActivePane: isPaneActive,
+                appearance: view.effectiveAppearance
+            )
         } else {
             text.textColor = LiquidGlassStyle.label
         }
@@ -378,6 +384,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        reloadRowsForSelectionColorChange()
         statusView.configure(
             items: viewModel.visibleItems,
             selectedItems: selectedItems,
@@ -405,6 +412,17 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             onActivate?()
         }
         return true
+    }
+
+    private func reloadRowsForSelectionColorChange() {
+        let currentSelectedRowIndexes = tableView.selectedRowIndexes
+        let changedRows = IndexSet(
+            previousSelectedRowIndexes.filter { !currentSelectedRowIndexes.contains($0) }
+                + currentSelectedRowIndexes.filter { !previousSelectedRowIndexes.contains($0) }
+        )
+        previousSelectedRowIndexes = currentSelectedRowIndexes
+        guard !changedRows.isEmpty else { return }
+        tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
     }
 
     private func pruneInvalidSelection() {

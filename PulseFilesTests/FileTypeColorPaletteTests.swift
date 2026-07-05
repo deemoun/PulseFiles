@@ -174,6 +174,40 @@ final class FileTypeColorPaletteTests: XCTestCase {
         XCTAssertSameColor(FileTypeColorPalette.color(for: .diskImage, appearance: nil), FileTypeColorPalette.diskImage)
         XCTAssertSameColor(FileTypeColorPalette.color(for: .fallback, appearance: nil), FileTypeColorPalette.fallback)
     }
+
+    func testSelectedTextColorDiffersFromNormalCategoryColor() {
+        let normalColor = FileTypeColorPalette.textColor(
+            for: item("Archive.zip"),
+            isSelected: false,
+            isActivePane: true,
+            appearance: nil
+        )
+        let selectedColor = FileTypeColorPalette.textColor(
+            for: item("Archive.zip"),
+            isSelected: true,
+            isActivePane: true,
+            appearance: nil
+        )
+
+        XCTAssertFalse(selectedColor.isEqual(normalColor))
+    }
+
+    func testInactiveSelectedTextColorDiffersFromActiveSelectedColor() {
+        let activeSelectedColor = FileTypeColorPalette.textColor(
+            for: item("Photo.png"),
+            isSelected: true,
+            isActivePane: true,
+            appearance: nil
+        )
+        let inactiveSelectedColor = FileTypeColorPalette.textColor(
+            for: item("Photo.png"),
+            isSelected: true,
+            isActivePane: false,
+            appearance: nil
+        )
+
+        XCTAssertFalse(inactiveSelectedColor.isEqual(activeSelectedColor))
+    }
 }
 
 private func item(
