@@ -796,7 +796,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             let destination = targetPane().currentDirectory.appendingPathComponent(name, isDirectory: true)
             try accessPolicy.validateAccess(to: destination)
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
-            targetPane().loadDirectory()
+            targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
             showError(message: "Invalid Folder Name", detail: error.localizedDescription)
         } catch {
@@ -810,7 +810,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             let destination = targetPane().currentDirectory.appendingPathComponent(name)
             try accessPolicy.validateAccess(to: destination)
             try Data().write(to: destination, options: .withoutOverwriting)
-            targetPane().loadDirectory()
+            targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
             showError(message: "Invalid File Name", detail: error.localizedDescription)
         } catch {
@@ -854,7 +854,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             let destination = parentDirectory.appendingPathComponent(name, isDirectory: item.isDirectory)
             try accessPolicy.validateAccess(to: destination)
             try FileManager.default.moveItem(at: item.url, to: destination)
-            targetPane().loadDirectory()
+            targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
             showError(message: "Invalid Name", detail: error.localizedDescription)
         } catch {

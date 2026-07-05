@@ -47,8 +47,8 @@ final class FilePaneViewModel {
         }
     }
 
-    func loadCurrentDirectory() {
-        load(directory: state.currentDirectory, addToHistory: false)
+    func loadCurrentDirectory(onLoaded: (() -> Void)? = nil) {
+        load(directory: state.currentDirectory, addToHistory: false, onLoaded: onLoaded)
     }
 
     func navigate(to url: URL) {
@@ -118,7 +118,7 @@ final class FilePaneViewModel {
         onDisplayPreferencesChanged?(state.showsHiddenFiles, state.sort)
     }
 
-    private func load(directory: URL, addToHistory: Bool) {
+    private func load(directory: URL, addToHistory: Bool, onLoaded: (() -> Void)? = nil) {
         loadTask?.cancel()
         isLoading = true
         errorMessage = nil
@@ -140,12 +140,14 @@ final class FilePaneViewModel {
                 items = loadedItems
                 isLoading = false
                 onChange?()
+                onLoaded?()
             } catch {
                 guard !Task.isCancelled else { return }
                 items = []
                 errorMessage = error.localizedDescription
                 isLoading = false
                 onChange?()
+                onLoaded?()
             }
         }
     }

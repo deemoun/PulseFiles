@@ -26,6 +26,7 @@ final class FilePaneViewController: NSViewController {
     private var isReloadingData = false
     private var isPaneActive = false
     private var previousSelectedRowIndexes = IndexSet()
+    private var pendingSelectionURL: URL?
 
     init(paneID: PaneID, viewModel: FilePaneViewModel) {
         self.paneID = paneID
@@ -77,8 +78,18 @@ final class FilePaneViewController: NSViewController {
         bindViewModel()
     }
 
-    func loadDirectory() {
-        viewModel.loadCurrentDirectory()
+    func loadDirectory(selecting url: URL? = nil) {
+        pendingSelectionURL = url
+        viewModel.loadCurrentDirectory { [weak self] in
+            self?.selectPendingItemIfAvailable()
+        }
+    }
+
+    func selectItem(at url: URL) {
+        pendingSelectionURL = url
+        if !viewModel.isLoading {
+            selectPendingItemIfAvailable()
+        }
     }
 
     func toggleHiddenFiles() {
@@ -301,7 +312,7 @@ final class FilePaneViewController: NSViewController {
         tableView.reloadData()
         pruneInvalidSelection()
         previousSelectedRowIndexes = tableView.selectedRowIndexes
-        if tableView.selectedRow == -1, tableView.numberOfRows > 0 {
+        if !selectPendingItemIfAvailable(), tableView.selectedRow == -1, tableView.numberOfRows > 0 {
             selectDefaultRow()
         }
         statusView.configure(
@@ -312,6 +323,25 @@ final class FilePaneViewController: NSViewController {
         )
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files")
+    }
+
+    @discardableResult
+    private func selectPendingItemIfAvailable() -> Bool {
+        guard !viewModel.isLoading, let pendingSelectionURL else { return false }
+        guard let itemIndex = viewModel.visibleItems.firstIndex(where: {
+            isSameFileURL($0.url, pendingSelectionURL)
+        }) else { return false }
+        let row = itemIndex + realRowOffset
+        guard row >= 0, row < tableView.numberOfRows else { return false }
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        tableView.scrollRowToVisible(row)
+        self.pendingSelectionURL = nil
+        previousSelectedRowIndexes = tableView.selectedRowIndexes
+        return true
+    }
+
+    private func isSameFileURL(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.standardizedFileURL.resolvingSymlinksInPath().path == rhs.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     @objc private func refresh() {
