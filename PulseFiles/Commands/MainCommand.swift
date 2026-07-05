@@ -21,6 +21,7 @@ enum MainCommand {
     case back
     case forward
     case parent
+    case goToFolder
     case home
     case downloads
     case applications

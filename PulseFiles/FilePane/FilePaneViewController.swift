@@ -11,6 +11,8 @@ final class FilePaneViewController: NSViewController {
     var onNewFolder: (() -> Void)?
     var onNewFile: (() -> Void)?
     var onCommand: ((MainCommand) -> Void)?
+    var onOpenURL: ((URL) -> Void)?
+    var onOpenWithApplication: ((URL, URL?) -> Void)?
     var onDropURLs: (([URL], URL, Bool) -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
@@ -147,7 +149,7 @@ final class FilePaneViewController: NSViewController {
         if item.isDirectory {
             navigate(to: item.url)
         } else {
-            NSWorkspace.shared.open(item.url)
+            onOpenURL?(item.url)
         }
     }
 
@@ -605,8 +607,11 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             return menu
         }
 
-        if item(forRow: row) != nil {
+        if let rowItem = item(forRow: row) {
             menu.addItem(contextMenuItem("Open", action: #selector(contextOpen)))
+            if !rowItem.isDirectory {
+                menu.addItem(openWithMenu(for: rowItem.url))
+            }
             menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
             menu.addItem(.separator())
             menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
@@ -630,6 +635,31 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         return item
     }
 
+    private func openWithMenu(for url: URL) -> NSMenuItem {
+        let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Open With")
+
+        let defaultItem = NSMenuItem(title: "Default Application", action: #selector(contextOpenWithDefault(_:)), keyEquivalent: "")
+        defaultItem.target = self
+        defaultItem.representedObject = url
+        submenu.addItem(defaultItem)
+
+        let applicationURLs = NSWorkspace.shared.urlsForApplications(toOpen: url)
+            .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+        if !applicationURLs.isEmpty {
+            submenu.addItem(.separator())
+        }
+        for applicationURL in applicationURLs {
+            let applicationItem = NSMenuItem(title: applicationURL.deletingPathExtension().lastPathComponent, action: #selector(contextOpenWithApplication(_:)), keyEquivalent: "")
+            applicationItem.target = self
+            applicationItem.representedObject = OpenWithRequest(fileURL: url, applicationURL: applicationURL)
+            submenu.addItem(applicationItem)
+        }
+
+        item.submenu = submenu
+        return item
+    }
+
     @objc private func contextOpenParent() { onCommand?(.parent) }
     @objc private func contextOpen() { onCommand?(.open) }
     @objc private func contextRename() { onCommand?(.rename) }
@@ -640,11 +670,31 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     @objc private func contextNewFolder() { onCommand?(.newFolder) }
     @objc private func contextRefresh() { onCommand?(.refresh) }
     @objc private func contextToggleHidden() { onCommand?(.toggleHiddenFiles) }
+    @objc private func contextOpenWithDefault(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onOpenWithApplication?(url, nil)
+    }
+
+    @objc private func contextOpenWithApplication(_ sender: NSMenuItem) {
+        guard let request = sender.representedObject as? OpenWithRequest else { return }
+        onOpenWithApplication?(request.fileURL, request.applicationURL)
+    }
+
     @objc private func contextCopyPath() {
         let paths = selectedItems.map(\.url.path)
         guard !paths.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
+    }
+}
+
+private final class OpenWithRequest {
+    let fileURL: URL
+    let applicationURL: URL
+
+    init(fileURL: URL, applicationURL: URL) {
+        self.fileURL = fileURL
+        self.applicationURL = applicationURL
     }
 }
 

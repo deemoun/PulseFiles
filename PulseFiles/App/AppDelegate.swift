@@ -196,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(menuItem("Back", action: #selector(MainWindowViewController.menuBack(_:)), key: "[", modifiers: [.command]))
         submenu.addItem(menuItem("Forward", action: #selector(MainWindowViewController.menuForward(_:)), key: "]", modifiers: [.command]))
         submenu.addItem(menuItem("Parent Folder", action: #selector(MainWindowViewController.menuParent(_:)), key: "\u{F700}", modifiers: [.command]))
+        submenu.addItem(menuItem("Go to Folder…", action: #selector(MainWindowViewController.menuGoToFolder(_:)), key: "g", modifiers: [.command, .shift]))
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Home", action: #selector(MainWindowViewController.menuHome(_:)), key: "h", modifiers: [.command, .shift]))
         submenu.addItem(menuItem("Downloads", action: #selector(MainWindowViewController.menuDownloads(_:)), key: "l", modifiers: [.command, .option]))

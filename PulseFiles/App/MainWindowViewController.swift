@@ -181,6 +181,22 @@ final class MainWindowViewController: NSViewController {
         rightPane.onNewFolder = { [weak self] in self?.promptForNewFolder() }
         leftPane.onNewFile = { [weak self] in self?.promptForNewFile() }
         rightPane.onNewFile = { [weak self] in self?.promptForNewFile() }
+        leftPane.onOpenURL = { [weak self] fileURL in
+            self?.activePaneID = .left
+            self?.openFile(fileURL, with: nil)
+        }
+        rightPane.onOpenURL = { [weak self] fileURL in
+            self?.activePaneID = .right
+            self?.openFile(fileURL, with: nil)
+        }
+        leftPane.onOpenWithApplication = { [weak self] fileURL, applicationURL in
+            self?.activePaneID = .left
+            self?.openFile(fileURL, with: applicationURL)
+        }
+        rightPane.onOpenWithApplication = { [weak self] fileURL, applicationURL in
+            self?.activePaneID = .right
+            self?.openFile(fileURL, with: applicationURL)
+        }
         leftPane.onCommand = { [weak self] command in
             self?.activePaneID = .left
             self?.performCommand(command)
@@ -289,6 +305,8 @@ final class MainWindowViewController: NSViewController {
             targetPane().goForward()
         case .parent:
             targetPane().goParent()
+        case .goToFolder:
+            promptForGoToFolder()
         case .home:
             targetPane().navigate(to: ExperimentalFlags.appSandboxRoot)
         case .downloads:
@@ -814,6 +832,92 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
+    private func openFile(_ fileURL: URL, with applicationURL: URL?) {
+        do {
+            try accessPolicy.validateAccess(to: fileURL)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                throw FileOperationError.sourceMissing(fileURL)
+            }
+
+            if let applicationURL {
+                let configuration = NSWorkspace.OpenConfiguration()
+                NSWorkspace.shared.open([fileURL], withApplicationAt: applicationURL, configuration: configuration) { [weak self] _, error in
+                    if let error {
+                        self?.showError(message: "Could Not Open File", detail: error.localizedDescription)
+                    }
+                }
+            } else {
+                NSWorkspace.shared.open(fileURL)
+            }
+        } catch {
+            showError(message: "Could Not Open File", detail: error.localizedDescription)
+        }
+    }
+
+    private func promptForGoToFolder() {
+        view.window?.makeFirstResponder(nil)
+        let alert = NSAlert()
+        alert.messageText = "Go to Folder"
+        alert.informativeText = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
+            ? "Enter a folder path inside the PulseFiles experimental sandbox."
+            : "Enter an absolute, home-relative, or active-pane-relative folder path."
+        alert.addButton(withTitle: "Go")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(string: targetPane().currentDirectory.path)
+        textField.frame = NSRect(x: 0, y: 0, width: 420, height: 24)
+        alert.accessoryView = textField
+
+        let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            self.goToFolder(path: textField.stringValue)
+        }
+
+        if let window = view.window {
+            alert.beginSheetModal(for: window, completionHandler: handleResponse)
+        } else {
+            handleResponse(alert.runModal())
+        }
+    }
+
+    private func goToFolder(path rawPath: String) {
+        do {
+            let url = try resolveFolderPath(rawPath)
+            targetPane().navigate(to: url)
+        } catch {
+            showError(message: "Could Not Go to Folder", detail: error.localizedDescription)
+        }
+    }
+
+    private func resolveFolderPath(_ rawPath: String) throws -> URL {
+        let trimmedPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { throw FileNameValidator.ValidationError.empty }
+
+        let expandedPath: String
+        if trimmedPath == "~" {
+            expandedPath = FileManager.default.homeDirectoryForCurrentUser.path
+        } else if trimmedPath.hasPrefix("~/") {
+            expandedPath = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(String(trimmedPath.dropFirst(2)))
+                .path
+        } else if trimmedPath.hasPrefix("/") {
+            expandedPath = trimmedPath
+        } else {
+            expandedPath = targetPane().currentDirectory.appendingPathComponent(trimmedPath).path
+        }
+
+        let url = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
+        try accessPolicy.validateAccess(to: url)
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            throw FileOperationError.destinationDirectoryMissing(url)
+        }
+        guard isDirectory.boolValue else {
+            throw FileOperationError.destinationNotDirectory(url)
+        }
+        return url
+    }
+
     private func promptForRename() {
         guard let item = targetPane().focusedItem else {
             showError(message: "Nothing Selected", detail: "Select one item to rename.")
@@ -844,17 +948,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func rename(item: FileItem, to rawName: String) {
-        do {
-            let parentDirectory = item.url.deletingLastPathComponent()
-            let name = try FileNameValidator.validate(rawName, in: parentDirectory, replacing: item.url)
-            let destination = parentDirectory.appendingPathComponent(name, isDirectory: item.isDirectory)
-            try accessPolicy.validateAccess(to: destination)
-            try FileManager.default.moveItem(at: item.url, to: destination)
-            targetPane().loadDirectory(selecting: destination)
-        } catch let error as FileNameValidator.ValidationError {
-            showError(message: "Invalid Name", detail: error.localizedDescription)
-        } catch {
-            showError(message: "Could Not Rename Item", detail: error.localizedDescription)
+        startFileOperation(named: "Rename") { [fileOperations] progressHandler in
+            try await fileOperations.rename(item.url, to: rawName, progressHandler: progressHandler)
         }
     }
 
@@ -866,8 +961,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
         let permanentlyDelete = settings.permanentlyDeleteInsteadOfTrash
         let operationName = permanentlyDelete ? "Permanently Delete" : "Move to Trash"
-        let confirmButtonTitle = permanentlyDelete ? "Delete" : "Move to Trash"
-        guard settings.confirmDeleteOperations else {
+        let confirmButtonTitle = permanentlyDelete ? "Permanently Delete" : "Move to Trash"
+        if !permanentlyDelete && settings.confirmDeleteOperations == false {
             delete(items: items, permanently: permanentlyDelete)
             return
         }
@@ -952,6 +1047,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             showError(message: "Operation in Progress", detail: "Wait for the current file operation to finish before starting another file-changing action.")
             return
         }
+        do {
+            try validateDroppedItems(urls, destinationDirectory: destinationDirectory)
+        } catch {
+            showError(message: "Could Not Accept Drop", detail: error.localizedDescription)
+            return
+        }
 
         let kind = copy ? "Copy" : "Move"
         let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
@@ -974,6 +1075,24 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             confirmFileOperation(kind, urls: urls, destinationDirectory: destinationDirectory, confirmButtonTitle: kind, completion: start)
         } else {
             start()
+        }
+    }
+
+    private func validateDroppedItems(_ urls: [URL], destinationDirectory: URL) throws {
+        try accessPolicy.validateAccess(to: destinationDirectory)
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: destinationDirectory.path, isDirectory: &isDirectory) else {
+            throw FileOperationError.destinationDirectoryMissing(destinationDirectory)
+        }
+        guard isDirectory.boolValue else {
+            throw FileOperationError.destinationNotDirectory(destinationDirectory)
+        }
+
+        for url in urls {
+            try accessPolicy.validateAccess(to: url)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw FileOperationError.sourceMissing(url)
+            }
         }
     }
 
@@ -1061,10 +1180,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         var details = [
             "Completed: \(result.completedItems.count)",
             "Skipped: \(result.skippedItems.count)",
-            "Failed: \(result.failedItems.count)"
+            "Failed: \(result.failedItems.count)",
+            "Cleanup warnings: \(result.cleanupWarnings.count)"
         ]
         if result.wasCancelled { details.append("The operation was cancelled before all items completed.") }
         details.append(contentsOf: result.failedItems.map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" })
+        details.append(contentsOf: result.cleanupWarnings.map { "\($0.url.lastPathComponent): \($0.message)" })
         showError(message: "\(operationName) Finished With Issues", detail: details.joined(separator: "\n"))
     }
 
@@ -1189,6 +1310,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuBack(_ sender: Any?) { performCommand(.back) }
     @objc func menuForward(_ sender: Any?) { performCommand(.forward) }
     @objc func menuParent(_ sender: Any?) { performCommand(.parent) }
+    @objc func menuGoToFolder(_ sender: Any?) { performCommand(.goToFolder) }
     @objc func menuHome(_ sender: Any?) { performCommand(.home) }
     @objc func menuDownloads(_ sender: Any?) { performCommand(.downloads) }
     @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
