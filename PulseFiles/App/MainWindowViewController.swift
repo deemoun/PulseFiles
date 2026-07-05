@@ -527,6 +527,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func applySettingsChanges() {
+        FileTypeColorPalette.activeScheme = settings.fileColorScheme
         setSidebarVisible(settings.defaultSidebarVisible)
         if settings.defaultTerminalVisible != isTerminalInstalled {
             settings.defaultTerminalVisible ? installTerminalPanel() : removeTerminalPanel()
@@ -538,6 +539,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         rightPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
         view.layoutSubtreeIfNeeded()
         applySidebarSplitPosition()
+        leftPane.refreshAppearance()
+        rightPane.refreshAppearance()
     }
 
     @objc private func toolbarViewOptions(_ sender: Any?) {

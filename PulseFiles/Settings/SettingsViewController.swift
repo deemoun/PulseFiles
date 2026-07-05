@@ -16,11 +16,12 @@ final class SettingsViewController: NSViewController {
     private let sidebarWidthLabel = NSTextField(labelWithString: "220 pt")
     private let leftDirectoryField = NSTextField()
     private let rightDirectoryField = NSTextField()
+    private var colorWells: [FileVisualCategory: NSColorWell] = [:]
 
     init(settings: SettingsService = SettingsService()) {
         self.settings = settings
         super.init(nibName: nil, bundle: nil)
-        preferredContentSize = NSSize(width: 460, height: 480)
+        preferredContentSize = NSSize(width: 560, height: 720)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -76,7 +77,9 @@ final class SettingsViewController: NSViewController {
             widthRow,
             separator(),
             leftRow,
-            rightRow
+            rightRow,
+            separator(),
+            fileColorPaletteView()
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -96,6 +99,57 @@ final class SettingsViewController: NSViewController {
             leftRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             rightRow.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
+    }
+
+    private func fileColorPaletteView() -> NSView {
+        let title = NSTextField(labelWithString: "File color palette")
+        title.font = .preferredFont(forTextStyle: .headline)
+
+        let description = NSTextField(wrappingLabelWithString: "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename. Hidden items keep their primary category color but are dimmed. Use the color wells to override any color.")
+        description.textColor = .secondaryLabelColor
+
+        let rows = NSStackView()
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 8
+
+        for category in FileVisualCategory.allCases {
+            rows.addArrangedSubview(fileColorRow(for: category))
+        }
+
+        let resetButton = NSButton(title: "Reset Palette", target: self, action: #selector(resetFileColorPalette(_:)))
+
+        let stack = NSStackView(views: [title, description, rows, resetButton])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        description.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
+        rows.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
+        return stack
+    }
+
+    private func fileColorRow(for category: FileVisualCategory) -> NSStackView {
+        let well = NSColorWell(frame: NSRect(x: 0, y: 0, width: 44, height: 24))
+        well.target = self
+        well.action = #selector(fileColorChanged(_:))
+        well.tag = FileVisualCategory.allCases.firstIndex(of: category) ?? 0
+        colorWells[category] = well
+
+        let name = NSTextField(labelWithString: category.displayName)
+        name.font = .preferredFont(forTextStyle: .body)
+        name.widthAnchor.constraint(equalToConstant: 116).isActive = true
+
+        let description = NSTextField(wrappingLabelWithString: category.settingsDescription)
+        description.textColor = .secondaryLabelColor
+
+        let row = NSStackView(views: [well, name, description])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+        description.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
+        return row
     }
 
     private func directoryRow(title: String, field: NSTextField, chooseAction: Selector, resetAction: Selector) -> NSStackView {
@@ -129,6 +183,15 @@ final class SettingsViewController: NSViewController {
         sidebarWidthSlider.doubleValue = settings.preferredSidebarWidth
         updateSidebarWidthLabel()
         updateDirectoryFields()
+        updateColorWells()
+    }
+
+
+    private func updateColorWells() {
+        let scheme = settings.fileColorScheme
+        for category in FileVisualCategory.allCases {
+            colorWells[category]?.color = scheme.color(for: category)
+        }
     }
 
     private func updateSidebarWidthLabel() {
@@ -138,6 +201,25 @@ final class SettingsViewController: NSViewController {
     private func updateDirectoryFields() {
         leftDirectoryField.stringValue = settings.startupLeftDirectory?.path ?? "Last left folder (\(settings.lastLeftDirectory.path))"
         rightDirectoryField.stringValue = settings.startupRightDirectory?.path ?? "Last right folder (\(settings.lastRightDirectory.path))"
+    }
+
+
+    @objc private func fileColorChanged(_ sender: NSColorWell) {
+        guard sender.tag >= 0, sender.tag < FileVisualCategory.allCases.count else { return }
+        let category = FileVisualCategory.allCases[sender.tag]
+        var colors = settings.fileColorScheme.colors
+        colors[category] = sender.color
+        let scheme = FileColorScheme(colors: colors)
+        settings.fileColorScheme = scheme
+        FileTypeColorPalette.activeScheme = scheme
+        onChange?()
+    }
+
+    @objc private func resetFileColorPalette(_ sender: Any?) {
+        settings.resetFileColorScheme()
+        FileTypeColorPalette.activeScheme = settings.fileColorScheme
+        updateColorWells()
+        onChange?()
     }
 
     @objc private func controlChanged(_ sender: Any?) {

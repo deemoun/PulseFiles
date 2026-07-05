@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 final class SettingsService {
     private let defaults: UserDefaults
@@ -70,6 +70,33 @@ final class SettingsService {
         set { defaults.set(newValue, forKey: "permanentlyDeleteInsteadOfTrash") }
     }
 
+
+    var fileColorScheme: FileColorScheme {
+        get {
+            guard let data = defaults.data(forKey: "fileColorScheme"),
+                  let storedColors = try? JSONDecoder().decode([String: StoredColor].self, from: data) else {
+                return .default
+            }
+
+            let colors = storedColors.reduce(into: [FileVisualCategory: NSColor]()) { partialResult, entry in
+                guard let category = FileVisualCategory(rawValue: entry.key) else { return }
+                partialResult[category] = entry.value.color
+            }
+            return FileColorScheme(colors: colors)
+        }
+        set {
+            let storedColors = newValue.colors.reduce(into: [String: StoredColor]()) { partialResult, entry in
+                partialResult[entry.key.rawValue] = StoredColor(color: entry.value)
+            }
+            guard let data = try? JSONEncoder().encode(storedColors) else { return }
+            defaults.set(data, forKey: "fileColorScheme")
+        }
+    }
+
+    func resetFileColorScheme() {
+        defaults.removeObject(forKey: "fileColorScheme")
+    }
+
     var defaultSortDescriptor: FileSortDescriptor {
         get { sortDescriptor(forKey: "defaultSortDescriptor", fallback: FileSortDescriptor()) }
         set { setSortDescriptor(newValue, forKey: "defaultSortDescriptor") }
@@ -131,5 +158,34 @@ final class SettingsService {
     private func setSortDescriptor(_ descriptor: FileSortDescriptor, forKey key: String) {
         guard let data = try? JSONEncoder().encode(descriptor) else { return }
         defaults.set(data, forKey: key)
+    }
+}
+
+
+private struct StoredColor: Codable {
+    let red: Double
+    let green: Double
+    let blue: Double
+    let alpha: Double
+
+    init(red: Double, green: Double, blue: Double, alpha: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+    }
+
+    init(color: NSColor) {
+        let appearance = NSAppearance(named: .aqua)
+        let resolved = appearance.map { color.resolvedColor(with: $0) } ?? color
+        let converted = resolved.usingColorSpace(.deviceRGB) ?? NSColor.labelColor
+        red = Double(converted.redComponent)
+        green = Double(converted.greenComponent)
+        blue = Double(converted.blueComponent)
+        alpha = Double(converted.alphaComponent)
+    }
+
+    var color: NSColor {
+        NSColor(deviceRed: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: CGFloat(alpha))
     }
 }

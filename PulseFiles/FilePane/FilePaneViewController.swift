@@ -289,6 +289,10 @@ final class FilePaneViewController: NSViewController {
         tableView.scrollRowToVisible(row)
     }
 
+    func refreshAppearance() {
+        tableView.reloadData()
+    }
+
     private func reloadData() {
         isReloadingData = true
         defer { isReloadingData = false }
