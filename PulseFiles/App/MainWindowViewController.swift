@@ -44,6 +44,7 @@ final class MainWindowViewController: NSViewController {
     private weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
     private var activeFilterText = ""
+    private var settingsWindowController: NSWindowController?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var flagsChangedEventMonitor: Any?
@@ -501,11 +502,46 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func presentSettings(_ sender: Any?) {
-        guard presentedViewControllers?.contains(where: { $0 is SettingsViewController }) != true else { return }
+        if let existingWindow = settingsWindowController?.window, existingWindow.isVisible {
+            sizeAndPositionSettingsWindow(existingWindow, preferredContentSize: existingWindow.contentViewController?.preferredContentSize ?? NSSize(width: 680, height: 500))
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
 
         let controller = SettingsViewController(settings: settings)
         controller.onChange = { [weak self] in self?.applySettingsChanges() }
-        presentAsSheet(controller)
+        let window = NSWindow(contentViewController: controller)
+        window.title = "Settings"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 600, height: 420)
+        window.maxSize = NSSize(width: 760, height: 560)
+        sizeAndPositionSettingsWindow(window, preferredContentSize: controller.preferredContentSize)
+        window.delegate = self
+
+        let windowController = NSWindowController(window: window)
+        settingsWindowController = windowController
+        windowController.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func sizeAndPositionSettingsWindow(_ window: NSWindow, preferredContentSize: NSSize) {
+        let screen = view.window?.screen ?? NSScreen.main
+        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 900, height: 700)
+        let maxContentWidth = max(600, visibleFrame.width - 100)
+        let maxContentHeight = max(420, visibleFrame.height - 120)
+        let contentSize = NSSize(
+            width: min(max(preferredContentSize.width, 600), min(760, maxContentWidth)),
+            height: min(max(preferredContentSize.height, 420), min(540, maxContentHeight))
+        )
+
+        window.setContentSize(contentSize)
+        let frameSize = window.frame.size
+        let origin = NSPoint(
+            x: visibleFrame.midX - frameSize.width / 2,
+            y: visibleFrame.midY - frameSize.height / 2
+        )
+        window.setFrame(NSRect(origin: origin, size: frameSize), display: true)
     }
 
     private func applySettingsChanges() {
@@ -1111,6 +1147,14 @@ extension MainWindowViewController: NSSplitViewDelegate {
     func splitViewDidResizeSubviews(_ notification: Notification) {
         guard let splitView = notification.object as? NSSplitView, splitView === rootSplitView else { return }
         persistSidebarWidthFromSplitPosition()
+    }
+}
+
+extension MainWindowViewController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === settingsWindowController?.window else { return }
+        settingsWindowController = nil
+        view.window?.makeKeyAndOrderFront(nil)
     }
 }
 

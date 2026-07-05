@@ -1,6 +1,31 @@
 import AppKit
 
 final class SettingsViewController: NSViewController {
+    private enum Category: Int, CaseIterable {
+        case general
+        case folders
+        case operations
+        case colors
+
+        var title: String {
+            switch self {
+            case .general: return "General"
+            case .folders: return "Folders"
+            case .operations: return "Operations"
+            case .colors: return "Colors"
+            }
+        }
+
+        var symbolName: String {
+            switch self {
+            case .general: return "gearshape"
+            case .folders: return "folder"
+            case .operations: return "arrow.left.arrow.right"
+            case .colors: return "paintpalette"
+            }
+        }
+    }
+
     var onChange: (() -> Void)?
 
     private let settings: SettingsService
@@ -17,13 +42,14 @@ final class SettingsViewController: NSViewController {
     private let leftDirectoryField = NSTextField()
     private let rightDirectoryField = NSTextField()
     private var colorWells: [FileVisualCategory: NSColorWell] = [:]
+    private let categoryControl = NSSegmentedControl()
     private let scrollView = NSScrollView()
-    private let contentStack = NSStackView()
+    private var selectedCategory: Category = .general
 
     init(settings: SettingsService = SettingsService()) {
         self.settings = settings
         super.init(nibName: nil, bundle: nil)
-        preferredContentSize = NSSize(width: 820, height: 620)
+        preferredContentSize = NSSize(width: 680, height: 500)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -50,6 +76,8 @@ final class SettingsViewController: NSViewController {
         subtitle.textColor = .secondaryLabelColor
         subtitle.setContentHuggingPriority(.required, for: .vertical)
 
+        configureCategoryControl()
+
         let headerStack = NSStackView(views: [title, subtitle])
         headerStack.orientation = .vertical
         headerStack.alignment = .leading
@@ -72,70 +100,10 @@ final class SettingsViewController: NSViewController {
             $0.lineBreakMode = .byTruncatingMiddle
         }
 
-        let widthRow = NSStackView(views: [NSTextField(labelWithString: "Sidebar width"), sidebarWidthSlider, sidebarWidthLabel])
-        widthRow.orientation = .horizontal
-        widthRow.alignment = .centerY
-        widthRow.spacing = 8
-
-        let leftRow = directoryRow(title: "Left startup folder", field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:)))
-        let rightRow = directoryRow(title: "Right startup folder", field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
-
-        let appearanceSection = settingsSection(
-            title: "Appearance & Layout",
-            views: [
-                sidebarCheckbox,
-                terminalCheckbox,
-                singlePaneCheckbox,
-                widthRow
-            ]
-        )
-        let fileBrowserSection = settingsSection(
-            title: "File Browser",
-            views: [
-                hiddenFilesCheckbox
-            ]
-        )
-        let startupFoldersSection = settingsSection(
-            title: "Startup Folders",
-            views: [
-                leftRow,
-                rightRow
-            ]
-        )
-        let fileOperationsSection = settingsSection(
-            title: "File Operations",
-            views: [
-                confirmCopyCheckbox,
-                confirmMoveCheckbox,
-                confirmDeleteCheckbox,
-                permanentDeleteCheckbox
-            ]
-        )
-        let fileColorsSection = settingsSection(
-            title: "File Colors",
-            views: [
-                fileColorPaletteView()
-            ]
-        )
-
-        contentStack.orientation = .vertical
-        contentStack.alignment = .leading
-        contentStack.spacing = 18
-        contentStack.translatesAutoresizingMaskIntoConstraints = false
-        [appearanceSection, fileBrowserSection, startupFoldersSection, fileOperationsSection, fileColorsSection].forEach {
-            contentStack.addArrangedSubview($0)
-            $0.widthAnchor.constraint(equalTo: contentStack.widthAnchor).isActive = true
-        }
-
-        let documentView = NSView()
-        documentView.translatesAutoresizingMaskIntoConstraints = false
-        documentView.addSubview(contentStack)
-
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
+        scrollView.autohidesScrollers = false
         scrollView.borderType = .noBorder
-        scrollView.documentView = documentView
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         let doneButton = NSButton(title: "Done", target: self, action: #selector(done(_:)))
@@ -149,45 +117,163 @@ final class SettingsViewController: NSViewController {
         footerStack.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(headerStack)
+        view.addSubview(categoryControl)
         view.addSubview(scrollView)
         view.addSubview(footerStack)
 
         NSLayoutConstraint.activate([
-            view.widthAnchor.constraint(greaterThanOrEqualToConstant: preferredContentSize.width),
-            view.heightAnchor.constraint(greaterThanOrEqualToConstant: preferredContentSize.height),
             headerStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
             headerStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
             headerStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
 
+            categoryControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            categoryControl.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -28),
+            categoryControl.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 18),
+            categoryControl.heightAnchor.constraint(equalToConstant: 32),
+
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
-            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 18),
+            scrollView.topAnchor.constraint(equalTo: categoryControl.bottomAnchor, constant: 18),
             scrollView.bottomAnchor.constraint(equalTo: footerStack.topAnchor, constant: -18),
-
-            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            documentView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
-            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-
-            contentStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
-            contentStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
-            contentStack.topAnchor.constraint(equalTo: documentView.topAnchor),
-            contentStack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
 
             footerStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
             footerStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
-            footerStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
-            appearanceSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            fileBrowserSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            startupFoldersSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            fileOperationsSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            fileColorsSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            widthRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            sidebarWidthSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
-            leftRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            rightRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
+            footerStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24)
         ])
+
+        rebuildSettingsPage()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {
+            closeSettings()
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    @objc override func cancelOperation(_ sender: Any?) {
+        closeSettings()
+    }
+
+    private func closeSettings() {
+        if let window = view.window {
+            window.close()
+        } else {
+            dismiss(nil)
+        }
+    }
+
+    private func configureCategoryControl() {
+        categoryControl.segmentCount = Category.allCases.count
+        categoryControl.segmentStyle = .rounded
+        categoryControl.trackingMode = .selectOne
+        categoryControl.target = self
+        categoryControl.action = #selector(categoryChanged(_:))
+        categoryControl.translatesAutoresizingMaskIntoConstraints = false
+
+        for category in Category.allCases {
+            categoryControl.setLabel(category.title, forSegment: category.rawValue)
+            categoryControl.setImage(NSImage(systemSymbolName: category.symbolName, accessibilityDescription: category.title), forSegment: category.rawValue)
+            categoryControl.setWidth(128, forSegment: category.rawValue)
+        }
+        categoryControl.selectedSegment = selectedCategory.rawValue
+    }
+
+    private func rebuildSettingsPage() {
+        colorWells.removeAll()
+
+        let pageStack = NSStackView()
+        pageStack.orientation = .vertical
+        pageStack.alignment = .leading
+        pageStack.spacing = 18
+        pageStack.translatesAutoresizingMaskIntoConstraints = false
+
+        pageSections(for: selectedCategory).forEach { section in
+            pageStack.addArrangedSubview(section)
+            section.widthAnchor.constraint(equalTo: pageStack.widthAnchor).isActive = true
+        }
+
+        let documentView = FlippedView()
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        documentView.addSubview(pageStack)
+        scrollView.documentView = documentView
+
+        let documentMinimumHeight = documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor)
+        documentMinimumHeight.priority = .defaultLow
+
+        NSLayoutConstraint.activate([
+            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            documentMinimumHeight,
+
+            pageStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            pageStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            pageStack.topAnchor.constraint(equalTo: documentView.topAnchor),
+            pageStack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor)
+        ])
+
+        updateColorWells()
+    }
+
+    private func pageSections(for category: Category) -> [NSView] {
+        switch category {
+        case .general:
+            return [
+                settingsSection(
+                    title: "Appearance & Layout",
+                    views: [
+                        sidebarCheckbox,
+                        terminalCheckbox,
+                        singlePaneCheckbox,
+                        sidebarWidthRow()
+                    ]
+                ),
+                settingsSection(
+                    title: "File Browser",
+                    views: [
+                        hiddenFilesCheckbox
+                    ]
+                )
+            ]
+        case .folders:
+            return [
+                settingsSection(
+                    title: "Startup Folders",
+                    views: [
+                        directoryRow(title: "Left startup folder", field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:))),
+                        directoryRow(title: "Right startup folder", field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
+                    ]
+                )
+            ]
+        case .operations:
+            return [
+                settingsSection(
+                    title: "File Operations",
+                    views: [
+                        confirmCopyCheckbox,
+                        confirmMoveCheckbox,
+                        confirmDeleteCheckbox,
+                        permanentDeleteCheckbox
+                    ]
+                )
+            ]
+        case .colors:
+            return [
+                fileColorPaletteView()
+            ]
+        }
+    }
+
+    private func sidebarWidthRow() -> NSStackView {
+        let row = NSStackView(views: [NSTextField(labelWithString: "Sidebar width"), sidebarWidthSlider, sidebarWidthLabel])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        sidebarWidthSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        return row
     }
 
     private func settingsSection(title: String, views: [NSView]) -> NSStackView {
@@ -210,13 +296,14 @@ final class SettingsViewController: NSViewController {
         let title = NSTextField(labelWithString: "File color palette")
         title.font = .preferredFont(forTextStyle: .headline)
 
-        let description = NSTextField(wrappingLabelWithString: "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename. Hidden items keep their primary category color but are dimmed. Use the color wells to override any color.")
+        let description = NSTextField(wrappingLabelWithString: "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename.")
         description.textColor = .secondaryLabelColor
 
         let rows = NSStackView()
         rows.orientation = .vertical
         rows.alignment = .leading
-        rows.spacing = 8
+        rows.spacing = 14
+        rows.translatesAutoresizingMaskIntoConstraints = false
 
         for category in FileVisualCategory.allCases {
             let row = fileColorRow(for: category)
@@ -232,13 +319,14 @@ final class SettingsViewController: NSViewController {
         paletteContents.spacing = 10
         paletteContents.translatesAutoresizingMaskIntoConstraints = false
 
-        let paletteBox = NSBox()
-        paletteBox.boxType = .custom
-        paletteBox.borderType = .lineBorder
-        paletteBox.cornerRadius = 8
-        paletteBox.contentViewMargins = NSSize(width: 12, height: 12)
+        let paletteBox = NSView()
+        paletteBox.wantsLayer = true
+        paletteBox.layer?.cornerRadius = 8
+        paletteBox.layer?.cornerCurve = .continuous
+        paletteBox.layer?.borderWidth = 1
+        paletteBox.layer?.borderColor = NSColor.separatorColor.cgColor
         paletteBox.translatesAutoresizingMaskIntoConstraints = false
-        paletteBox.contentView = paletteContents
+        paletteBox.addSubview(paletteContents)
 
         let stack = NSStackView(views: [title, paletteBox])
         stack.orientation = .vertical
@@ -248,7 +336,10 @@ final class SettingsViewController: NSViewController {
 
         NSLayoutConstraint.activate([
             paletteBox.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            paletteContents.widthAnchor.constraint(equalTo: paletteBox.widthAnchor, constant: -24),
+            paletteContents.leadingAnchor.constraint(equalTo: paletteBox.leadingAnchor, constant: 14),
+            paletteContents.trailingAnchor.constraint(equalTo: paletteBox.trailingAnchor, constant: -14),
+            paletteContents.topAnchor.constraint(equalTo: paletteBox.topAnchor, constant: 14),
+            paletteContents.bottomAnchor.constraint(equalTo: paletteBox.bottomAnchor, constant: -14),
             description.widthAnchor.constraint(equalTo: paletteContents.widthAnchor),
             rows.widthAnchor.constraint(equalTo: paletteContents.widthAnchor),
             resetButton.leadingAnchor.constraint(equalTo: paletteContents.leadingAnchor)
@@ -263,19 +354,30 @@ final class SettingsViewController: NSViewController {
         well.action = #selector(fileColorChanged(_:))
         well.tag = FileVisualCategory.allCases.firstIndex(of: category) ?? 0
         colorWells[category] = well
+        well.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        well.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        well.setContentHuggingPriority(.required, for: .horizontal)
+        well.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let name = NSTextField(labelWithString: category.displayName)
         name.font = .preferredFont(forTextStyle: .body)
-        name.widthAnchor.constraint(equalToConstant: 116).isActive = true
+        name.lineBreakMode = .byTruncatingTail
+        name.setContentCompressionResistancePriority(.required, for: .vertical)
 
         let description = NSTextField(wrappingLabelWithString: category.settingsDescription)
         description.textColor = .secondaryLabelColor
+        description.setContentCompressionResistancePriority(.required, for: .vertical)
 
-        let row = NSStackView(views: [well, name, description])
+        let textStack = NSStackView(views: [name, description])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 2
+
+        let row = NSStackView(views: [well, textStack])
         row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 10
-        description.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row.alignment = .top
+        row.spacing = 14
+        textStack.widthAnchor.constraint(equalTo: row.widthAnchor, constant: -72).isActive = true
         return row
     }
 
@@ -332,7 +434,13 @@ final class SettingsViewController: NSViewController {
 
 
     @objc private func done(_ sender: Any?) {
-        dismiss(sender)
+        closeSettings()
+    }
+
+    @objc private func categoryChanged(_ sender: NSSegmentedControl) {
+        guard let category = Category(rawValue: sender.selectedSegment) else { return }
+        selectedCategory = category
+        rebuildSettingsPage()
     }
 
     @objc private func fileColorChanged(_ sender: NSColorWell) {
@@ -387,4 +495,8 @@ final class SettingsViewController: NSViewController {
             completion(url)
         }
     }
+}
+
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }
