@@ -15,11 +15,15 @@ Phase 1 is implemented:
 - Directory navigation by double-click, Return, Backspace, and Command-Up.
 - Active-pane switching with Tab.
 - Right shortcuts/recent sidebar.
-- Collapsible terminal/output area placeholder.
+- Terminal V1 is experimental, hidden by default, and requires the explicit “Enable experimental terminal” setting before it can be shown.
 - Bottom command bar.
 - Model, service, controller, view, command, and utility separation.
 - Unit tests for navigation history, sorting, path utilities, and bookmark persistence.
 - Experimental sandbox-root access flag defaults to enabled, limiting navigation to `~/Library/Application Support/PulseFiles/ExperimentalSandbox`.
+
+## Terminal V1 status
+
+The integrated terminal is a V1 experimental feature. It is hidden and disabled by default. To use it, open Settings and enable **Enable experimental terminal**; optionally enable **Show terminal by default** after that. On first use, PulseFiles warns that shell commands can modify or delete files, including files outside the app's experimental sandbox when sandbox restrictions are disabled.
 
 ## Opening
 

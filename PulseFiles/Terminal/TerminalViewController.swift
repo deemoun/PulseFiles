@@ -28,7 +28,8 @@ final class TerminalViewController: NSViewController {
         terminalView.onSubmit = { [weak self] command in
             self?.run(command)
         }
-        appendLine("PulseFiles terminal")
+        appendLine("PulseFiles terminal (experimental V1)")
+        appendLine("Warning: shell commands can modify or delete files.")
         appendPrompt()
     }
 
@@ -74,7 +75,7 @@ final class TerminalViewController: NSViewController {
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.executableURL = URL(fileURLWithPath: terminalService.shellPath)
         process.arguments = ["-lc", command]
         process.currentDirectoryURL = suggestedWorkingDirectory
 

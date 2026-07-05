@@ -35,9 +35,22 @@ final class SettingsService {
         set { defaults.set(newValue, forKey: "defaultSidebarVisible") }
     }
 
+    var experimentalTerminalEnabled: Bool {
+        get { defaults.object(forKey: "experimentalTerminalEnabled") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "experimentalTerminalEnabled") }
+    }
+
+    var hasAcknowledgedTerminalWarning: Bool {
+        get { defaults.object(forKey: "hasAcknowledgedTerminalWarning") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "hasAcknowledgedTerminalWarning") }
+    }
+
     var defaultTerminalVisible: Bool {
-        get { defaults.object(forKey: "defaultTerminalVisible") as? Bool ?? defaults.object(forKey: "isTerminalVisible") as? Bool ?? false }
-        set { defaults.set(newValue, forKey: "defaultTerminalVisible") }
+        get {
+            guard experimentalTerminalEnabled else { return false }
+            return defaults.object(forKey: "defaultTerminalVisible") as? Bool ?? false
+        }
+        set { defaults.set(experimentalTerminalEnabled && newValue, forKey: "defaultTerminalVisible") }
     }
 
     var defaultSinglePaneMode: Bool {
@@ -123,7 +136,7 @@ final class SettingsService {
 
     var isTerminalVisible: Bool {
         get { defaultTerminalVisible }
-        set { defaultTerminalVisible = newValue }
+        set { defaultTerminalVisible = experimentalTerminalEnabled && newValue }
     }
 
     private var defaultLeftDirectory: URL {
