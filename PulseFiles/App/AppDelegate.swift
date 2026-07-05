@@ -2,6 +2,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
+    private var aboutWindowController: NSWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FileTypeColorPalette.activeScheme = SettingsService().fileColorScheme
@@ -47,25 +48,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showAbout(_ sender: Any?) {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-        let description = NSAttributedString(
-            string: "Dual-pane file manager for macOS",
-            attributes: [
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
-                .foregroundColor: NSColor.secondaryLabelColor
-            ]
-        )
 
-        var options: [NSApplication.AboutPanelOptionKey: Any] = [
-            .applicationName: "PulseFiles",
-            .applicationVersion: version,
-            .version: version,
-            .credits: description
-        ]
-        if let icon = appIcon() {
-            options[.applicationIcon] = icon
+        if let existingWindow = aboutWindowController?.window {
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
         }
 
-        NSApplication.shared.orderFrontStandardAboutPanel(options: options)
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 430))
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+
+        let iconView = NSImageView()
+        iconView.image = appIcon()
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        let nameLabel = NSTextField(labelWithString: "PulseFiles")
+        nameLabel.font = .systemFont(ofSize: 28, weight: .semibold)
+        nameLabel.alignment = .center
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let versionLabel = NSTextField(labelWithString: "Version \(version)")
+        versionLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        versionLabel.textColor = .secondaryLabelColor
+        versionLabel.alignment = .center
+        versionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let descriptionLabel = NSTextField(wrappingLabelWithString: "Dual-pane file manager for macOS")
+        descriptionLabel.font = .systemFont(ofSize: 14, weight: .regular)
+        descriptionLabel.textColor = .secondaryLabelColor
+        descriptionLabel.alignment = .center
+        descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let doneButton = NSButton(title: "Done", target: self, action: #selector(closeAbout(_:)))
+        doneButton.bezelStyle = .rounded
+        doneButton.keyEquivalent = "\r"
+        doneButton.translatesAutoresizingMaskIntoConstraints = false
+
+        [iconView, nameLabel, versionLabel, descriptionLabel, doneButton].forEach(contentView.addSubview)
+
+        NSLayoutConstraint.activate([
+            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 28),
+            iconView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 188),
+            iconView.heightAnchor.constraint(equalToConstant: 188),
+
+            nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+
+            versionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            versionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+            versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+
+            descriptionLabel.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 18),
+            descriptionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+            descriptionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+
+            doneButton.topAnchor.constraint(greaterThanOrEqualTo: descriptionLabel.bottomAnchor, constant: 24),
+            doneButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            doneButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24)
+        ])
+
+        let window = NSWindow(
+            contentRect: contentView.bounds,
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "About PulseFiles"
+        window.contentView = contentView
+        window.isReleasedWhenClosed = false
+        window.center()
+
+        let windowController = NSWindowController(window: window)
+        aboutWindowController = windowController
+        windowController.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func closeAbout(_ sender: Any?) {
+        aboutWindowController?.window?.close()
     }
 
     private func appIcon() -> NSImage? {
