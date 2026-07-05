@@ -5,6 +5,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FileTypeColorPalette.activeScheme = SettingsService().fileColorScheme
+        if let icon = appIcon() {
+            NSApplication.shared.applicationIconImage = icon
+        }
         NSApplication.shared.mainMenu = buildMainMenu()
         let controller = MainWindowController()
         controller.showWindow(nil)
@@ -31,13 +34,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func appMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "PulseFiles")
-        submenu.addItem(withTitle: "About PulseFiles", action: nil, keyEquivalent: "")
+        let aboutItem = NSMenuItem(title: "About PulseFiles", action: #selector(showAbout(_:)), keyEquivalent: "")
+        aboutItem.target = self
+        submenu.addItem(aboutItem)
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Settings…", action: #selector(MainWindowViewController.menuSettings(_:)), key: ",", modifiers: [.command]))
         submenu.addItem(.separator())
         submenu.addItem(withTitle: "Quit PulseFiles", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = submenu
         return item
+    }
+
+    @objc private func showAbout(_ sender: Any?) {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        let description = NSAttributedString(
+            string: "Dual-pane file manager for macOS",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+        )
+
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
+            .applicationName: "PulseFiles",
+            .applicationVersion: version,
+            .version: version,
+            .credits: description
+        ]
+        if let icon = appIcon() {
+            options[.applicationIcon] = icon
+        }
+
+        NSApplication.shared.orderFrontStandardAboutPanel(options: options)
+    }
+
+    private func appIcon() -> NSImage? {
+        if let resourceIcon = NSImage(named: "AppIcon") {
+            return resourceIcon
+        }
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") else {
+            return nil
+        }
+        return NSImage(contentsOf: iconURL)
     }
 
     private func fileMenu() -> NSMenuItem {

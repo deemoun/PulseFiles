@@ -57,6 +57,7 @@ CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 INFO_PLIST="${REPO_ROOT}/PulseFiles/Info.plist"
+APP_RESOURCES_DIR="${REPO_ROOT}/PulseFiles/Resources"
 
 if [[ "${CONFIGURATION}" == "release" ]]; then
     BUILD_CONFIGURATION_FLAG="--configuration release"
@@ -86,6 +87,9 @@ echo "Packaging ${APP_BUNDLE}..."
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${EXECUTABLE_PATH}" "${MACOS_DIR}/${APP_NAME}"
 cp "${INFO_PLIST}" "${CONTENTS_DIR}/Info.plist"
+if [[ -d "${APP_RESOURCES_DIR}" ]]; then
+    cp -R "${APP_RESOURCES_DIR}/." "${RESOURCES_DIR}/"
+fi
 chmod +x "${MACOS_DIR}/${APP_NAME}"
 
 if command -v codesign >/dev/null 2>&1; then
