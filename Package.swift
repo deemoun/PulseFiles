@@ -21,7 +21,8 @@ let package = Package(
         .testTarget(
             name: "PulseFilesTests",
             dependencies: ["PulseFiles"],
-            path: "PulseFilesTests"
+            path: "PulseFilesTests",
+            exclude: ["TestSupport/README.md"]
         )
     ]
 )
