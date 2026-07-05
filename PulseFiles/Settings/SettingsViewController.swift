@@ -21,7 +21,7 @@ final class SettingsViewController: NSViewController {
     init(settings: SettingsService = SettingsService()) {
         self.settings = settings
         super.init(nibName: nil, bundle: nil)
-        preferredContentSize = NSSize(width: 560, height: 720)
+        preferredContentSize = NSSize(width: 640, height: 800)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -143,6 +143,11 @@ final class SettingsViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
+
+        views.forEach { view in
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+
         return stack
     }
 
@@ -159,7 +164,9 @@ final class SettingsViewController: NSViewController {
         rows.spacing = 8
 
         for category in FileVisualCategory.allCases {
-            rows.addArrangedSubview(fileColorRow(for: category))
+            let row = fileColorRow(for: category)
+            rows.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
         }
 
         let resetButton = NSButton(title: "Reset Palette", target: self, action: #selector(resetFileColorPalette(_:)))
@@ -183,9 +190,15 @@ final class SettingsViewController: NSViewController {
         stack.alignment = .leading
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
-        description.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 64).isActive = true
-        rows.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 64).isActive = true
-        paletteBox.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
+
+        NSLayoutConstraint.activate([
+            paletteBox.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            paletteContents.widthAnchor.constraint(equalTo: paletteBox.widthAnchor, constant: -24),
+            description.widthAnchor.constraint(equalTo: paletteContents.widthAnchor),
+            rows.widthAnchor.constraint(equalTo: paletteContents.widthAnchor),
+            resetButton.leadingAnchor.constraint(equalTo: paletteContents.leadingAnchor)
+        ])
+
         return stack
     }
 
@@ -208,7 +221,6 @@ final class SettingsViewController: NSViewController {
         row.alignment = .centerY
         row.spacing = 10
         description.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        row.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 64).isActive = true
         return row
     }
 
