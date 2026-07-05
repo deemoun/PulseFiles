@@ -2,7 +2,11 @@ import Foundation
 import XCTest
 @testable import PulseFiles
 
-final class CommandBarRobot {
+/// Logic-backed command-bar robot for the SwiftPM unit test target.
+///
+/// This verifies command mapping without UI automation; a future
+/// `CommandBarPage` should drive the same actions through AppKit accessibility.
+final class CommandBarRobot: CommandBarPageObject {
     typealias CommandHandler = (MainCommand) -> Void
 
     private var handler: CommandHandler?
