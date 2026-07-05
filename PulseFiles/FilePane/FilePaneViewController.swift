@@ -341,8 +341,12 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         let cell = NSTableCellView()
         let text = NSTextField(labelWithString: string(for: item, column: identifier))
         text.lineBreakMode = .byTruncatingMiddle
-        let style = FileTypeClassifier.style(for: item)
-        text.textColor = FileTypeColorPalette.color(for: style, appearance: view.effectiveAppearance)
+        if identifier == "name" {
+            let style = FileTypeClassifier.style(for: item)
+            text.textColor = FileTypeColorPalette.color(for: style, appearance: view.effectiveAppearance)
+        } else {
+            text.textColor = LiquidGlassStyle.label
+        }
         text.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text)
 
