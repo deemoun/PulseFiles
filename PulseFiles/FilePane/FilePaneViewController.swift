@@ -552,12 +552,17 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         return cell
     }
 
+
+    static func sizeDisplayString(for item: FileItem) -> String {
+        item.isDirectory && !item.isSymbolicLink ? "--" : FileSizeFormatter.string(fromByteCount: item.size)
+    }
+
     private func string(for item: FileItem, column: String) -> String {
         switch column {
         case "name":
             return item.displayName
         case "size":
-            return FileSizeFormatter.string(fromByteCount: item.size)
+            return Self.sizeDisplayString(for: item)
         case "modified":
             return item.modificationDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
         default:

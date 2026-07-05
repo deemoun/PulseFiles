@@ -12,6 +12,12 @@ final class FileSortingTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.displayName), ["z-folder", "a.txt"])
     }
 
+    func testDirectorySizeDisplayUsesPlaceholder() {
+        let folder = item("folder", isDirectory: true, size: 0)
+
+        XCTAssertEqual(FilePaneViewController.sizeDisplayString(for: folder), "--")
+    }
+
     func testSizeSortingUsesNameAsTieBreaker() {
         let b = item("b.txt", isDirectory: false, size: 10)
         let a = item("a.txt", isDirectory: false, size: 10)
@@ -19,6 +25,15 @@ final class FileSortingTests: XCTestCase {
         let sorted = FileSystemService.sorted([b, a], descriptor: .init(key: .size, ascending: true))
 
         XCTAssertEqual(sorted.map(\.displayName), ["a.txt", "b.txt"])
+    }
+
+    func testDirectorySizeSortingUsesPlaceholderSizeAndNameTieBreaker() {
+        let beta = item("beta", isDirectory: true, size: 0)
+        let alpha = item("alpha", isDirectory: true, size: 0)
+
+        let sorted = FileSystemService.sorted([beta, alpha], descriptor: .init(key: .size, ascending: true))
+
+        XCTAssertEqual(sorted.map(\.displayName), ["alpha", "beta"])
     }
 
     private func item(_ name: String, isDirectory: Bool, size: Int64) -> FileItem {
