@@ -1,6 +1,6 @@
 import AppKit
 
-enum FileVisualCategory: Equatable {
+enum FileVisualCategory: Hashable {
     case folder
     case symbolicLink
     case package
@@ -149,21 +149,106 @@ enum FileTypeClassifier {
     }
 }
 
+struct FileColorScheme {
+    let colors: [FileVisualCategory: NSColor]
+
+    init(colors: [FileVisualCategory: NSColor]) {
+        self.colors = colors
+    }
+
+    func color(for category: FileVisualCategory) -> NSColor {
+        colors[category] ?? Self.default.colors[category] ?? LiquidGlassStyle.label
+    }
+}
+
+extension FileColorScheme {
+    static let `default` = FileColorScheme(colors: [
+        .folder: NSColor.systemCyan,
+        .symbolicLink: NSColor.systemPurple,
+        .package: NSColor.systemGreen,
+        .hidden: NSColor.secondaryLabelColor,
+        .executable: NSColor.systemGreen,
+        .archive: NSColor.systemOrange,
+        .image: NSColor.systemTeal,
+        .audio: NSColor.systemPink,
+        .video: NSColor.systemIndigo,
+        .document: LiquidGlassStyle.label,
+        .sourceCode: LiquidGlassStyle.label,
+        .data: LiquidGlassStyle.label,
+        .diskImage: NSColor.systemBrown,
+        .fallback: LiquidGlassStyle.label
+    ])
+
+    static let minimal = FileColorScheme(colors: [
+        .folder: LiquidGlassStyle.label,
+        .symbolicLink: LiquidGlassStyle.label,
+        .package: LiquidGlassStyle.label,
+        .hidden: NSColor.secondaryLabelColor,
+        .executable: LiquidGlassStyle.label,
+        .archive: LiquidGlassStyle.label,
+        .image: LiquidGlassStyle.label,
+        .audio: LiquidGlassStyle.label,
+        .video: LiquidGlassStyle.label,
+        .document: LiquidGlassStyle.label,
+        .sourceCode: LiquidGlassStyle.label,
+        .data: LiquidGlassStyle.label,
+        .diskImage: LiquidGlassStyle.label,
+        .fallback: LiquidGlassStyle.label
+    ])
+
+    static let highContrast = FileColorScheme(colors: [
+        .folder: NSColor.systemBlue,
+        .symbolicLink: NSColor.systemPurple,
+        .package: NSColor.systemGreen,
+        .hidden: NSColor.tertiaryLabelColor,
+        .executable: NSColor.systemGreen,
+        .archive: NSColor.systemOrange,
+        .image: NSColor.systemTeal,
+        .audio: NSColor.systemPink,
+        .video: NSColor.systemIndigo,
+        .document: NSColor.labelColor,
+        .sourceCode: NSColor.systemYellow,
+        .data: NSColor.systemMint,
+        .diskImage: NSColor.systemRed,
+        .fallback: NSColor.labelColor
+    ])
+
+    static let classicCommander = FileColorScheme(colors: [
+        .folder: NSColor.systemBlue,
+        .symbolicLink: NSColor.systemCyan,
+        .package: NSColor.systemGreen,
+        .hidden: NSColor.secondaryLabelColor,
+        .executable: NSColor.systemGreen,
+        .archive: NSColor.systemRed,
+        .image: NSColor.systemMagenta,
+        .audio: NSColor.systemPurple,
+        .video: NSColor.systemOrange,
+        .document: NSColor.labelColor,
+        .sourceCode: NSColor.systemYellow,
+        .data: NSColor.systemMint,
+        .diskImage: NSColor.systemBrown,
+        .fallback: NSColor.labelColor
+    ])
+}
+
 enum FileTypeColorPalette {
-    static let folder = NSColor.systemCyan
-    static let symbolicLink = NSColor.systemPurple
-    static let package = NSColor.systemGreen
-    static let hidden = NSColor.secondaryLabelColor
-    static let executable = NSColor.systemGreen
-    static let archive = NSColor.systemOrange
-    static let image = NSColor.systemTeal
-    static let audio = NSColor.systemPink
-    static let video = NSColor.systemIndigo
-    static let document = LiquidGlassStyle.label
-    static let sourceCode = LiquidGlassStyle.label
-    static let data = LiquidGlassStyle.label
-    static let diskImage = NSColor.systemBrown
-    static let fallback = LiquidGlassStyle.label
+    static let folder = FileColorScheme.default.color(for: .folder)
+    static let symbolicLink = FileColorScheme.default.color(for: .symbolicLink)
+    static let package = FileColorScheme.default.color(for: .package)
+    static let hidden = FileColorScheme.default.color(for: .hidden)
+    static let executable = FileColorScheme.default.color(for: .executable)
+    static let archive = FileColorScheme.default.color(for: .archive)
+    static let image = FileColorScheme.default.color(for: .image)
+    static let audio = FileColorScheme.default.color(for: .audio)
+    static let video = FileColorScheme.default.color(for: .video)
+    static let document = FileColorScheme.default.color(for: .document)
+    static let sourceCode = FileColorScheme.default.color(for: .sourceCode)
+    static let data = FileColorScheme.default.color(for: .data)
+    static let diskImage = FileColorScheme.default.color(for: .diskImage)
+    static let fallback = FileColorScheme.default.color(for: .fallback)
+
+    static var activeScheme = FileColorScheme.default
+
     private static let hiddenAlpha: CGFloat = 0.62
 
     static func color(for style: FileVisualStyle, appearance: NSAppearance?) -> NSColor {
@@ -173,38 +258,7 @@ enum FileTypeColorPalette {
     }
 
     static func color(for category: FileVisualCategory, appearance: NSAppearance?) -> NSColor {
-        let resolvedColor: NSColor
-        switch category {
-        case .folder:
-            resolvedColor = folder
-        case .symbolicLink:
-            resolvedColor = symbolicLink
-        case .package:
-            resolvedColor = package
-        case .hidden:
-            resolvedColor = hidden
-        case .executable:
-            resolvedColor = executable
-        case .archive:
-            resolvedColor = archive
-        case .image:
-            resolvedColor = image
-        case .audio:
-            resolvedColor = audio
-        case .video:
-            resolvedColor = video
-        case .document:
-            resolvedColor = document
-        case .sourceCode:
-            resolvedColor = sourceCode
-        case .data:
-            resolvedColor = data
-        case .diskImage:
-            resolvedColor = diskImage
-        case .fallback:
-            resolvedColor = fallback
-        }
-
+        let resolvedColor = activeScheme.color(for: category)
         guard let appearance else { return resolvedColor }
         return resolvedColor.resolvedColor(with: appearance)
     }

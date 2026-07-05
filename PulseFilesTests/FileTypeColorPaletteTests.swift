@@ -114,11 +114,48 @@ final class FileTypeClassifierTests: XCTestCase {
 
 final class FileTypeColorPaletteTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        FileTypeColorPalette.activeScheme = .default
+    }
+
     func testHiddenStyleAppliesReducedAlphaToPrimaryCategoryColor() {
         let style = FileVisualStyle(category: .archive, modifiers: [.hidden])
         let color = FileTypeColorPalette.color(for: style, appearance: nil)
 
         XCTAssertEqual(color.alphaComponent, 0.62, accuracy: 0.001)
+    }
+
+    func testDefaultSchemePreservesExistingColorChoices() {
+        XCTAssertSameColor(FileColorScheme.default.color(for: .folder), FileTypeColorPalette.folder)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .symbolicLink), FileTypeColorPalette.symbolicLink)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .package), FileTypeColorPalette.package)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .hidden), FileTypeColorPalette.hidden)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .executable), FileTypeColorPalette.executable)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .archive), FileTypeColorPalette.archive)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .image), FileTypeColorPalette.image)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .audio), FileTypeColorPalette.audio)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .video), FileTypeColorPalette.video)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .document), FileTypeColorPalette.document)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .sourceCode), FileTypeColorPalette.sourceCode)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .data), FileTypeColorPalette.data)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .diskImage), FileTypeColorPalette.diskImage)
+        XCTAssertSameColor(FileColorScheme.default.color(for: .fallback), FileTypeColorPalette.fallback)
+    }
+
+    func testPaletteUsesActiveScheme() {
+        FileTypeColorPalette.activeScheme = .minimal
+        defer { FileTypeColorPalette.activeScheme = .default }
+
+        XCTAssertSameColor(FileTypeColorPalette.color(for: .folder, appearance: nil), FileColorScheme.minimal.color(for: .folder))
+        XCTAssertSameColor(FileTypeColorPalette.color(for: .archive, appearance: nil), FileColorScheme.minimal.color(for: .archive))
+    }
+
+    func testCustomSchemeFallsBackToDefaultForMissingCategories() {
+        let scheme = FileColorScheme(colors: [.folder: NSColor.systemRed])
+
+        XCTAssertSameColor(scheme.color(for: .folder), NSColor.systemRed)
+        XCTAssertSameColor(scheme.color(for: .archive), FileColorScheme.default.color(for: .archive))
     }
 
     func testColorMappingForEachCategory() {
