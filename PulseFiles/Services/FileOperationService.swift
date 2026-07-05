@@ -149,6 +149,7 @@ final class FileOperationService: FileOperationServicing {
         let source: URL
         let destination: URL
         let conflictResolution: FileConflictResolution
+        let replacesExistingDestination: Bool
     }
 
     private let fileManager: FileOperationFileManaging
@@ -293,7 +294,11 @@ final class FileOperationService: FileOperationServicing {
                     let warnings = try safelyCopy(source: plan.source, to: plan.destination)
                     cleanupWarnings.append(contentsOf: warnings)
                 case .move:
-                    let warnings = try safelyMove(source: plan.source, to: plan.destination)
+                    let warnings = try safelyMove(
+                        source: plan.source,
+                        to: plan.destination,
+                        replacingExistingDestination: plan.replacesExistingDestination
+                    )
                     cleanupWarnings.append(contentsOf: warnings)
                 }
                 completedItems.append(plan.source)
@@ -324,7 +329,27 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-    private func safelyMove(source: URL, to destination: URL) throws -> [FileOperationCleanupWarning] {
+    private func safelyMove(
+        source: URL,
+        to destination: URL,
+        replacingExistingDestination: Bool
+    ) throws -> [FileOperationCleanupWarning] {
+        guard replacingExistingDestination else {
+            do {
+                try fileManager.moveItem(at: source, to: destination)
+                return []
+            } catch {
+                guard shouldFallbackToCopyDelete(forMoveError: error) else {
+                    throw error
+                }
+                return try copyThenDeleteMove(source: source, to: destination)
+            }
+        }
+
+        return try copyThenDeleteMove(source: source, to: destination)
+    }
+
+    private func copyThenDeleteMove(source: URL, to destination: URL) throws -> [FileOperationCleanupWarning] {
         let tempURL = temporarySibling(for: destination, prefix: ".pulsefiles-move")
         do {
             try fileManager.copyItem(at: source, to: tempURL)
@@ -342,6 +367,25 @@ final class FileOperationService: FileOperationServicing {
             try? removeIfExists(tempURL)
             throw error
         }
+    }
+
+    private func shouldFallbackToCopyDelete(forMoveError error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(POSIXErrorCode.EXDEV.rawValue) {
+            return true
+        }
+
+        if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlyingError.domain == NSPOSIXErrorDomain,
+           underlyingError.code == Int(POSIXErrorCode.EXDEV.rawValue) {
+            return true
+        }
+
+        if nsError.domain == NSCocoaErrorDomain, nsError.code == CocoaError.Code.featureUnsupported.rawValue {
+            return true
+        }
+
+        return false
     }
 
     private func placeStagedItem(_ stagedURL: URL, at destination: URL) throws -> [FileOperationCleanupWarning] {
@@ -382,18 +426,24 @@ final class FileOperationService: FileOperationServicing {
         var plans: [TransferPlan] = []
         for source in request.sources {
             let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
+            let replacesExistingDestination = fileManager.fileExists(atPath: destination.path)
             let resolution: FileConflictResolution
-            if fileManager.fileExists(atPath: destination.path) {
+            if replacesExistingDestination {
                 resolution = await conflictHandler(destination)
             } else {
                 resolution = .replace
             }
 
             if resolution == .cancel {
-                plans.append(TransferPlan(source: source, destination: destination, conflictResolution: .cancel))
+                plans.append(TransferPlan(source: source, destination: destination, conflictResolution: .cancel, replacesExistingDestination: true))
                 return plans
             }
-            plans.append(TransferPlan(source: source, destination: destination, conflictResolution: resolution))
+            plans.append(TransferPlan(
+                source: source,
+                destination: destination,
+                conflictResolution: resolution,
+                replacesExistingDestination: replacesExistingDestination
+            ))
         }
 
         return plans

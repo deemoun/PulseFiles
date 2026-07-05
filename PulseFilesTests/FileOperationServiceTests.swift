@@ -72,8 +72,8 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "old")
     }
 
-    func testMoveWithoutConflictCopiesThenRemovesSource() async throws {
-        let fixture = try makeFixture()
+    func testMoveWithoutConflictUsesDirectMove() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
         let source = fixture.left.appendingPathComponent("Report.txt")
         let destination = fixture.right.appendingPathComponent("Report.txt")
         try "source".write(to: source, atomically: true, encoding: .utf8)
@@ -85,6 +85,28 @@ final class FileOperationServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(fixture.failingFileManager?.movedItems, [RecordedFileOperation(source: source, destination: destination)])
+        XCTAssertEqual(fixture.failingFileManager?.copiedItems, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try String(contentsOf: destination), "source")
+    }
+
+    func testMoveWithoutConflictFallsBackToCopyDeleteForCrossVolumeMoveFailure() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failMoveToURL = destination
+        fixture.failingFileManager?.moveFailureError = NSError(domain: NSPOSIXErrorDomain, code: Int(POSIXErrorCode.EXDEV.rawValue))
+
+        let result = try await fixture.service.move(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(fixture.failingFileManager?.copiedItems.count, 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
         XCTAssertEqual(try String(contentsOf: destination), "source")
     }
@@ -201,11 +223,33 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "new")
     }
 
-    func testMoveReportsWarningWhenOriginalCannotBeRemovedAfterCopy() async throws {
+    func testMoveReplaceStagesDestinationAndRemovesOriginal() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try "new".write(to: source, atomically: true, encoding: .utf8)
+        try "old".write(to: destination, atomically: true, encoding: .utf8)
+
+        let result = try await fixture.service.move(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(fixture.failingFileManager?.copiedItems.count, 1)
+        XCTAssertTrue(fixture.failingFileManager?.movedItems.contains { $0.destination.lastPathComponent.hasPrefix(".pulsefiles-backup") } == true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try String(contentsOf: destination), "new")
+    }
+
+    func testMoveReportsWarningWhenOriginalCannotBeRemovedAfterFallbackCopy() async throws {
         let fixture = try makeFixture(useFailingManager: true)
         let source = fixture.left.appendingPathComponent("Report.txt")
         let destination = fixture.right.appendingPathComponent("Report.txt")
         try "source".write(to: source, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failMoveToURL = destination
+        fixture.failingFileManager?.moveFailureError = NSError(domain: NSPOSIXErrorDomain, code: Int(POSIXErrorCode.EXDEV.rawValue))
         fixture.failingFileManager?.failRemoveURL = source
 
         let result = try await fixture.service.move(
@@ -326,10 +370,18 @@ final class FileOperationServiceTests: XCTestCase {
     }
 }
 
+private struct RecordedFileOperation: Equatable {
+    let source: URL
+    let destination: URL
+}
+
 private final class FailingFileManager: FileOperationFileManaging {
     var failMoveToURL: URL?
+    var moveFailureError: Error = CocoaError(.fileWriteUnknown)
     var failRemoveURL: URL?
     var failBackupRemoval = false
+    private(set) var copiedItems: [RecordedFileOperation] = []
+    private(set) var movedItems: [RecordedFileOperation] = []
 
     func fileExists(atPath path: String) -> Bool {
         FileManager.default.fileExists(atPath: path)
@@ -340,13 +392,15 @@ private final class FailingFileManager: FileOperationFileManaging {
     }
 
     func copyItem(at srcURL: URL, to dstURL: URL) throws {
+        copiedItems.append(RecordedFileOperation(source: srcURL, destination: dstURL))
         try FileManager.default.copyItem(at: srcURL, to: dstURL)
     }
 
     func moveItem(at srcURL: URL, to dstURL: URL) throws {
         if let failMoveToURL, dstURL.standardizedFileURL == failMoveToURL.standardizedFileURL {
-            throw CocoaError(.fileWriteUnknown)
+            throw moveFailureError
         }
+        movedItems.append(RecordedFileOperation(source: srcURL, destination: dstURL))
         try FileManager.default.moveItem(at: srcURL, to: dstURL)
     }
 
