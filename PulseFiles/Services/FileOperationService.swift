@@ -62,10 +62,11 @@ struct FileOperationResult {
 }
 
 typealias FileOperationProgressHandler = @MainActor (FileOperationProgress) -> Void
+typealias FileConflictHandler = (URL) async -> FileConflictResolution
 
 protocol FileOperationServicing {
-    func copy(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func move(_ request: FileOperationRequest, conflictHandler: (URL) -> FileConflictResolution, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func copy(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func move(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
 }
@@ -81,7 +82,7 @@ final class FileOperationService: FileOperationServicing {
 
     func copy(
         _ request: FileOperationRequest,
-        conflictHandler: (URL) -> FileConflictResolution,
+        conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
     ) async throws -> FileOperationResult {
         try validateTransferRequest(request)
@@ -92,7 +93,7 @@ final class FileOperationService: FileOperationServicing {
 
     func move(
         _ request: FileOperationRequest,
-        conflictHandler: (URL) -> FileConflictResolution,
+        conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
     ) async throws -> FileOperationResult {
         try validateTransferRequest(request)
@@ -158,7 +159,7 @@ final class FileOperationService: FileOperationServicing {
 
     private func performTransfer(
         _ request: FileOperationRequest,
-        conflictHandler: (URL) -> FileConflictResolution,
+        conflictHandler: FileConflictHandler,
         progressHandler: FileOperationProgressHandler?,
         operation: @escaping @Sendable (FileManager, URL, URL) throws -> Void
     ) async throws -> FileOperationResult {
@@ -183,7 +184,7 @@ final class FileOperationService: FileOperationServicing {
                 await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
                 continue
             }
-            switch try resolveConflict(at: destination, conflictHandler: conflictHandler) {
+            switch try await resolveConflict(at: destination, conflictHandler: conflictHandler) {
             case .replace:
                 do {
                     try await removeExistingItem(at: destination)
@@ -234,9 +235,9 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-    private func resolveConflict(at destination: URL, conflictHandler: (URL) -> FileConflictResolution) throws -> FileConflictResolution {
+    private func resolveConflict(at destination: URL, conflictHandler: FileConflictHandler) async throws -> FileConflictResolution {
         guard fileManager.fileExists(atPath: destination.path) else { return .replace }
-        return conflictHandler(destination)
+        return await conflictHandler(destination)
     }
 
     private func removeExistingItem(at url: URL) async throws {
