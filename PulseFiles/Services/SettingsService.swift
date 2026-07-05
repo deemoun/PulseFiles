@@ -178,9 +178,11 @@ private struct StoredColor: Codable {
     init(color: NSColor) {
         let converted: NSColor?
         if let appearance = NSAppearance(named: .aqua) {
-            converted = appearance.performAsCurrentDrawingAppearance {
-                color.usingColorSpace(NSColorSpace.deviceRGB)
+            var colorInAquaAppearance: NSColor?
+            appearance.performAsCurrentDrawingAppearance {
+                colorInAquaAppearance = color.usingColorSpace(NSColorSpace.deviceRGB)
             }
+            converted = colorInAquaAppearance
         } else {
             converted = color.usingColorSpace(NSColorSpace.deviceRGB)
         }
