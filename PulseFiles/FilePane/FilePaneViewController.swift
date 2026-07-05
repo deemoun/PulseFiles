@@ -18,7 +18,6 @@ final class FilePaneViewController: NSViewController {
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
     private let directoryIcon = NSImageView()
-    private let refreshButton = NSButton()
     private let hiddenButton = NSButton()
     private let scrollView = NSScrollView()
     private let statusView = PaneStatusView()
@@ -168,12 +167,6 @@ final class FilePaneViewController: NSViewController {
         directoryIcon.imageScaling = .scaleProportionallyDown
         directoryIcon.setContentHuggingPriority(.required, for: .horizontal)
 
-        refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
-        LiquidGlassStyle.applyButtonChrome(to: refreshButton)
-        refreshButton.target = self
-        refreshButton.action = #selector(refresh)
-        refreshButton.toolTip = "Refresh"
-
         hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Toggle Hidden Files")
         LiquidGlassStyle.applyButtonChrome(to: hiddenButton)
         hiddenButton.target = self
@@ -226,7 +219,7 @@ final class FilePaneViewController: NSViewController {
         }
 
         activeStripe.wantsLayer = true
-        let headerStack = NSStackView(views: [directoryIcon, breadcrumb, refreshButton, hiddenButton])
+        let headerStack = NSStackView(views: [directoryIcon, breadcrumb, hiddenButton])
         headerStack.orientation = .horizontal
         headerStack.alignment = .centerY
         headerStack.spacing = 8

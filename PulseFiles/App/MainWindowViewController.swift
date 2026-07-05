@@ -424,11 +424,11 @@ final class MainWindowViewController: NSViewController {
 
 extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.back, .forward, .flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
+        [.flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.back, .forward, .flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
+        [.flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
@@ -442,10 +442,6 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             item.searchField.sendsSearchStringImmediately = true
             toolbarSearchField = item.searchField
             return item
-        case .back:
-            return toolbarItem(itemIdentifier, label: "Back", symbol: "chevron.left", action: #selector(toolbarBack(_:)))
-        case .forward:
-            return toolbarItem(itemIdentifier, label: "Forward", symbol: "chevron.right", action: #selector(toolbarForward(_:)))
         case .toggleTerminal:
             return toolbarItem(itemIdentifier, label: "Terminal", symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
         case .toggleSidebar:
