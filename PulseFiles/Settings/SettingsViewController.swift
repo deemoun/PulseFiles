@@ -64,22 +64,45 @@ final class SettingsViewController: NSViewController {
         let leftRow = directoryRow(title: "Left startup folder", field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:)))
         let rightRow = directoryRow(title: "Right startup folder", field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
 
+        let appearanceSection = settingsSection(
+            title: "Appearance & Layout",
+            views: [
+                sidebarCheckbox,
+                terminalCheckbox,
+                singlePaneCheckbox,
+                widthRow
+            ]
+        )
+        let fileBrowserSection = settingsSection(
+            title: "File Browser",
+            views: [
+                hiddenFilesCheckbox,
+                leftRow,
+                rightRow
+            ]
+        )
+        let fileOperationsSection = settingsSection(
+            title: "File Operations",
+            views: [
+                confirmCopyCheckbox,
+                confirmMoveCheckbox,
+                confirmDeleteCheckbox,
+                permanentDeleteCheckbox
+            ]
+        )
+        let fileColorsSection = settingsSection(
+            title: "File Colors",
+            views: [
+                fileColorPaletteView()
+            ]
+        )
+
         let stack = NSStackView(views: [
             title,
-            sidebarCheckbox,
-            terminalCheckbox,
-            singlePaneCheckbox,
-            hiddenFilesCheckbox,
-            confirmCopyCheckbox,
-            confirmMoveCheckbox,
-            confirmDeleteCheckbox,
-            permanentDeleteCheckbox,
-            widthRow,
-            separator(),
-            leftRow,
-            rightRow,
-            separator(),
-            fileColorPaletteView()
+            appearanceSection,
+            fileBrowserSection,
+            fileOperationsSection,
+            fileColorsSection
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -94,11 +117,26 @@ final class SettingsViewController: NSViewController {
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20),
+            appearanceSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            fileBrowserSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            fileOperationsSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            fileColorsSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
             widthRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             sidebarWidthSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
             leftRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             rightRow.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
+    }
+
+    private func settingsSection(title: String, views: [NSView]) -> NSStackView {
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .preferredFont(forTextStyle: .headline)
+
+        let stack = NSStackView(views: [titleLabel] + views)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        return stack
     }
 
     private func fileColorPaletteView() -> NSView {
