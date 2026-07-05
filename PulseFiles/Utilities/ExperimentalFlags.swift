@@ -1,7 +1,25 @@
 import Foundation
 
 enum ExperimentalFlags {
-    static let restrictFileAccessToAppSandboxRoot = true
+    static let restrictFileAccessUserDefaultsKey = "ExperimentalFlags.restrictFileAccessToAppSandboxRoot"
+
+    static var restrictFileAccessToAppSandboxRoot: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--pulsefiles-disable-experimental-sandbox") {
+            return false
+        }
+        if arguments.contains("--pulsefiles-enable-experimental-sandbox") {
+            return true
+        }
+
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: restrictFileAccessUserDefaultsKey) != nil else {
+            return true
+        }
+        return defaults.bool(forKey: restrictFileAccessUserDefaultsKey)
+    }
+
+    static let sandboxRestrictionExplanation = "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable."
 
     static var appSandboxRoot: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -33,7 +51,7 @@ enum ExperimentalFlags {
             PulseFiles experimental sandbox
 
             File browsing is currently restricted to this app-owned test folder.
-            Disable ExperimentalFlags.restrictFileAccessToAppSandboxRoot when you are ready to test real folders.
+            Launch with --pulsefiles-disable-experimental-sandbox or set UserDefaults key ExperimentalFlags.restrictFileAccessToAppSandboxRoot to false when you are ready to test real folders.
             """
             try? text.write(to: readme, atomically: true, encoding: .utf8)
         }
