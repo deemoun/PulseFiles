@@ -1026,9 +1026,18 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func startFileOperation(named operationName: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
         guard !isFileOperationActive else { return }
+        let previousWindowTitle = view.window?.title
         isFileOperationActive = true
         activeOperationTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            defer {
+                if let previousWindowTitle {
+                    self.view.window?.title = previousWindowTitle
+                }
+                self.isFileOperationActive = false
+                self.activeOperationTask = nil
+            }
+
             do {
                 let result = try await operation { [weak self] progress in
                     self?.updateFileOperationProgress(progress, operationName: operationName)
@@ -1038,8 +1047,6 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             } catch {
                 self.showError(message: "Could Not \(operationName) Items", detail: error.localizedDescription)
             }
-            self.isFileOperationActive = false
-            self.activeOperationTask = nil
         }
     }
 
