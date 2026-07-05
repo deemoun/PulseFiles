@@ -157,13 +157,28 @@ final class SettingsViewController: NSViewController {
 
         let resetButton = NSButton(title: "Reset Palette", target: self, action: #selector(resetFileColorPalette(_:)))
 
-        let stack = NSStackView(views: [title, description, rows, resetButton])
+        let paletteContents = NSStackView(views: [description, rows, resetButton])
+        paletteContents.orientation = .vertical
+        paletteContents.alignment = .leading
+        paletteContents.spacing = 10
+        paletteContents.translatesAutoresizingMaskIntoConstraints = false
+
+        let paletteBox = NSBox()
+        paletteBox.boxType = .custom
+        paletteBox.borderType = .lineBorder
+        paletteBox.cornerRadius = 8
+        paletteBox.contentViewMargins = NSSize(width: 12, height: 12)
+        paletteBox.translatesAutoresizingMaskIntoConstraints = false
+        paletteBox.contentView = paletteContents
+
+        let stack = NSStackView(views: [title, paletteBox])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
-        description.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
-        rows.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
+        description.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 64).isActive = true
+        rows.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 64).isActive = true
+        paletteBox.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
         return stack
     }
 
@@ -186,7 +201,7 @@ final class SettingsViewController: NSViewController {
         row.alignment = .centerY
         row.spacing = 10
         description.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        row.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 40).isActive = true
+        row.widthAnchor.constraint(equalToConstant: preferredContentSize.width - 64).isActive = true
         return row
     }
 
