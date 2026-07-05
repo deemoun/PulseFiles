@@ -2,7 +2,11 @@ import Foundation
 import XCTest
 @testable import PulseFiles
 
-final class TerminalRobot {
+/// Logic-backed terminal robot for the SwiftPM unit test target.
+///
+/// This checks the opt-in settings contract today; future UI-backed coverage
+/// should keep the same safety-focused page-object vocabulary.
+final class TerminalRobot: TerminalPageObject {
     private let settings: SettingsService
 
     init(settings: SettingsService) {

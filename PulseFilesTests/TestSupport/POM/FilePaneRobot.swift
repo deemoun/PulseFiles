@@ -3,7 +3,11 @@ import XCTest
 @testable import PulseFiles
 
 @MainActor
-final class FilePaneRobot {
+/// Logic-backed file-pane robot for the SwiftPM unit test target.
+///
+/// Methods exercise `FilePaneViewModel` directly today, while preserving names
+/// that a future UI-backed `FilePanePage` can implement with `XCUIElement`.
+final class FilePaneRobot: FilePanePageObject {
     let paneID: PaneID
     let viewModel: FilePaneViewModel
     private(set) var selectedURLs: Set<URL> = []

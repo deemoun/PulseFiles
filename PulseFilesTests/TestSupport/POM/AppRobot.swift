@@ -3,7 +3,11 @@ import XCTest
 @testable import PulseFiles
 
 @MainActor
-final class AppRobot {
+/// Logic-backed app robot for the SwiftPM unit test target.
+///
+/// This is intentionally not an `XCUIApplication` wrapper; keep its public
+/// workflow names aligned with a future UI-backed `PulseFilesApplication`.
+final class AppRobot: AppPageObject {
     struct Dependencies {
         let leftDirectory: URL
         let rightDirectory: URL

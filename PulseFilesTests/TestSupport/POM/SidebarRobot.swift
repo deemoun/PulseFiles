@@ -2,7 +2,11 @@ import Foundation
 import XCTest
 @testable import PulseFiles
 
-final class SidebarRobot {
+/// Logic-backed sidebar robot for the SwiftPM unit test target.
+///
+/// This uses services and isolated defaults today; a future `SidebarPage` can
+/// keep these names while reading and interacting through `XCUIElement`.
+final class SidebarRobot: SidebarPageObject {
     private let bookmarkService: BookmarkService
     private let recentLocationService: RecentLocationService
 
