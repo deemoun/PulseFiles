@@ -33,6 +33,7 @@ final class SettingsViewController: NSViewController {
 
     private let settings: SettingsService
     private let sidebarCheckbox = NSButton(checkboxWithTitle: "Show sidebar by default", target: nil, action: nil)
+    private let terminalEnabledCheckbox = NSButton(checkboxWithTitle: "Enable experimental terminal", target: nil, action: nil)
     private let terminalCheckbox = NSButton(checkboxWithTitle: "Show terminal by default", target: nil, action: nil)
     private let singlePaneCheckbox = NSButton(checkboxWithTitle: "Use single pane by default", target: nil, action: nil)
     private let hiddenFilesCheckbox = NSButton(checkboxWithTitle: "Show hidden files by default", target: nil, action: nil)
@@ -88,7 +89,7 @@ final class SettingsViewController: NSViewController {
         headerStack.spacing = 4
         headerStack.translatesAutoresizingMaskIntoConstraints = false
 
-        [sidebarCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox, experimentalSandboxCheckbox].forEach {
+        [sidebarCheckbox, terminalEnabledCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox, experimentalSandboxCheckbox].forEach {
             $0.target = self
             $0.action = #selector(controlChanged(_:))
         }
@@ -230,7 +231,9 @@ final class SettingsViewController: NSViewController {
                     title: "Appearance & Layout",
                     views: [
                         sidebarCheckbox,
+                        terminalEnabledCheckbox,
                         terminalCheckbox,
+                        terminalV1StatusView(),
                         singlePaneCheckbox,
                         sidebarWidthRow()
                     ]
@@ -281,6 +284,15 @@ final class SettingsViewController: NSViewController {
         }
     }
 
+
+    private func terminalV1StatusView() -> NSView {
+        let message = settings.experimentalTerminalEnabled
+            ? "Terminal V1 is enabled. It runs shell commands in the active pane folder; commands can modify or delete files."
+            : "Terminal V1 is hidden by default. Enable it only if you accept the risk that shell commands can modify or delete files."
+        let label = NSTextField(wrappingLabelWithString: message)
+        label.textColor = .secondaryLabelColor
+        return label
+    }
 
     private func sandboxRestrictionStatusView() -> NSView {
         let rootPath = ExperimentalFlags.appSandboxRoot.path
@@ -460,7 +472,9 @@ final class SettingsViewController: NSViewController {
 
     private func loadSettings() {
         sidebarCheckbox.state = settings.defaultSidebarVisible ? .on : .off
+        terminalEnabledCheckbox.state = settings.experimentalTerminalEnabled ? .on : .off
         terminalCheckbox.state = settings.defaultTerminalVisible ? .on : .off
+        terminalCheckbox.isEnabled = settings.experimentalTerminalEnabled
         singlePaneCheckbox.state = settings.defaultSinglePaneMode ? .on : .off
         hiddenFilesCheckbox.state = settings.showHiddenFilesByDefault ? .on : .off
         confirmCopyCheckbox.state = settings.confirmCopyOperations ? .on : .off
@@ -522,7 +536,13 @@ final class SettingsViewController: NSViewController {
 
     @objc private func controlChanged(_ sender: Any?) {
         settings.defaultSidebarVisible = sidebarCheckbox.state == .on
-        settings.defaultTerminalVisible = terminalCheckbox.state == .on
+        let previousTerminalEnabled = settings.experimentalTerminalEnabled
+        settings.experimentalTerminalEnabled = terminalEnabledCheckbox.state == .on
+        settings.defaultTerminalVisible = settings.experimentalTerminalEnabled && terminalCheckbox.state == .on
+        terminalCheckbox.isEnabled = settings.experimentalTerminalEnabled
+        if previousTerminalEnabled != settings.experimentalTerminalEnabled {
+            rebuildSettingsPage()
+        }
         settings.defaultSinglePaneMode = singlePaneCheckbox.state == .on
         settings.showHiddenFilesByDefault = hiddenFilesCheckbox.state == .on
         settings.confirmCopyOperations = confirmCopyCheckbox.state == .on

@@ -149,8 +149,8 @@ final class MainWindowViewController: NSViewController {
         setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)
 
         addChild(terminal)
-        if settings.isTerminalVisible {
-            installTerminalPanel()
+        if settings.experimentalTerminalEnabled, settings.isTerminalVisible {
+            installTerminalPanel(showWarning: true)
         }
     }
 
@@ -561,8 +561,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func applySettingsChanges() {
         FileTypeColorPalette.activeScheme = settings.fileColorScheme
         setSidebarVisible(settings.defaultSidebarVisible)
-        if settings.defaultTerminalVisible != isTerminalInstalled {
-            settings.defaultTerminalVisible ? installTerminalPanel() : removeTerminalPanel()
+        let shouldShowTerminal = settings.experimentalTerminalEnabled && settings.defaultTerminalVisible
+        if shouldShowTerminal != isTerminalInstalled {
+            if shouldShowTerminal {
+                installTerminalPanel(showWarning: true)
+            } else {
+                removeTerminalPanel()
+            }
         }
         setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)
         leftPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
@@ -652,7 +657,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             settings.isTerminalVisible = false
             view.window?.makeFirstResponder(targetPane().tableView)
         } else {
-            installTerminalPanel()
+            guard settings.experimentalTerminalEnabled else {
+                showTerminalDisabledAlert()
+                return
+            }
+            installTerminalPanel(showWarning: true)
             settings.isTerminalVisible = true
             terminal.suggestedWorkingDirectory = targetPane().currentDirectory
             view.layoutSubtreeIfNeeded()
@@ -661,14 +670,45 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
-    private func installTerminalPanel() {
+    private func installTerminalPanel(showWarning: Bool = false) {
         guard !isTerminalInstalled else { return }
+        if showWarning {
+            showFirstUseTerminalWarningIfNeeded()
+        }
         contentSplitView.addArrangedSubview(terminal.view)
         if terminalHeightConstraint == nil {
             terminalHeightConstraint = terminal.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
         }
         terminalHeightConstraint?.isActive = true
         isTerminalInstalled = true
+    }
+
+    private func showTerminalDisabledAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Experimental terminal is disabled"
+        alert.informativeText = "Enable the experimental terminal in Settings before opening it. Shell commands can modify or delete files."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        if let window = view.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
+    }
+
+    private func showFirstUseTerminalWarningIfNeeded() {
+        guard !settings.hasAcknowledgedTerminalWarning else { return }
+        settings.hasAcknowledgedTerminalWarning = true
+        let alert = NSAlert()
+        alert.messageText = "Experimental terminal warning"
+        alert.informativeText = "The terminal runs shell commands in the selected folder. Commands can modify or delete files, including files outside PulseFiles when sandbox restrictions are disabled."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "I Understand")
+        if let window = view.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     private func removeTerminalPanel() {
