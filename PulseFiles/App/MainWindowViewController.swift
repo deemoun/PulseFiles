@@ -232,6 +232,10 @@ final class MainWindowViewController: NSViewController {
                 self?.settings.showHiddenFilesByDefault = showsHiddenFiles
                 self?.settings.defaultSortDescriptor = sort
             }
+            pane.onSelectionChanged = { [weak self, weak pane] items in
+                guard let self, pane?.paneID == self.activePaneID else { return }
+                self.sidebar.showSelection(items)
+            }
         }
         sidebar.onOpenLocation = { [weak self] url, useInactive in
             self?.targetPane(useInactive: useInactive).navigate(to: url)
@@ -252,6 +256,7 @@ final class MainWindowViewController: NSViewController {
         terminal.suggestedWorkingDirectory = targetPane().currentDirectory
         leftPane.setSearchQuery(activePaneID == .left ? activeFilterText : "")
         rightPane.setSearchQuery(activePaneID == .right ? activeFilterText : "")
+        sidebar.showSelection(targetPane().selectedItems)
         targetPane().focusDefaultRowForActivation()
         if view.window?.firstResponder !== toolbarSearchField {
             view.window?.makeFirstResponder(targetPane().tableView)

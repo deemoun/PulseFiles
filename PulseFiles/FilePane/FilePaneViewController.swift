@@ -16,6 +16,7 @@ final class FilePaneViewController: NSViewController {
     var onDropURLs: (([URL], URL, Bool) -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
+    var onSelectionChanged: (([FileItem]) -> Void)?
 
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
@@ -317,6 +318,7 @@ final class FilePaneViewController: NSViewController {
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage
         )
+        onSelectionChanged?(selectedItems)
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files")
     }
@@ -435,6 +437,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage
         )
+        onSelectionChanged?(selectedItems)
         if !isReloadingData {
             onActivate?()
         }
