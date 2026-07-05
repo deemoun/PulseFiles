@@ -77,6 +77,7 @@ final class TerminalViewController: NSViewController {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: terminalService.shellPath)
         process.arguments = ["-lc", command]
+        process.environment = terminalService.defaultEnvironment
         process.currentDirectoryURL = suggestedWorkingDirectory
 
         let pipe = Pipe()
