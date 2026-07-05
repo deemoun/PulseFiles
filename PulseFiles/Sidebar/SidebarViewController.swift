@@ -179,7 +179,7 @@ final class SidebarViewController: NSViewController {
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return fallback }
             guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { return fallback }
             var total: Int64 = 0
-            for case let child as URL in enumerator {
+            while let child = enumerator.nextObject() as? URL {
                 if Task.isCancelled { return total }
                 guard let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true else { continue }
                 total += Int64(values.fileSize ?? 0)
