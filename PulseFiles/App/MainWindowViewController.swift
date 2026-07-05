@@ -1037,6 +1037,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 if let previousWindowTitle {
                     self.view.window?.title = previousWindowTitle
                 }
+                self.commandBar.clearOperationStatus()
                 self.isFileOperationActive = false
                 self.activeOperationTask = nil
             }
@@ -1054,7 +1055,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
-        view.window?.title = "\(operationName): \(progress.currentItemName) (\(progress.completedCount)/\(progress.totalCount))"
+        let status = "\(operationName): \(progress.currentItemName) (\(progress.completedCount)/\(progress.totalCount))"
+        view.window?.title = status
+        commandBar.setOperationStatus(status)
     }
 
     private func showOperationResult(_ result: FileOperationResult, operationName: String) {
