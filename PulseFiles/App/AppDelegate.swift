@@ -4,6 +4,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        FileTypeColorPalette.activeScheme = SettingsService().fileColorScheme
         NSApplication.shared.mainMenu = buildMainMenu()
         let controller = MainWindowController()
         controller.showWindow(nil)

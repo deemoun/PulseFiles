@@ -1,6 +1,6 @@
 import AppKit
 
-enum FileVisualCategory: Hashable {
+enum FileVisualCategory: String, CaseIterable, Hashable {
     case folder
     case symbolicLink
     case package
@@ -15,6 +15,47 @@ enum FileVisualCategory: Hashable {
     case data
     case diskImage
     case fallback
+}
+
+
+extension FileVisualCategory {
+    var displayName: String {
+        switch self {
+        case .folder: return "Folders"
+        case .symbolicLink: return "Symbolic links"
+        case .package: return "Packages"
+        case .hidden: return "Hidden files"
+        case .executable: return "Executables"
+        case .archive: return "Archives"
+        case .image: return "Images"
+        case .audio: return "Audio"
+        case .video: return "Video"
+        case .document: return "Documents"
+        case .sourceCode: return "Source code"
+        case .data: return "Data & config"
+        case .diskImage: return "Disk images"
+        case .fallback: return "Other files"
+        }
+    }
+
+    var settingsDescription: String {
+        switch self {
+        case .folder: return "Directories and folder rows."
+        case .symbolicLink: return "Aliases and symlinks when they are the primary file type."
+        case .package: return "macOS bundles and packages shown as a single item."
+        case .hidden: return "Hidden files that do not match a more specific category."
+        case .executable: return "Files with any POSIX execute bit set."
+        case .archive: return "Compressed archives such as zip, tar, gz, rar, 7z, and xz."
+        case .image: return "Image files such as png, jpg, gif, heic, tiff, and webp."
+        case .audio: return "Audio files such as mp3, m4a, wav, flac, and aiff."
+        case .video: return "Video files such as mp4, mov, mkv, avi, and webm."
+        case .document: return "Readable documents such as pdf, txt, Office, iWork, and markdown files."
+        case .sourceCode: return "Developer source files such as Swift, JavaScript, Python, Rust, shell, HTML, and CSS."
+        case .data: return "Structured data and config files such as json, yaml, plist, csv, sqlite, and .env."
+        case .diskImage: return "Disk images and installers such as dmg, iso, img, and pkg."
+        case .fallback: return "Any file that does not match another category."
+        }
+    }
 }
 
 enum FileVisualModifier: Hashable {
