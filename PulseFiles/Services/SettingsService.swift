@@ -176,13 +176,19 @@ private struct StoredColor: Codable {
     }
 
     init(color: NSColor) {
-        let appearance = NSAppearance(named: .aqua)
-        let resolved = appearance.map { color.resolvedColor(with: $0) } ?? color
-        let converted = resolved.usingColorSpace(.deviceRGB) ?? NSColor.labelColor
-        red = Double(converted.redComponent)
-        green = Double(converted.greenComponent)
-        blue = Double(converted.blueComponent)
-        alpha = Double(converted.alphaComponent)
+        let converted: NSColor?
+        if let appearance = NSAppearance(named: .aqua) {
+            converted = appearance.performAsCurrentDrawingAppearance {
+                color.usingColorSpace(NSColorSpace.deviceRGB)
+            }
+        } else {
+            converted = color.usingColorSpace(NSColorSpace.deviceRGB)
+        }
+        let rgbColor = converted ?? NSColor.labelColor.usingColorSpace(NSColorSpace.deviceRGB) ?? NSColor(deviceWhite: 0, alpha: 1)
+        red = Double(rgbColor.redComponent)
+        green = Double(rgbColor.greenComponent)
+        blue = Double(rgbColor.blueComponent)
+        alpha = Double(rgbColor.alphaComponent)
     }
 
     var color: NSColor {
