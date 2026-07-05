@@ -76,7 +76,12 @@ final class SettingsViewController: NSViewController {
         let fileBrowserSection = settingsSection(
             title: "File Browser",
             views: [
-                hiddenFilesCheckbox,
+                hiddenFilesCheckbox
+            ]
+        )
+        let startupFoldersSection = settingsSection(
+            title: "Startup Folders",
+            views: [
                 leftRow,
                 rightRow
             ]
@@ -101,6 +106,7 @@ final class SettingsViewController: NSViewController {
             title,
             appearanceSection,
             fileBrowserSection,
+            startupFoldersSection,
             fileOperationsSection,
             fileColorsSection
         ])
@@ -119,6 +125,7 @@ final class SettingsViewController: NSViewController {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20),
             appearanceSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
             fileBrowserSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            startupFoldersSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
             fileOperationsSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
             fileColorsSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
             widthRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
