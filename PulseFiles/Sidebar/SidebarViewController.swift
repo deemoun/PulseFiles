@@ -90,6 +90,7 @@ final class SidebarViewController: NSViewController {
 
         if ExperimentalFlags.restrictFileAccessToAppSandboxRoot {
             addSectionIfNeeded("Workspace", items: sandboxItems())
+            addSandboxRestrictionNote()
         }
 
         addSectionIfNeeded("Devices & Locations", items: deviceItems())
@@ -151,6 +152,38 @@ final class SidebarViewController: NSViewController {
         for item in items {
             addLocation(item)
         }
+    }
+
+
+    private func addSandboxRestrictionNote() {
+        if !stack.arrangedSubviews.isEmpty {
+            addSpacer()
+        }
+
+        let note = NSTextField(wrappingLabelWithString: ExperimentalFlags.sandboxRestrictionExplanation)
+        note.font = .systemFont(ofSize: 11, weight: .regular)
+        note.textColor = LiquidGlassStyle.secondaryLabel
+        note.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.cornerRadius = LiquidGlassStyle.compactCornerRadius
+        box.layer?.cornerCurve = .continuous
+        box.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.10).cgColor
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.22).cgColor
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(note)
+        note.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            note.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 10),
+            note.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -10),
+            note.topAnchor.constraint(equalTo: box.topAnchor, constant: 8),
+            note.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -8)
+        ])
+
+        stack.addArrangedSubview(box)
     }
 
     private func addSection(_ title: String) {

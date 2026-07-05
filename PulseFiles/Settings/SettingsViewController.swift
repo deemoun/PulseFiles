@@ -243,6 +243,7 @@ final class SettingsViewController: NSViewController {
                 settingsSection(
                     title: "Startup Folders",
                     views: [
+                        sandboxRestrictionStatusView(),
                         directoryRow(title: "Left startup folder", field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:))),
                         directoryRow(title: "Right startup folder", field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
                     ]
@@ -265,6 +266,50 @@ final class SettingsViewController: NSViewController {
                 fileColorPaletteView()
             ]
         }
+    }
+
+
+    private func sandboxRestrictionStatusView() -> NSView {
+        let rootPath = ExperimentalFlags.appSandboxRoot.path
+        let title = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
+            ? "Experimental sandbox mode is enabled"
+            : "Experimental sandbox mode is disabled"
+        let message = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
+            ? "\(ExperimentalFlags.sandboxRestrictionExplanation)\n\nSandbox root: \(rootPath)"
+            : "PulseFiles can browse real folders. To re-enable sandbox-only browsing, launch with --pulsefiles-enable-experimental-sandbox or set \(ExperimentalFlags.restrictFileAccessUserDefaultsKey) to true.\n\nSandbox root: \(rootPath)"
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.textColor = .labelColor
+
+        let messageLabel = NSTextField(wrappingLabelWithString: message)
+        messageLabel.textColor = .secondaryLabelColor
+        messageLabel.isSelectable = true
+
+        let textStack = NSStackView(views: [titleLabel, messageLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 4
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 8
+        box.layer?.cornerCurve = .continuous
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = NSColor.separatorColor.cgColor
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(textStack)
+
+        NSLayoutConstraint.activate([
+            textStack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
+            textStack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
+            textStack.topAnchor.constraint(equalTo: box.topAnchor, constant: 10),
+            textStack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -10),
+            messageLabel.widthAnchor.constraint(equalTo: textStack.widthAnchor)
+        ])
+
+        return box
     }
 
     private func sidebarWidthRow() -> NSStackView {
