@@ -17,11 +17,13 @@ final class SettingsViewController: NSViewController {
     private let leftDirectoryField = NSTextField()
     private let rightDirectoryField = NSTextField()
     private var colorWells: [FileVisualCategory: NSColorWell] = [:]
+    private let scrollView = NSScrollView()
+    private let contentStack = NSStackView()
 
     init(settings: SettingsService = SettingsService()) {
         self.settings = settings
         super.init(nibName: nil, bundle: nil)
-        preferredContentSize = NSSize(width: 640, height: 800)
+        preferredContentSize = NSSize(width: 820, height: 620)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -37,8 +39,22 @@ final class SettingsViewController: NSViewController {
     }
 
     private func buildLayout() {
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+
         let title = NSTextField(labelWithString: "Settings")
-        title.font = .preferredFont(forTextStyle: .title2)
+        title.font = .preferredFont(forTextStyle: .largeTitle)
+        title.setContentHuggingPriority(.required, for: .vertical)
+
+        let subtitle = NSTextField(wrappingLabelWithString: "Configure PulseFiles defaults, startup folders, file operations, and category colors.")
+        subtitle.textColor = .secondaryLabelColor
+        subtitle.setContentHuggingPriority(.required, for: .vertical)
+
+        let headerStack = NSStackView(views: [title, subtitle])
+        headerStack.orientation = .vertical
+        headerStack.alignment = .leading
+        headerStack.spacing = 4
+        headerStack.translatesAutoresizingMaskIntoConstraints = false
 
         [sidebarCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox].forEach {
             $0.target = self
@@ -102,36 +118,75 @@ final class SettingsViewController: NSViewController {
             ]
         )
 
-        let stack = NSStackView(views: [
-            title,
-            appearanceSection,
-            fileBrowserSection,
-            startupFoldersSection,
-            fileOperationsSection,
-            fileColorsSection
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 14
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
+        contentStack.orientation = .vertical
+        contentStack.alignment = .leading
+        contentStack.spacing = 18
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        [appearanceSection, fileBrowserSection, startupFoldersSection, fileOperationsSection, fileColorsSection].forEach {
+            contentStack.addArrangedSubview($0)
+            $0.widthAnchor.constraint(equalTo: contentStack.widthAnchor).isActive = true
+        }
+
+        let documentView = NSView()
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        documentView.addSubview(contentStack)
+
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.documentView = documentView
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        let doneButton = NSButton(title: "Done", target: self, action: #selector(done(_:)))
+        doneButton.keyEquivalent = "\r"
+        doneButton.bezelStyle = .rounded
+
+        let footerStack = NSStackView(views: [doneButton])
+        footerStack.orientation = .horizontal
+        footerStack.alignment = .centerY
+        footerStack.distribution = .gravityAreas
+        footerStack.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(headerStack)
+        view.addSubview(scrollView)
+        view.addSubview(footerStack)
 
         NSLayoutConstraint.activate([
-            view.widthAnchor.constraint(equalToConstant: preferredContentSize.width),
+            view.widthAnchor.constraint(greaterThanOrEqualToConstant: preferredContentSize.width),
             view.heightAnchor.constraint(greaterThanOrEqualToConstant: preferredContentSize.height),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20),
-            appearanceSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            fileBrowserSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            startupFoldersSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            fileOperationsSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            fileColorsSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            widthRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            headerStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            headerStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
+            headerStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
+
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
+            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 18),
+            scrollView.bottomAnchor.constraint(equalTo: footerStack.topAnchor, constant: -18),
+
+            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            documentView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+
+            contentStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            contentStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            contentStack.topAnchor.constraint(equalTo: documentView.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
+
+            footerStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            footerStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
+            footerStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
+            appearanceSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            fileBrowserSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            startupFoldersSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            fileOperationsSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            fileColorsSection.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            widthRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
             sidebarWidthSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
-            leftRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            rightRow.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            leftRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            rightRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
     }
 
@@ -275,6 +330,10 @@ final class SettingsViewController: NSViewController {
         rightDirectoryField.stringValue = settings.startupRightDirectory?.path ?? "Last right folder (\(settings.lastRightDirectory.path))"
     }
 
+
+    @objc private func done(_ sender: Any?) {
+        dismiss(sender)
+    }
 
     @objc private func fileColorChanged(_ sender: NSColorWell) {
         guard sender.tag >= 0, sender.tag < FileVisualCategory.allCases.count else { return }
