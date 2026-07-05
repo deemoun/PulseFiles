@@ -4,6 +4,7 @@ final class CommandBarView: NSVisualEffectView {
     var onAction: ((CommandBarAction) -> Void)?
 
     private let stack = NSStackView()
+    private let operationStatusLabel = NSTextField(labelWithString: "")
     private var isShowingShiftActions = false
 
     override init(frame frameRect: NSRect) {
@@ -25,11 +26,24 @@ final class CommandBarView: NSVisualEffectView {
         stack.spacing = 8
         stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
+
+        operationStatusLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        operationStatusLabel.textColor = .secondaryLabelColor
+        operationStatusLabel.alignment = .right
+        operationStatusLabel.lineBreakMode = .byTruncatingMiddle
+        operationStatusLabel.isHidden = true
+        operationStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+
         addSubview(stack)
+        addSubview(operationStatusLabel)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor)
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: operationStatusLabel.leadingAnchor, constant: -12),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            operationStatusLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            operationStatusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            operationStatusLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 240)
         ])
 
         reloadButtons()
@@ -39,6 +53,18 @@ final class CommandBarView: NSVisualEffectView {
         guard isShowingShiftActions != isShiftPressed else { return }
         isShowingShiftActions = isShiftPressed
         reloadButtons()
+    }
+
+    func setOperationStatus(_ status: String) {
+        operationStatusLabel.stringValue = status
+        operationStatusLabel.toolTip = status
+        operationStatusLabel.isHidden = status.isEmpty
+    }
+
+    func clearOperationStatus() {
+        operationStatusLabel.stringValue = ""
+        operationStatusLabel.toolTip = nil
+        operationStatusLabel.isHidden = true
     }
 
     private func reloadButtons() {
