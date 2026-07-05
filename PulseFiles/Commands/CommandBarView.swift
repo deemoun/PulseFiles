@@ -37,10 +37,12 @@ final class CommandBarView: NSVisualEffectView {
         addSubview(stack)
         addSubview(operationStatusLabel)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: operationStatusLabel.leadingAnchor, constant: -12),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
 
+            operationStatusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: stack.trailingAnchor, constant: 12),
             operationStatusLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             operationStatusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             operationStatusLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 240)
