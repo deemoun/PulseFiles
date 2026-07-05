@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 final class SidebarViewController: NSViewController {
     var onOpenLocation: ((URL, Bool) -> Void)?
@@ -21,10 +22,19 @@ final class SidebarViewController: NSViewController {
         }
     }
 
+    fileprivate struct InfoRow {
+        let title: String
+        let value: String
+        let symbol: String
+    }
+
     private let recentLocations: RecentLocationService
     private let accessPolicy: SandboxFileAccessPolicy
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
+    private var selectedItems: [FileItem] = []
+    private var sizeTask: Task<Void, Never>?
+    private var representedSelectionID = UUID()
 
     init(recentLocations: RecentLocationService, accessPolicy: SandboxFileAccessPolicy = .current) {
         self.recentLocations = recentLocations
@@ -32,9 +42,9 @@ final class SidebarViewController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
-    required init?(coder: NSCoder) {
-        nil
-    }
+    required init?(coder: NSCoder) { nil }
+
+    deinit { sizeTask?.cancel() }
 
     override func loadView() {
         view = NSVisualEffectView()
@@ -51,7 +61,10 @@ final class SidebarViewController: NSViewController {
         recentLocations.onChange = { [weak self] _ in self?.rebuild() }
     }
 
-    func refresh() {
+    func refresh() { rebuild() }
+
+    func showSelection(_ items: [FileItem]) {
+        selectedItems = items
         rebuild()
     }
 
@@ -62,7 +75,6 @@ final class SidebarViewController: NSViewController {
         scrollView.borderType = .noBorder
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
-
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -78,7 +90,6 @@ final class SidebarViewController: NSViewController {
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 10, bottom: 14, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = stack
-
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
@@ -88,51 +99,19 @@ final class SidebarViewController: NSViewController {
     }
 
     private func rebuild() {
+        sizeTask?.cancel()
+        representedSelectionID = UUID()
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
 
-        addSectionIfNeeded("Favorites", items: favoriteItems())
-
-        if ExperimentalFlags.restrictFileAccessToAppSandboxRoot {
-            addSectionIfNeeded("Workspace", items: sandboxItems())
-            addSandboxRestrictionNote()
+        if selectedItems.isEmpty {
+            addSectionIfNeeded("Recent", items: recentItems())
+        } else {
+            addFileInfo(for: selectedItems, selectionID: representedSelectionID)
         }
-
-        addSectionIfNeeded("Devices & Locations", items: deviceItems())
-        addSectionIfNeeded("Recent", items: recentItems())
-    }
-
-    private func favoriteItems() -> [SidebarItem] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return accessibleItems([
-            SidebarItem(title: "Home", url: home, symbol: "house", group: "Favorites"),
-            SidebarItem(title: "Desktop", url: home.appendingPathComponent("Desktop", isDirectory: true), symbol: "menubar.rectangle", group: "Favorites"),
-            SidebarItem(title: "Documents", url: home.appendingPathComponent("Documents", isDirectory: true), symbol: "doc", group: "Favorites"),
-            SidebarItem(title: "Downloads", url: home.appendingPathComponent("Downloads", isDirectory: true), symbol: "arrow.down.circle", group: "Favorites"),
-            SidebarItem(title: "Applications", url: URL(fileURLWithPath: "/Applications", isDirectory: true), symbol: "app", group: "Favorites"),
-            SidebarItem(title: "Projects", url: home.appendingPathComponent("Projects", isDirectory: true), symbol: "hammer", group: "Favorites")
-        ])
-    }
-
-    private func sandboxItems() -> [SidebarItem] {
-        let root = ExperimentalFlags.appSandboxRoot
-        return accessibleItems([
-            SidebarItem(title: "Sandbox Root", url: root, symbol: "lock.square", group: "Workspace"),
-            SidebarItem(title: "Left Pane", url: root.appendingPathComponent("Left Pane", isDirectory: true), symbol: "sidebar.left", group: "Workspace"),
-            SidebarItem(title: "Right Pane", url: root.appendingPathComponent("Right Pane", isDirectory: true), symbol: "sidebar.right", group: "Workspace"),
-            SidebarItem(title: "Projects", url: root.appendingPathComponent("Projects", isDirectory: true), symbol: "hammer", group: "Workspace"),
-            SidebarItem(title: "Downloads", url: root.appendingPathComponent("Downloads", isDirectory: true), symbol: "arrow.down.circle", group: "Workspace")
-        ])
-    }
-
-    private func deviceItems() -> [SidebarItem] {
-        accessibleItems([
-            SidebarItem(title: "Computer", url: URL(fileURLWithPath: "/", isDirectory: true), symbol: "desktopcomputer", group: "Devices & Locations"),
-            SidebarItem(title: "Macintosh HD", url: URL(fileURLWithPath: "/", isDirectory: true), symbol: "internaldrive", group: "Devices & Locations")
-        ])
     }
 
     private func recentItems() -> [SidebarItem] {
-        accessibleItems(recentLocations.locations.map { url in
+        accessibleItems(recentLocations.locations.prefix(5).map { url in
             SidebarItem(
                 title: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent,
                 subtitle: displayPath(for: url),
@@ -147,47 +126,89 @@ final class SidebarViewController: NSViewController {
         items.filter { accessPolicy.canAccess($0.url) }
     }
 
-    private func addSectionIfNeeded(_ title: String, items: [SidebarItem]) {
-        guard !items.isEmpty else { return }
-        if !stack.arrangedSubviews.isEmpty {
-            addSpacer()
-        }
-        addSection(title)
-        for item in items {
-            addLocation(item)
+    private func addFileInfo(for items: [FileItem], selectionID: UUID) {
+        if items.count == 1, let item = items.first {
+            addHeader(title: item.displayName, subtitle: displayPath(for: item.url), icon: item.icon)
+            addSection("Info")
+            addInfoRow(InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"), identifier: "total-size")
+            addInfoRow(InfoRow(title: "File Size", value: item.isDirectory ? "Folder" : FileSizeFormatter.string(fromByteCount: item.size), symbol: "doc.text"))
+            addInfoRow(InfoRow(title: "Type", value: item.localizedTypeDescription, symbol: item.isDirectory ? "folder" : "tag"))
+            if isImage(item) {
+                addInfoRow(InfoRow(title: "GPS Location", value: "Reading metadata…", symbol: "location"), identifier: "gps-location")
+            }
+            loadDetails(for: item, selectionID: selectionID)
+        } else {
+            addHeader(title: "\(items.count) items selected", subtitle: "Multiple selection", icon: NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: nil) ?? NSImage())
+            addSection("Info")
+            addInfoRow(InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"), identifier: "total-size")
+            addInfoRow(InfoRow(title: "Type", value: "Mixed selection", symbol: "tag"))
+            loadTotalSize(for: items, selectionID: selectionID)
         }
     }
 
-
-    private func addSandboxRestrictionNote() {
-        if !stack.arrangedSubviews.isEmpty {
-            addSpacer()
+    private func loadDetails(for item: FileItem, selectionID: UUID) {
+        sizeTask = Task { [weak self] in
+            let totalSize = await Self.totalSize(for: item.url, fallback: item.size)
+            let gps = item.isDirectory ? nil : Self.gpsLocation(for: item.url)
+            await MainActor.run {
+                guard let self, self.representedSelectionID == selectionID else { return }
+                self.updateInfoRow(identifier: "total-size", value: FileSizeFormatter.string(fromByteCount: totalSize))
+                if self.isImage(item) {
+                    self.updateInfoRow(identifier: "gps-location", value: gps ?? "No GPS metadata")
+                }
+            }
         }
+    }
 
-        let note = NSTextField(wrappingLabelWithString: ExperimentalFlags.sandboxRestrictionExplanation)
-        note.font = .systemFont(ofSize: 11, weight: .regular)
-        note.textColor = LiquidGlassStyle.secondaryLabel
-        note.setContentCompressionResistancePriority(.required, for: .vertical)
+    private func loadTotalSize(for items: [FileItem], selectionID: UUID) {
+        sizeTask = Task { [weak self] in
+            var total: Int64 = 0
+            for item in items where !Task.isCancelled {
+                total += await Self.totalSize(for: item.url, fallback: item.size)
+            }
+            await MainActor.run {
+                guard let self, self.representedSelectionID == selectionID else { return }
+                self.updateInfoRow(identifier: "total-size", value: FileSizeFormatter.string(fromByteCount: total))
+            }
+        }
+    }
 
-        let box = NSView()
-        box.wantsLayer = true
-        box.layer?.cornerRadius = LiquidGlassStyle.compactCornerRadius
-        box.layer?.cornerCurve = .continuous
-        box.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.10).cgColor
-        box.layer?.borderWidth = 1
-        box.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.22).cgColor
-        box.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(note)
-        note.translatesAutoresizingMaskIntoConstraints = false
+    private static func totalSize(for url: URL, fallback: Int64) async -> Int64 {
+        await Task.detached(priority: .utility) {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return fallback }
+            guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { return fallback }
+            var total: Int64 = 0
+            for case let child as URL in enumerator {
+                if Task.isCancelled { return total }
+                guard let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true else { continue }
+                total += Int64(values.fileSize ?? 0)
+            }
+            return total
+        }.value
+    }
 
-        NSLayoutConstraint.activate([
-            note.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 10),
-            note.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -10),
-            note.topAnchor.constraint(equalTo: box.topAnchor, constant: 8),
-            note.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -8)
-        ])
+    private static func gpsLocation(for url: URL) -> String? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+              let latitude = gps[kCGImagePropertyGPSLatitude] as? Double,
+              let longitude = gps[kCGImagePropertyGPSLongitude] as? Double else { return nil }
+        let latRef = gps[kCGImagePropertyGPSLatitudeRef] as? String
+        let lonRef = gps[kCGImagePropertyGPSLongitudeRef] as? String
+        let signedLat = latRef == "S" ? -latitude : latitude
+        let signedLon = lonRef == "W" ? -longitude : longitude
+        return String(format: "%.5f, %.5f", signedLat, signedLon)
+    }
 
-        stack.addArrangedSubview(box)
+    private func isImage(_ item: FileItem) -> Bool {
+        item.localizedTypeDescription.localizedCaseInsensitiveContains("image") || ["jpg", "jpeg", "png", "heic", "tiff", "gif"].contains(item.fileExtension.lowercased())
+    }
+
+    private func addSectionIfNeeded(_ title: String, items: [SidebarItem]) {
+        guard !items.isEmpty else { return }
+        addSection(title)
+        for item in items { addLocation(item) }
     }
 
     private func addSection(_ title: String) {
@@ -200,6 +221,44 @@ final class SidebarViewController: NSViewController {
         stack.setCustomSpacing(5, after: label)
     }
 
+    private func addHeader(title: String, subtitle: String, icon: NSImage) {
+        let imageView = NSImageView(image: icon)
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        let titleLabel = NSTextField(wrappingLabelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.textColor = LiquidGlassStyle.label
+        let subtitleLabel = NSTextField(labelWithString: subtitle)
+        subtitleLabel.font = .systemFont(ofSize: 11)
+        subtitleLabel.textColor = LiquidGlassStyle.secondaryLabel
+        subtitleLabel.lineBreakMode = .byTruncatingMiddle
+        let textStack = NSStackView(views: [titleLabel, subtitleLabel])
+        textStack.orientation = .vertical
+        textStack.spacing = 2
+        let row = NSStackView(views: [imageView, textStack])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        stack.addArrangedSubview(row)
+        NSLayoutConstraint.activate([
+            imageView.widthAnchor.constraint(equalToConstant: 32),
+            imageView.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        stack.setCustomSpacing(14, after: row)
+    }
+
+    private func addInfoRow(_ info: InfoRow, identifier: String? = nil) {
+        let row = SidebarInfoRowView(info: info)
+        if let identifier { row.identifier = NSUserInterfaceItemIdentifier(identifier) }
+        stack.addArrangedSubview(row)
+    }
+
+    private func updateInfoRow(identifier: String, value: String) {
+        for view in stack.arrangedSubviews where view.identifier?.rawValue == identifier {
+            (view as? SidebarInfoRowView)?.setValue(value)
+        }
+    }
+
     private func addLocation(_ item: SidebarItem) {
         let row = SidebarRowView(item: item)
         row.target = self
@@ -209,19 +268,64 @@ final class SidebarViewController: NSViewController {
         stack.addArrangedSubview(row)
     }
 
-    private func addSpacer() {
-        let spacer = NSView()
-        spacer.heightAnchor.constraint(equalToConstant: 8).isActive = true
-        stack.addArrangedSubview(spacer)
-    }
-
-    private func displayPath(for url: URL) -> String {
-        url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-    }
+    private func displayPath(for url: URL) -> String { url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
 
     @objc private func openLocation(_ sender: NSControl) {
         guard let path = sender.identifier?.rawValue else { return }
         onOpenLocation?(URL(fileURLWithPath: path), NSEvent.modifierFlags.contains(.option))
+    }
+}
+
+private final class SidebarInfoRowView: NSView {
+    private let valueLabel = NSTextField(wrappingLabelWithString: "")
+
+    init(info: SidebarViewController.InfoRow) {
+        super.init(frame: .zero)
+        setup(info: info)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func setValue(_ value: String) { valueLabel.stringValue = value }
+
+    private func setup(info: SidebarViewController.InfoRow) {
+        wantsLayer = true
+        layer?.cornerRadius = LiquidGlassStyle.compactCornerRadius
+        layer?.cornerCurve = .continuous
+        layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.04).cgColor
+        translatesAutoresizingMaskIntoConstraints = false
+
+        let imageView = NSImageView(image: NSImage(systemSymbolName: info.symbol, accessibilityDescription: info.title) ?? NSImage())
+        imageView.symbolConfiguration = .init(pointSize: 12, weight: .medium)
+        imageView.contentTintColor = LiquidGlassStyle.secondaryLabel
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: info.title)
+        titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        titleLabel.textColor = LiquidGlassStyle.secondaryLabel
+
+        valueLabel.stringValue = info.value
+        valueLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        valueLabel.textColor = LiquidGlassStyle.label
+        valueLabel.lineBreakMode = .byTruncatingMiddle
+
+        let textStack = NSStackView(views: [titleLabel, valueLabel])
+        textStack.orientation = .vertical
+        textStack.spacing = 1
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(imageView)
+        addSubview(textStack)
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
+            imageView.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            imageView.widthAnchor.constraint(equalToConstant: 16),
+            imageView.heightAnchor.constraint(equalToConstant: 16),
+            textStack.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 8),
+            textStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
+            textStack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            textStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
+        ])
     }
 }
 
