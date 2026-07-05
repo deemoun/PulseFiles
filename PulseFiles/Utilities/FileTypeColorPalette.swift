@@ -220,7 +220,7 @@ extension FileColorScheme {
         .hidden: NSColor.secondaryLabelColor,
         .executable: NSColor.systemGreen,
         .archive: NSColor.systemRed,
-        .image: NSColor.systemMagenta,
+        .image: NSColor.systemPink,
         .audio: NSColor.systemPurple,
         .video: NSColor.systemOrange,
         .document: NSColor.labelColor,
@@ -276,9 +276,7 @@ enum FileTypeColorPalette {
     }
 
     static func color(for category: FileVisualCategory, appearance: NSAppearance?) -> NSColor {
-        let resolvedColor = activeScheme.color(for: category)
-        guard let appearance else { return resolvedColor }
-        return resolvedColor.resolvedColor(with: appearance)
+        activeScheme.color(for: category).resolvedColorIfNeeded(with: appearance)
     }
 
     private static func blend(_ categoryColor: NSColor, over selectedTextColor: NSColor, fraction: CGFloat) -> NSColor {
@@ -301,6 +299,11 @@ enum FileTypeColorPalette {
 private extension NSColor {
     func resolvedColorIfNeeded(with appearance: NSAppearance?) -> NSColor {
         guard let appearance else { return self }
-        return resolvedColor(with: appearance)
+
+        var resolvedColor = self
+        appearance.performAsCurrentDrawingAppearance {
+            resolvedColor = self.usingColorSpace(.deviceRGB) ?? self
+        }
+        return resolvedColor
     }
 }
