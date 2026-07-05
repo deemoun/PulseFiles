@@ -924,7 +924,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func performFileTransfer(
         kind: String,
         shouldConfirm: Bool,
-        operation: @escaping (FileOperationRequest, @escaping (URL) -> FileConflictResolution, FileOperationProgressHandler?) async throws -> FileOperationResult
+        operation: @escaping (FileOperationRequest, @escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult
     ) {
         let sources = targetPane().selectedItems.map(\.url)
         guard !sources.isEmpty else {
@@ -937,7 +937,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         let start: () -> Void = { [weak self] in
             self?.startFileOperation(named: kind) { [weak self] progressHandler in
                 try await operation(request, { destination in
-                    self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+                    guard let self else { return .cancel }
+                    return await self.promptForConflict(destination: destination, operationName: kind)
                 }, progressHandler)
             }
         }
@@ -962,11 +963,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             self?.startFileOperation(named: kind) { [weak self] progressHandler in
                 if copy {
                     return try await fileOperations.copy(request, conflictHandler: { destination in
-                        self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+                        guard let self else { return .cancel }
+                        return await self.promptForConflict(destination: destination, operationName: kind)
                     }, progressHandler: progressHandler)
                 }
                 return try await fileOperations.move(request, conflictHandler: { destination in
-                    self?.promptForConflict(destination: destination, operationName: kind) ?? .cancel
+                    guard let self else { return .cancel }
+                    return await self.promptForConflict(destination: destination, operationName: kind)
                 }, progressHandler: progressHandler)
             }
         }
@@ -1073,12 +1076,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
-    private func promptForConflict(destination: URL, operationName: String) -> FileConflictResolution {
-        if !Thread.isMainThread {
-            return DispatchQueue.main.sync {
-                promptForConflict(destination: destination, operationName: operationName)
-            }
-        }
+    @MainActor
+    private func promptForConflict(destination: URL, operationName: String) async -> FileConflictResolution {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "\(destination.lastPathComponent) Already Exists"
@@ -1086,13 +1085,19 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         alert.addButton(withTitle: "Replace")
         alert.addButton(withTitle: "Skip")
         alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            return .replace
-        case .alertSecondButtonReturn:
-            return .skip
-        default:
-            return .cancel
+
+        guard let window = view.window else { return .cancel }
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) { response in
+                switch response {
+                case .alertFirstButtonReturn:
+                    continuation.resume(returning: .replace)
+                case .alertSecondButtonReturn:
+                    continuation.resume(returning: .skip)
+                default:
+                    continuation.resume(returning: .cancel)
+                }
+            }
         }
     }
 
