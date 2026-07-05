@@ -70,6 +70,10 @@ final class SettingsService {
         set { defaults.set(newValue, forKey: "permanentlyDeleteInsteadOfTrash") }
     }
 
+    var experimentalSandboxEnabled: Bool {
+        get { ExperimentalFlags.restrictFileAccessToAppSandboxRoot }
+        set { defaults.set(newValue, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
+    }
 
     var fileColorScheme: FileColorScheme {
         get {

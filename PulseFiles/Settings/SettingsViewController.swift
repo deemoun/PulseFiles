@@ -6,6 +6,7 @@ final class SettingsViewController: NSViewController {
         case folders
         case operations
         case colors
+        case debug
 
         var title: String {
             switch self {
@@ -13,6 +14,7 @@ final class SettingsViewController: NSViewController {
             case .folders: return "Folders"
             case .operations: return "Operations"
             case .colors: return "Colors"
+            case .debug: return "Debug"
             }
         }
 
@@ -22,6 +24,7 @@ final class SettingsViewController: NSViewController {
             case .folders: return "folder"
             case .operations: return "arrow.left.arrow.right"
             case .colors: return "paintpalette"
+            case .debug: return "ladybug"
             }
         }
     }
@@ -37,6 +40,7 @@ final class SettingsViewController: NSViewController {
     private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations", target: nil, action: nil)
     private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations", target: nil, action: nil)
     private let permanentDeleteCheckbox = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash", target: nil, action: nil)
+    private let experimentalSandboxCheckbox = NSButton(checkboxWithTitle: "Restrict browsing and file operations to the experimental sandbox", target: nil, action: nil)
     private let sidebarWidthSlider = NSSlider(value: 220, minValue: 180, maxValue: 300, target: nil, action: nil)
     private let sidebarWidthLabel = NSTextField(labelWithString: "220 pt")
     private let leftDirectoryField = NSTextField()
@@ -72,7 +76,7 @@ final class SettingsViewController: NSViewController {
         title.font = .preferredFont(forTextStyle: .largeTitle)
         title.setContentHuggingPriority(.required, for: .vertical)
 
-        let subtitle = NSTextField(wrappingLabelWithString: "Configure PulseFiles defaults, startup folders, file operations, and category colors.")
+        let subtitle = NSTextField(wrappingLabelWithString: "Configure PulseFiles defaults, startup folders, file operations, category colors, and debug safeguards.")
         subtitle.textColor = .secondaryLabelColor
         subtitle.setContentHuggingPriority(.required, for: .vertical)
 
@@ -84,7 +88,7 @@ final class SettingsViewController: NSViewController {
         headerStack.spacing = 4
         headerStack.translatesAutoresizingMaskIntoConstraints = false
 
-        [sidebarCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox].forEach {
+        [sidebarCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox, experimentalSandboxCheckbox].forEach {
             $0.target = self
             $0.action = #selector(controlChanged(_:))
         }
@@ -175,7 +179,7 @@ final class SettingsViewController: NSViewController {
         for category in Category.allCases {
             categoryControl.setLabel(category.title, forSegment: category.rawValue)
             categoryControl.setImage(NSImage(systemSymbolName: category.symbolName, accessibilityDescription: category.title), forSegment: category.rawValue)
-            categoryControl.setWidth(128, forSegment: category.rawValue)
+            categoryControl.setWidth(112, forSegment: category.rawValue)
         }
         categoryControl.selectedSegment = selectedCategory.rawValue
     }
@@ -243,7 +247,6 @@ final class SettingsViewController: NSViewController {
                 settingsSection(
                     title: "Startup Folders",
                     views: [
-                        sandboxRestrictionStatusView(),
                         directoryRow(title: "Left startup folder", field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:))),
                         directoryRow(title: "Right startup folder", field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
                     ]
@@ -265,18 +268,28 @@ final class SettingsViewController: NSViewController {
             return [
                 fileColorPaletteView()
             ]
+        case .debug:
+            return [
+                settingsSection(
+                    title: "Experimental Sandbox",
+                    views: [
+                        experimentalSandboxCheckbox,
+                        sandboxRestrictionStatusView()
+                    ]
+                )
+            ]
         }
     }
 
 
     private func sandboxRestrictionStatusView() -> NSView {
         let rootPath = ExperimentalFlags.appSandboxRoot.path
-        let title = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
+        let title = settings.experimentalSandboxEnabled
             ? "Experimental sandbox mode is enabled"
             : "Experimental sandbox mode is disabled"
-        let message = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
+        let message = settings.experimentalSandboxEnabled
             ? "\(ExperimentalFlags.sandboxRestrictionExplanation)\n\nSandbox root: \(rootPath)"
-            : "PulseFiles can browse real folders. To re-enable sandbox-only browsing, launch with --pulsefiles-enable-experimental-sandbox or set \(ExperimentalFlags.restrictFileAccessUserDefaultsKey) to true.\n\nSandbox root: \(rootPath)"
+            : "PulseFiles can browse real folders. Re-enable this before testing destructive file operations unless you intentionally want to work outside the test root.\n\nSandbox root: \(rootPath)"
 
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
@@ -454,6 +467,7 @@ final class SettingsViewController: NSViewController {
         confirmMoveCheckbox.state = settings.confirmMoveOperations ? .on : .off
         confirmDeleteCheckbox.state = settings.confirmDeleteOperations ? .on : .off
         permanentDeleteCheckbox.state = settings.permanentlyDeleteInsteadOfTrash ? .on : .off
+        experimentalSandboxCheckbox.state = settings.experimentalSandboxEnabled ? .on : .off
         sidebarWidthSlider.doubleValue = settings.preferredSidebarWidth
         updateSidebarWidthLabel()
         updateDirectoryFields()
@@ -515,8 +529,14 @@ final class SettingsViewController: NSViewController {
         settings.confirmMoveOperations = confirmMoveCheckbox.state == .on
         settings.confirmDeleteOperations = confirmDeleteCheckbox.state == .on
         settings.permanentlyDeleteInsteadOfTrash = permanentDeleteCheckbox.state == .on
+        let previousSandboxState = settings.experimentalSandboxEnabled
+        settings.experimentalSandboxEnabled = experimentalSandboxCheckbox.state == .on
         settings.preferredSidebarWidth = sidebarWidthSlider.doubleValue
         updateSidebarWidthLabel()
+        if previousSandboxState != settings.experimentalSandboxEnabled {
+            ExperimentalFlags.ensureAppSandboxRootExists()
+            rebuildSettingsPage()
+        }
         onChange?()
     }
 

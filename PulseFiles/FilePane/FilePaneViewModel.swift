@@ -4,6 +4,7 @@ import Foundation
 final class FilePaneViewModel {
     private let fileSystem: FileSystemServicing
     private let accessPolicy: SandboxFileAccessPolicy
+    private let directoryMonitor = DirectoryMonitor()
     private var loadTask: Task<Void, Never>?
 
     private(set) var state: PaneState
@@ -32,6 +33,10 @@ final class FilePaneViewModel {
             sort: sort,
             showsHiddenFiles: showsHiddenFiles
         )
+        directoryMonitor.onChange = { [weak self] in
+            guard let self else { return }
+            self.reloadAfterExternalDirectoryChange()
+        }
     }
 
     var currentDirectory: URL { state.currentDirectory }
@@ -49,6 +54,11 @@ final class FilePaneViewModel {
 
     func loadCurrentDirectory(onLoaded: (() -> Void)? = nil) {
         load(directory: state.currentDirectory, addToHistory: false, onLoaded: onLoaded)
+    }
+
+    private func reloadAfterExternalDirectoryChange() {
+        guard !isLoading else { return }
+        load(directory: state.currentDirectory, addToHistory: false)
     }
 
     func navigate(to url: URL) {
@@ -129,6 +139,7 @@ final class FilePaneViewModel {
         }
         state.currentDirectory = directory
         onDirectoryChanged?(directory)
+        directoryMonitor.startMonitoring(directory)
 
         let includeHidden = state.showsHiddenFiles
         let sort = state.sort

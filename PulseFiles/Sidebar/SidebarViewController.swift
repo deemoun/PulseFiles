@@ -51,6 +51,10 @@ final class SidebarViewController: NSViewController {
         recentLocations.onChange = { [weak self] _ in self?.rebuild() }
     }
 
+    func refresh() {
+        rebuild()
+    }
+
     private func configureScrollView() {
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true

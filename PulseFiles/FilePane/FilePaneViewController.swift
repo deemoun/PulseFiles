@@ -306,6 +306,7 @@ final class FilePaneViewController: NSViewController {
         directoryIcon.image = .fileIcon(for: viewModel.currentDirectory)
         tableView.reloadData()
         pruneInvalidSelection()
+        restorePreviousSelectionIfPossible()
         previousSelectedRowIndexes = tableView.selectedRowIndexes
         if !selectPendingItemIfAvailable(), tableView.selectedRow == -1, tableView.numberOfRows > 0 {
             selectDefaultRow()
@@ -337,6 +338,20 @@ final class FilePaneViewController: NSViewController {
 
     private func isSameFileURL(_ lhs: URL, _ rhs: URL) -> Bool {
         lhs.standardizedFileURL.resolvingSymlinksInPath().path == rhs.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private func restorePreviousSelectionIfPossible() {
+        guard pendingSelectionURL == nil, !previousSelectedRowIndexes.isEmpty else { return }
+        let selectedURLs = previousSelectedRowIndexes.compactMap { item(forRow: $0)?.url }
+        guard !selectedURLs.isEmpty else { return }
+
+        let rows = selectedURLs.reduce(into: IndexSet()) { partialResult, url in
+            if let index = viewModel.visibleItems.firstIndex(where: { isSameFileURL($0.url, url) }) {
+                partialResult.insert(index + realRowOffset)
+            }
+        }
+        guard !rows.isEmpty else { return }
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
     }
 
     @objc private func refresh() {

@@ -569,6 +569,16 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         rightPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
         leftPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
         rightPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
+        ExperimentalFlags.ensureAppSandboxRootExists()
+        if accessPolicy.isEnabled {
+            if !accessPolicy.canAccess(leftPane.currentDirectory) {
+                leftPane.navigate(to: accessPolicy.validatedDirectory(leftPane.currentDirectory))
+            }
+            if !accessPolicy.canAccess(rightPane.currentDirectory) {
+                rightPane.navigate(to: accessPolicy.validatedDirectory(rightPane.currentDirectory))
+            }
+        }
+        sidebar.refresh()
         view.layoutSubtreeIfNeeded()
         applySidebarSplitPosition()
         leftPane.refreshAppearance()

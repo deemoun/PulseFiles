@@ -19,13 +19,21 @@ enum SandboxAccessError: LocalizedError {
 }
 
 struct SandboxFileAccessPolicy {
-    let isEnabled: Bool
+    private let isEnabledOverride: Bool?
     let rootURL: URL
 
     static let current = SandboxFileAccessPolicy(
-        isEnabled: ExperimentalFlags.restrictFileAccessToAppSandboxRoot,
         rootURL: ExperimentalFlags.appSandboxRoot
     )
+
+    init(isEnabled: Bool? = nil, rootURL: URL) {
+        self.isEnabledOverride = isEnabled
+        self.rootURL = rootURL
+    }
+
+    var isEnabled: Bool {
+        isEnabledOverride ?? ExperimentalFlags.restrictFileAccessToAppSandboxRoot
+    }
 
     func canAccess(_ url: URL) -> Bool {
         guard isEnabled else { return true }
