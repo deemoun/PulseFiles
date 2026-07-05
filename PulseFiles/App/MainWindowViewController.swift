@@ -44,7 +44,6 @@ final class MainWindowViewController: NSViewController {
     private weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
     private var activeFilterText = ""
-    private var settingsPopover: NSPopover?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var flagsChangedEventMonitor: Any?
@@ -502,28 +501,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func presentSettings(_ sender: Any?) {
-        if let settingsPopover, settingsPopover.isShown {
-            settingsPopover.close()
-            return
-        }
+        guard presentedViewControllers?.contains(where: { $0 is SettingsViewController }) != true else { return }
 
         let controller = SettingsViewController(settings: settings)
         controller.onChange = { [weak self] in self?.applySettingsChanges() }
-
-        let popover = NSPopover()
-        popover.contentViewController = controller
-        popover.behavior = .semitransient
-        settingsPopover = popover
-
-        if let toolbarItem = sender as? NSToolbarItem, let button = toolbarItem.value(forKey: "view") as? NSView {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
-        } else if let control = sender as? NSView {
-            popover.show(relativeTo: control.bounds, of: control, preferredEdge: .maxY)
-        } else if let window = view.window {
-            let rect = NSRect(x: view.bounds.midX, y: view.bounds.maxY - 1, width: 1, height: 1)
-            popover.show(relativeTo: rect, of: view, preferredEdge: .maxY)
-            window.makeFirstResponder(view)
-        }
+        presentAsSheet(controller)
     }
 
     private func applySettingsChanges() {
