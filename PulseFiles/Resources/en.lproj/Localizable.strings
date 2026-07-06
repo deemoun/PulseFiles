@@ -36,6 +36,10 @@
 "Back" = "Back";
 "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable." = "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable.";
 "Cancel" = "Cancel";
+"%@ Cancelled" = "%@ Cancelled";
+"Cancel Operation" = "Cancel Operation";
+"Cancel the active file operation (Command-Period)" = "Cancel the active file operation (Command-Period)";
+"Cancelling operation…" = "Cancelling operation…";
 "Cannot copy or move %@ into %@." = "Cannot copy or move %@ into %@.";
 "Choose" = "Choose";
 "Choose…" = "Choose…";

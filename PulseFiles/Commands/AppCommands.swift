@@ -9,6 +9,7 @@ enum CommandBarAction: String, CaseIterable {
     case newFolder = "New Folder"
     case newFile = "New File"
     case delete = "Delete"
+    case cancelOperation = "Cancel Operation"
 
     var title: String {
         switch self {
@@ -20,6 +21,7 @@ enum CommandBarAction: String, CaseIterable {
         case .newFolder: return "New Folder".localized
         case .newFile: return "New File".localized
         case .delete: return "Delete".localized
+        case .cancelOperation: return "Cancel Operation".localized
         }
     }
 
@@ -33,6 +35,7 @@ enum CommandBarAction: String, CaseIterable {
         case .copy: return "F5"
         case .move: return "F6"
         case .delete: return "F8"
+        case .cancelOperation: return "⌘."
         }
     }
 }

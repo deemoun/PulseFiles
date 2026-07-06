@@ -5,6 +5,7 @@ final class CommandBarView: NSVisualEffectView {
 
     private let stack = NSStackView()
     private let operationStatusLabel = NSTextField(labelWithString: "")
+    private let cancelOperationButton = NSButton(title: "", target: nil, action: nil)
     private var isShowingShiftActions = false
 
     override init(frame frameRect: NSRect) {
@@ -36,8 +37,21 @@ final class CommandBarView: NSVisualEffectView {
         operationStatusLabel.isHidden = true
         operationStatusLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        cancelOperationButton.title = "Cancel Operation".localized
+        cancelOperationButton.target = self
+        cancelOperationButton.action = #selector(cancelOperation(_:))
+        cancelOperationButton.identifier = NSUserInterfaceItemIdentifier(CommandBarAction.cancelOperation.rawValue)
+        cancelOperationButton.setAccessibilityIdentifier("\(AccessibilityIdentifiers.CommandBar.field).cancelOperation")
+        cancelOperationButton.toolTip = "Cancel the active file operation (Command-Period)".localized
+        cancelOperationButton.setButtonType(.momentaryPushIn)
+        cancelOperationButton.isHidden = true
+        cancelOperationButton.isEnabled = false
+        cancelOperationButton.translatesAutoresizingMaskIntoConstraints = false
+        LiquidGlassStyle.applyButtonChrome(to: cancelOperationButton)
+
         addSubview(stack)
         addSubview(operationStatusLabel)
+        addSubview(cancelOperationButton)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 10),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
@@ -45,9 +59,12 @@ final class CommandBarView: NSVisualEffectView {
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             operationStatusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: stack.trailingAnchor, constant: 12),
-            operationStatusLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            operationStatusLabel.trailingAnchor.constraint(equalTo: cancelOperationButton.leadingAnchor, constant: -8),
             operationStatusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            operationStatusLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 240)
+            operationStatusLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 240),
+
+            cancelOperationButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            cancelOperationButton.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
 
         reloadButtons()
@@ -63,12 +80,16 @@ final class CommandBarView: NSVisualEffectView {
         operationStatusLabel.stringValue = status
         operationStatusLabel.toolTip = status
         operationStatusLabel.isHidden = status.isEmpty
+        cancelOperationButton.isHidden = status.isEmpty
+        cancelOperationButton.isEnabled = !status.isEmpty
     }
 
     func clearOperationStatus() {
         operationStatusLabel.stringValue = ""
         operationStatusLabel.toolTip = nil
         operationStatusLabel.isHidden = true
+        cancelOperationButton.isHidden = true
+        cancelOperationButton.isEnabled = false
     }
 
     private func reloadButtons() {
@@ -89,6 +110,10 @@ final class CommandBarView: NSVisualEffectView {
             button.setButtonType(.momentaryPushIn)
             stack.addArrangedSubview(button)
         }
+    }
+
+    @objc private func cancelOperation(_ sender: NSButton) {
+        onAction?(.cancelOperation)
     }
 
     @objc private func runAction(_ sender: NSButton) {

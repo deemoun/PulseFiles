@@ -356,6 +356,8 @@ final class MainWindowViewController: NSViewController {
                 rebuildPaneArrangement()
                 updateActivePane()
             }
+        case .cancelOperation:
+            cancelActiveFileOperation()
         }
     }
 
@@ -389,7 +391,11 @@ final class MainWindowViewController: NSViewController {
         let option = event.modifierFlags.contains(.option)
         let control = event.modifierFlags.contains(.control)
         if event.keyCode == 53 {
-            view.window?.makeFirstResponder(targetPane().tableView)
+            if isFileOperationActive {
+                cancelActiveFileOperation()
+            } else {
+                view.window?.makeFirstResponder(targetPane().tableView)
+            }
             return true
         }
         if let routedCommand = MainCommandRouter().commandForKeyDown(
@@ -1283,6 +1289,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         return lines.joined(separator: "\n")
     }
 
+    private func cancelActiveFileOperation() {
+        guard isFileOperationActive else { return }
+        activeOperationTask?.cancel()
+        commandBar.setOperationStatus("Cancelling operation…".localized)
+    }
+
     private func startFileOperation(named operationName: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
         guard !isFileOperationActive else { return }
         let previousWindowTitle = view.window?.title
@@ -1340,7 +1352,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         if result.wasCancelled { details.append("The operation was cancelled before all items completed.".localized) }
         details.append(contentsOf: result.failedItems.map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" })
         details.append(contentsOf: result.cleanupWarnings.map { "\($0.url.lastPathComponent): \($0.message)" })
-        showError(message: "%@ Finished With Issues".localized(with: operationName), detail: details.joined(separator: "\n"))
+
+        let onlyCancelled = result.wasCancelled && result.failedItems.isEmpty && result.cleanupWarnings.isEmpty
+        let message = onlyCancelled
+            ? "%@ Cancelled".localized(with: operationName)
+            : "%@ Finished With Issues".localized(with: operationName)
+        showAlert(message: message, detail: details.joined(separator: "\n"), style: onlyCancelled ? .informational : .warning)
     }
 
     private func setConflictingFileActionsEnabled(_ isEnabled: Bool) {
@@ -1381,14 +1398,18 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func showError(message: String, detail: String) {
+        showAlert(message: message, detail: detail, style: .warning)
+    }
+
+    private func showAlert(message: String, detail: String, style: NSAlert.Style) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in
-                self?.showError(message: message, detail: detail)
+                self?.showAlert(message: message, detail: detail, style: style)
             }
             return
         }
         let alert = NSAlert()
-        alert.alertStyle = .warning
+        alert.alertStyle = style
         alert.messageText = message
         alert.informativeText = detail
         alert.addButton(withTitle: "OK".localized)
@@ -1475,6 +1496,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
     @objc func menuFocusLeftPane(_ sender: Any?) { performCommand(.focusLeftPane) }
     @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
+    @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -1498,6 +1520,9 @@ extension MainWindowViewController: NSMenuItemValidation {
         if menuItem.action == #selector(menuMoveToTrash(_:)) {
             menuItem.title = settings.permanentlyDeleteInsteadOfTrash ? "Permanently Delete".localized : "Move to Trash".localized
             return true
+        }
+        if menuItem.action == #selector(menuCancelOperation(_:)) {
+            return isFileOperationActive
         }
         let sort = targetPane().sortDescriptor
         if menuItem.action == #selector(menuSortByName(_:)) {

@@ -49,6 +49,7 @@ enum MainCommandRoutingDisabledReason: Equatable {
     case noFocusedItem
     case sandboxRejectedSelection
     case fileOperationInProgress
+    case noActiveFileOperation
 }
 
 enum MainCommandRoute: Equatable {
@@ -63,6 +64,9 @@ struct MainCommandRouter {
     func route(_ command: MainCommand, in state: MainCommandRoutingState) -> MainCommandRoute {
         if state.isFileOperationActive, command.conflictsWithFileOperation {
             return .disabled(command: command, reason: .fileOperationInProgress)
+        }
+        if command == .cancelOperation {
+            return state.isFileOperationActive ? .enabled(command: command) : .disabled(command: command, reason: .noActiveFileOperation)
         }
 
         switch command {
@@ -110,13 +114,14 @@ struct MainCommandRouter {
         isTextInputFocused: Bool = false
     ) -> MainCommand? {
         if command && keyCode == 48 { return nil }
-        if isTextInputFocused, !(command && keyCode == 50) { return nil }
+        if isTextInputFocused, !(command && (keyCode == 47 || keyCode == 50)) { return nil }
         let plain = !command && !shift && !option && !control
         let shiftOnly = shift && !command && !option && !control
 
         if command && !shift && !option && !control && keyCode == 8 { return .copyToClipboard }
         if command && !shift && !option && !control && keyCode == 7 { return .cutToClipboard }
         if command && !shift && !option && !control && keyCode == 9 { return .pasteFromClipboard }
+        if command && !shift && !option && !control && keyCode == 47 { return .cancelOperation }
         if command && !shift && !option && !control && keyCode == 50 { return .toggleTerminal }
         if command && !shift && !option && !control && keyCode == 17 { return .togglePaneLayout }
         if plain && keyCode == 49 { return .quickLook }
