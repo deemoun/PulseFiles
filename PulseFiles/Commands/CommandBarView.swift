@@ -39,7 +39,7 @@ final class CommandBarView: NSVisualEffectView {
 
         cancelOperationButton.title = "Cancel Operation".localized
         cancelOperationButton.target = self
-        cancelOperationButton.action = #selector(cancelOperation(_:))
+        cancelOperationButton.action = #selector(cancelActiveOperation(_:))
         cancelOperationButton.identifier = NSUserInterfaceItemIdentifier(CommandBarAction.cancelOperation.rawValue)
         cancelOperationButton.setAccessibilityIdentifier("\(AccessibilityIdentifiers.CommandBar.field).cancelOperation")
         cancelOperationButton.toolTip = "Cancel the active file operation (Command-Period)".localized
@@ -112,7 +112,7 @@ final class CommandBarView: NSVisualEffectView {
         }
     }
 
-    @objc private func cancelOperation(_ sender: NSButton) {
+    @objc private func cancelActiveOperation(_ sender: NSButton) {
         onAction?(.cancelOperation)
     }
 
