@@ -11,6 +11,7 @@ enum FileOperationError: LocalizedError, Equatable {
     case destinationExists(URL)
     case unsafeReplacement(destination: URL, backup: URL)
     case sourceCleanupFailed(source: URL, destination: URL)
+    case temporarySiblingUnavailable(destination: URL, prefix: String)
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +35,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "Could not safely replace the existing item.".localized
         case .sourceCleanupFailed:
             return "The item was copied, but the original could not be removed.".localized
+        case .temporarySiblingUnavailable:
+            return "Could not create a safe temporary file name.".localized
         }
     }
 
@@ -59,6 +62,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "The original item was kept at %@. %@ was not overwritten.".localized(with: backup.path, destination.path)
         case .sourceCleanupFailed(let source, let destination):
             return "%@ now exists, but the original remains at %@.".localized(with: destination.path, source.path)
+        case .temporarySiblingUnavailable(let destination, let prefix):
+            return "PulseFiles tried multiple %@ staging names beside %@, but each candidate already existed.".localized(with: prefix, destination.path)
         }
     }
 }
@@ -319,7 +324,7 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func safelyCopy(source: URL, to destination: URL) throws -> [FileOperationCleanupWarning] {
-        let tempURL = temporarySibling(for: destination, prefix: ".pulsefiles-copy")
+        let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-copy")
         do {
             try fileManager.copyItem(at: source, to: tempURL)
             return try placeStagedItem(tempURL, at: destination)
@@ -350,7 +355,7 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func copyThenDeleteMove(source: URL, to destination: URL) throws -> [FileOperationCleanupWarning] {
-        let tempURL = temporarySibling(for: destination, prefix: ".pulsefiles-move")
+        let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-move")
         do {
             try fileManager.copyItem(at: source, to: tempURL)
             var warnings = try placeStagedItem(tempURL, at: destination)
@@ -394,7 +399,7 @@ final class FileOperationService: FileOperationServicing {
             return []
         }
 
-        let backupURL = temporarySibling(for: destination, prefix: ".pulsefiles-backup")
+        let backupURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-backup")
         try fileManager.moveItem(at: destination, to: backupURL)
         do {
             try fileManager.moveItem(at: stagedURL, to: destination)
@@ -521,10 +526,16 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-    private func temporarySibling(for destination: URL, prefix: String) -> URL {
-        destination
-            .deletingLastPathComponent()
-            .appendingPathComponent("\(prefix)-\(UUID().uuidString)-\(destination.lastPathComponent)")
+    private func uniqueTemporarySibling(for destination: URL, prefix: String, maximumAttempts: Int = 10) throws -> URL {
+        let parentDirectory = destination.deletingLastPathComponent()
+        for _ in 0..<maximumAttempts {
+            let candidate = parentDirectory.appendingPathComponent("\(prefix)-\(UUID().uuidString)-\(destination.lastPathComponent)")
+            if !fileManager.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: prefix)
     }
 
     private func removeIfExists(_ url: URL) throws {
