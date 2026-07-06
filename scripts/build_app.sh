@@ -90,6 +90,16 @@ cp "${INFO_PLIST}" "${CONTENTS_DIR}/Info.plist"
 if [[ -d "${APP_RESOURCES_DIR}" ]]; then
     cp -R "${APP_RESOURCES_DIR}/." "${RESOURCES_DIR}/"
 fi
+
+for RESOURCE_BUNDLE_PATH in \
+    "${BUILD_PATH}/${CONFIGURATION}/${APP_NAME}_${APP_NAME}.bundle" \
+    "${BUILD_PATH}/${CONFIGURATION}/${APP_NAME}_${APP_NAME}.resources"
+do
+    if [[ -d "${RESOURCE_BUNDLE_PATH}" ]]; then
+        rm -rf "${RESOURCES_DIR}/$(basename "${RESOURCE_BUNDLE_PATH}")"
+        cp -R "${RESOURCE_BUNDLE_PATH}" "${RESOURCES_DIR}/"
+    fi
+done
 chmod +x "${MACOS_DIR}/${APP_NAME}"
 
 if command -v codesign >/dev/null 2>&1; then
