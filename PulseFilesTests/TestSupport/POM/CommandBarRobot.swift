@@ -10,10 +10,28 @@ final class CommandBarRobot: CommandBarPageObject {
     typealias CommandHandler = (MainCommand) -> Void
 
     private var handler: CommandHandler?
+    private(set) var isOpen = false
     private(set) var executedCommands: [MainCommand] = []
 
     init(handler: CommandHandler? = nil) {
         self.handler = handler
+    }
+
+    @discardableResult
+    func open() -> Self {
+        isOpen = true
+        return self
+    }
+
+    @discardableResult
+    func typeKnownCommand(_ action: CommandBarAction) -> Self {
+        execute(action)
+    }
+
+    @discardableResult
+    func expectOpen(_ expected: Bool, file: StaticString = #filePath, line: UInt = #line) -> Self {
+        XCTAssertEqual(isOpen, expected, file: file, line: line)
+        return self
     }
 
     @discardableResult
