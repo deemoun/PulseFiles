@@ -1311,7 +1311,20 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
-        let status = "\(operationName): \(progress.currentItemName) (\(progress.completedCount)/\(progress.totalCount))"
+        var detail = "\(progress.completedCount)/\(progress.totalCount)"
+        if let completedRecursiveItemCount = progress.completedRecursiveItemCount,
+           let totalRecursiveItemCount = progress.totalRecursiveItemCount,
+           totalRecursiveItemCount > progress.totalCount {
+            detail = "%d/%d items".localized(with: completedRecursiveItemCount, totalRecursiveItemCount)
+        } else if let completedByteCount = progress.completedByteCount,
+                  let totalByteCount = progress.totalByteCount,
+                  totalByteCount > 0 {
+            detail = "%@/%@".localized(
+                with: ByteCountFormatter.string(fromByteCount: completedByteCount, countStyle: .file),
+                ByteCountFormatter.string(fromByteCount: totalByteCount, countStyle: .file)
+            )
+        }
+        let status = "\(operationName): \(progress.currentItemName) (\(detail))"
         view.window?.title = status
         commandBar.setOperationStatus(status)
     }

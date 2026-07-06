@@ -411,6 +411,53 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "source")
     }
 
+
+    func testCopyNestedDirectoryReportsRecursiveItemProgress() async throws {
+        let fixture = try makeFixture()
+        let folder = fixture.left.appendingPathComponent("Folder", isDirectory: true)
+        let child = folder.appendingPathComponent("Child", isDirectory: true)
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        try "root".write(to: folder.appendingPathComponent("Root.txt"), atomically: true, encoding: .utf8)
+        try "nested".write(to: child.appendingPathComponent("Nested.txt"), atomically: true, encoding: .utf8)
+        var progressEvents: [FileOperationProgress] = []
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [folder], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: { progressEvents.append($0) }
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Folder/Child/Nested.txt")), "nested")
+        XCTAssertEqual(progressEvents.compactMap(\.totalRecursiveItemCount).last, 4)
+        XCTAssertEqual(progressEvents.compactMap(\.completedRecursiveItemCount).max(), 4)
+        XCTAssertTrue(progressEvents.contains { $0.currentItemName == "Nested.txt" && $0.completedRecursiveItemCount == 4 })
+    }
+
+    func testFallbackMoveNestedDirectoryReportsRecursiveItemProgress() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let folder = fixture.left.appendingPathComponent("Folder", isDirectory: true)
+        let child = folder.appendingPathComponent("Child", isDirectory: true)
+        let destination = fixture.right.appendingPathComponent("Folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        try "nested".write(to: child.appendingPathComponent("Nested.txt"), atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failMoveToURL = destination
+        fixture.failingFileManager?.moveFailureError = NSError(domain: NSPOSIXErrorDomain, code: Int(POSIXErrorCode.EXDEV.rawValue))
+        var progressEvents: [FileOperationProgress] = []
+
+        let result = try await fixture.service.move(
+            FileOperationRequest(sources: [folder], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: { progressEvents.append($0) }
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("Child/Nested.txt")), "nested")
+        XCTAssertEqual(progressEvents.compactMap(\.totalRecursiveItemCount).last, 3)
+        XCTAssertEqual(progressEvents.compactMap(\.completedRecursiveItemCount).max(), 3)
+    }
+
     func testPermanentDeleteRejectsDuplicateSourcesBeforeMutation() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")
@@ -580,6 +627,10 @@ private final class FailingFileManager: FileOperationFileManaging {
             throw CocoaError(.fileWriteNoPermission)
         }
         try FileManager.default.removeItem(at: URL)
+    }
+
+    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: createIntermediates)
     }
 
     func trashItem(at url: URL, resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws {
