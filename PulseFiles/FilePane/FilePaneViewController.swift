@@ -69,6 +69,7 @@ final class FilePaneViewController: NSViewController {
         let paneView = PaneContainerView()
         paneView.onMouseDown = { [weak self] in self?.onActivate?() }
         view = paneView
+        view.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.container(for: paneID))
         LiquidGlassStyle.applyPanelChrome(to: view)
     }
 
@@ -176,10 +177,12 @@ final class FilePaneViewController: NSViewController {
         hiddenButton.action = #selector(toggleHidden)
         hiddenButton.toolTip = "Toggle hidden files"
 
+        breadcrumb.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.breadcrumb(for: paneID))
         breadcrumb.onSelect = { [weak self] url in self?.navigate(to: url) }
     }
 
     private func buildTable() {
+        tableView.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.table(for: paneID))
         tableView.delegate = self
         tableView.dataSource = self
         tableView.actionDelegate = self
@@ -222,6 +225,7 @@ final class FilePaneViewController: NSViewController {
         }
 
         activeStripe.wantsLayer = true
+        activeStripe.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.activeIndicator(for: paneID))
         let headerStack = NSStackView(views: [directoryIcon, breadcrumb, hiddenButton])
         headerStack.orientation = .horizontal
         headerStack.alignment = .centerY

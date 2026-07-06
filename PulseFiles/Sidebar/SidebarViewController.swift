@@ -50,6 +50,7 @@ final class SidebarViewController: NSViewController {
         view = NSVisualEffectView()
         (view as? NSVisualEffectView)?.material = .hudWindow
         (view as? NSVisualEffectView)?.blendingMode = .withinWindow
+        view.setAccessibilityIdentifier(AccessibilityIdentifiers.Sidebar.panel)
         LiquidGlassStyle.applyPanelChrome(to: view)
     }
 
@@ -84,6 +85,7 @@ final class SidebarViewController: NSViewController {
     }
 
     private func configureStack() {
+        stack.setAccessibilityIdentifier(AccessibilityIdentifiers.Sidebar.list)
         stack.orientation = .vertical
         stack.alignment = .width
         stack.spacing = 4

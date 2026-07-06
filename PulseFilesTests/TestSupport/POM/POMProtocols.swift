@@ -28,6 +28,10 @@ protocol AppPageObject: AnyObject {
 @MainActor
 protocol FilePanePageObject: AnyObject {
     var paneID: PaneID { get }
+    var paneAccessibilityIdentifier: String { get }
+    var tableAccessibilityIdentifier: String { get }
+    var breadcrumbAccessibilityIdentifier: String { get }
+    var activeIndicatorAccessibilityIdentifier: String { get }
 
     @discardableResult
     func navigate(to url: URL) -> Self
@@ -48,6 +52,8 @@ protocol FilePanePageObject: AnyObject {
 /// pages should drive the command bar through accessibility, menus, or keyboard
 /// shortcuts while preserving these action names.
 protocol CommandBarPageObject: AnyObject {
+    var fieldAccessibilityIdentifier: String { get }
+    var listAccessibilityIdentifier: String { get }
     @discardableResult
     func execute(_ action: CommandBarAction) -> Self
 }
@@ -57,6 +63,8 @@ protocol CommandBarPageObject: AnyObject {
 /// The unit-test robot uses services and isolated defaults. A future UI-backed
 /// page should use sidebar accessibility identifiers while retaining these names.
 protocol SidebarPageObject: AnyObject {
+    var toggleAccessibilityIdentifier: String { get }
+    var listAccessibilityIdentifier: String { get }
     @discardableResult
     func saveBookmarks(_ bookmarks: [Bookmark]) -> Self
 
@@ -69,6 +77,8 @@ protocol SidebarPageObject: AnyObject {
 /// This remains settings-backed in unit tests because the terminal is
 /// experimental and opt-in; future UI pages should still verify that safety gate.
 protocol TerminalPageObject: AnyObject {
+    var panelAccessibilityIdentifier: String { get }
+    var toggleAccessibilityIdentifier: String { get }
     @discardableResult
     func setExperimentalTerminalEnabled(_ enabled: Bool) -> Self
 

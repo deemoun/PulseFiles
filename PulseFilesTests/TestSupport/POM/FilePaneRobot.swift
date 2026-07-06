@@ -14,6 +14,11 @@ final class FilePaneRobot: FilePanePageObject {
     private(set) var isActive = false
     private(set) var isVisible = true
 
+    var paneAccessibilityIdentifier: String { AccessibilityIdentifiers.Pane.container(for: paneID) }
+    var tableAccessibilityIdentifier: String { AccessibilityIdentifiers.Pane.table(for: paneID) }
+    var breadcrumbAccessibilityIdentifier: String { AccessibilityIdentifiers.Pane.breadcrumb(for: paneID) }
+    var activeIndicatorAccessibilityIdentifier: String { AccessibilityIdentifiers.Pane.activeIndicator(for: paneID) }
+
     init(paneID: PaneID, viewModel: FilePaneViewModel, isActive: Bool = false) {
         self.paneID = paneID
         self.viewModel = viewModel
@@ -53,6 +58,15 @@ final class FilePaneRobot: FilePanePageObject {
     @discardableResult
     func select(_ urls: [URL]) -> Self {
         selectedURLs = Set(urls)
+        return self
+    }
+
+    @discardableResult
+    func expectAccessibilityIdentifiers(file: StaticString = #filePath, line: UInt = #line) -> Self {
+        XCTAssertEqual(paneAccessibilityIdentifier, AccessibilityIdentifiers.Pane.container(for: paneID), file: file, line: line)
+        XCTAssertEqual(tableAccessibilityIdentifier, AccessibilityIdentifiers.Pane.table(for: paneID), file: file, line: line)
+        XCTAssertEqual(breadcrumbAccessibilityIdentifier, AccessibilityIdentifiers.Pane.breadcrumb(for: paneID), file: file, line: line)
+        XCTAssertEqual(activeIndicatorAccessibilityIdentifier, AccessibilityIdentifiers.Pane.activeIndicator(for: paneID), file: file, line: line)
         return self
     }
 
