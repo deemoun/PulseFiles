@@ -46,6 +46,7 @@ struct MainCommandRoutingState: Equatable {
 
 enum MainCommandRoutingDisabledReason: Equatable {
     case noSelection
+    case noFocusedItem
     case sandboxRejectedSelection
     case fileOperationInProgress
 }
@@ -85,6 +86,10 @@ struct MainCommandRouter {
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
+        case .quickLook:
+            return focusedRoute(command, in: state) {
+                .activePane(command: command, pane: state.activePaneID, urls: [$0])
+            }
         case .open, .rename, .trash, .reveal:
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
@@ -114,6 +119,7 @@ struct MainCommandRouter {
         if command && !shift && !option && !control && keyCode == 9 { return .pasteFromClipboard }
         if command && !shift && !option && !control && keyCode == 50 { return .toggleTerminal }
         if command && !shift && !option && !control && keyCode == 17 { return .togglePaneLayout }
+        if plain && keyCode == 49 { return .quickLook }
         if plain && keyCode == 48 { return .switchPane }
         if shiftOnly && keyCode == 98 { return .newFile }
         if plain && keyCode == 98 { return .newFolder }
@@ -136,6 +142,16 @@ struct MainCommandRouter {
             return .disabled(command: command, reason: .sandboxRejectedSelection)
         }
         return build()
+    }
+
+    private func focusedRoute(_ command: MainCommand, in state: MainCommandRoutingState, build: (URL) -> MainCommandRoute) -> MainCommandRoute {
+        guard let focusedURL = state.activePane.focusedURL else {
+            return .disabled(command: command, reason: .noFocusedItem)
+        }
+        guard state.sandboxAllowsSelectedURLs else {
+            return .disabled(command: command, reason: .sandboxRejectedSelection)
+        }
+        return build(focusedURL)
     }
 }
 

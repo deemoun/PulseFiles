@@ -43,6 +43,7 @@ final class MainCommandRoutingTests: XCTestCase {
         for command in [MainCommand.open, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noSelection))
         }
+        XCTAssertEqual(router.route(.quickLook, in: state), .disabled(command: .quickLook, reason: .noFocusedItem))
     }
 
     func testSelectionCommandsAreDisabledWhenSandboxRejectsSelectedURL() {
@@ -60,9 +61,26 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertNil(router.commandForKeyDown(keyCode: 7, command: true, isTextInputFocused: true), "Command-X should remain cut text in search text fields.")
         XCTAssertNil(router.commandForKeyDown(keyCode: 9, command: true, isTextInputFocused: true), "Command-V should remain paste in search text fields.")
         XCTAssertNil(router.commandForKeyDown(keyCode: 120, isTextInputFocused: true), "F2 should not rename while editing search text.")
+        XCTAssertNil(router.commandForKeyDown(keyCode: 49, isTextInputFocused: true), "Space should remain text input in search text fields.")
         XCTAssertEqual(router.commandForKeyDown(keyCode: 50, command: true, isTextInputFocused: true), .toggleTerminal)
     }
 
+
+    func testSpaceRoutesToQuickLookFocusedItemOutsideTextInput() {
+        let focused = URL(fileURLWithPath: "/sandbox/left/focused.png")
+        let state = makeState(activePaneID: .left, leftFocusedURL: focused)
+
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 49), .quickLook)
+        XCTAssertEqual(router.route(.quickLook, in: state), .activePane(command: .quickLook, pane: .left, urls: [focused]))
+    }
+
+    func testQuickLookUsesFocusedItemRatherThanSelection() {
+        let selected = URL(fileURLWithPath: "/sandbox/left/selected.txt")
+        let focused = URL(fileURLWithPath: "/sandbox/left/focused.png")
+        let state = makeState(activePaneID: .left, leftSelection: [selected], leftFocusedURL: focused)
+
+        XCTAssertEqual(router.route(.quickLook, in: state), .activePane(command: .quickLook, pane: .left, urls: [focused]))
+    }
 
     func testClipboardShortcutsRouteWhenTextInputIsNotFocused() {
         XCTAssertEqual(router.commandForKeyDown(keyCode: 8, command: true), .copyToClipboard)
@@ -96,6 +114,8 @@ final class MainCommandRoutingTests: XCTestCase {
         activePaneID: PaneID,
         leftSelection: [URL] = [],
         rightSelection: [URL] = [],
+        leftFocusedURL: URL? = nil,
+        rightFocusedURL: URL? = nil,
         isFileOperationActive: Bool = false,
         sandboxAllowsSelectedURLs: Bool = true
     ) -> MainCommandRoutingState {
@@ -105,13 +125,13 @@ final class MainCommandRoutingTests: XCTestCase {
                 id: .left,
                 currentDirectory: URL(fileURLWithPath: "/sandbox/left", isDirectory: true),
                 selectedURLs: leftSelection,
-                focusedURL: leftSelection.first
+                focusedURL: leftFocusedURL ?? leftSelection.first
             ),
             rightPane: MainCommandRoutingPane(
                 id: .right,
                 currentDirectory: URL(fileURLWithPath: "/sandbox/right", isDirectory: true),
                 selectedURLs: rightSelection,
-                focusedURL: rightSelection.first
+                focusedURL: rightFocusedURL ?? rightSelection.first
             ),
             isFileOperationActive: isFileOperationActive,
             sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs

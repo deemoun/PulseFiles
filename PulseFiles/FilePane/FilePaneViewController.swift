@@ -587,6 +587,10 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         openFocusedItem()
     }
 
+    func fileTableViewDidRequestQuickLook(_ tableView: FileTableView) {
+        onCommand?(.quickLook)
+    }
+
     func fileTableViewDidRequestParent(_ tableView: FileTableView) {
         onCommand?(.parent)
     }

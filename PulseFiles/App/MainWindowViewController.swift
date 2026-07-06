@@ -1,4 +1,5 @@
 import AppKit
+import Quartz
 
 final class MainWindowViewController: NSViewController {
     private enum SidebarMetrics {
@@ -57,6 +58,7 @@ final class MainWindowViewController: NSViewController {
     private var terminalHeightConstraint: NSLayoutConstraint?
     private var isSinglePaneMode = false
     private var activeOperationTask: Task<Void, Never>?
+    private var quickLookPreviewURL: NSURL?
     private var isFileOperationActive = false {
         didSet { setConflictingFileActionsEnabled(!isFileOperationActive) }
     }
@@ -278,6 +280,8 @@ final class MainWindowViewController: NSViewController {
         switch command {
         case .open:
             targetPane().openFocusedItem()
+        case .quickLook:
+            showQuickLookForFocusedItem()
         case .newFile:
             promptForNewFile()
         case .newFolder:
@@ -409,6 +413,60 @@ final class MainWindowViewController: NSViewController {
     private var isTextInputFirstResponder: Bool {
         guard let firstResponder = view.window?.firstResponder else { return false }
         return firstResponder is NSTextView || firstResponder is NSTextField
+    }
+
+    private func showQuickLookForFocusedItem() {
+        guard let item = targetPane().focusedItem else {
+            showError(message: "Nothing Selected".localized, detail: "Select one item to preview with Quick Look.".localized)
+            return
+        }
+
+        do {
+            try accessPolicy.validateAccess(to: item.url)
+        } catch {
+            showError(message: "Preview Blocked".localized, detail: error.localizedDescription)
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: item.url.path) else {
+            showError(message: "Preview Unavailable".localized, detail: "The selected item no longer exists.".localized)
+            return
+        }
+
+        quickLookPreviewURL = item.url as NSURL
+        guard let panel = QLPreviewPanel.shared() else {
+            showError(message: "Preview Unavailable".localized, detail: "Quick Look is not available for this item.".localized)
+            return
+        }
+
+        panel.dataSource = self
+        panel.delegate = self
+        panel.reloadData()
+        panel.makeKeyAndOrderFront(nil)
+    }
+}
+
+extension MainWindowViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        quickLookPreviewURL == nil ? 0 : 1
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        quickLookPreviewURL
+    }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        true
+    }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.delegate = self
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        panel.delegate = nil
     }
 }
 

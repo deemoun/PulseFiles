@@ -3,6 +3,7 @@ import AppKit
 protocol FileTableViewActionDelegate: AnyObject {
     func fileTableViewDidActivate(_ tableView: FileTableView)
     func fileTableViewDidRequestOpen(_ tableView: FileTableView)
+    func fileTableViewDidRequestQuickLook(_ tableView: FileTableView)
     func fileTableViewDidRequestParent(_ tableView: FileTableView)
     func fileTableViewDidRequestBack(_ tableView: FileTableView)
     func fileTableViewDidRequestForward(_ tableView: FileTableView)
@@ -58,6 +59,10 @@ final class FileTableView: NSTableView {
         }
         if plain && event.keyCode == 36 {
             actionDelegate?.fileTableViewDidRequestOpen(self)
+            return
+        }
+        if plain && event.keyCode == 49 {
+            actionDelegate?.fileTableViewDidRequestQuickLook(self)
             return
         }
         if (plain && event.keyCode == 51) || (command && !shift && !option && !control && event.keyCode == 126) {
