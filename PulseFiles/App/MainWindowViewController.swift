@@ -3,8 +3,8 @@ import Quartz
 
 final class MainWindowViewController: NSViewController {
     private enum SidebarMetrics {
-        static let minWidth: CGFloat = 180
-        static let maxWidth: CGFloat = 300
+        static let minWidth: CGFloat = 220
+        static let maxWidth: CGFloat = 340
         static let contentMinWidth: CGFloat = 620
     }
 

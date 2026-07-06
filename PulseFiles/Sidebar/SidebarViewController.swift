@@ -4,6 +4,25 @@ import ImageIO
 final class SidebarViewController: NSViewController {
     var onOpenLocation: ((URL, Bool) -> Void)?
 
+    private enum SidebarMode: Int {
+        case navigation
+        case inspector
+
+        var title: String {
+            switch self {
+            case .navigation: return "Navigation"
+            case .inspector: return "Inspector"
+            }
+        }
+
+        var symbolName: String {
+            switch self {
+            case .navigation: return "sidebar.left"
+            case .inspector: return "info.circle"
+            }
+        }
+    }
+
     fileprivate struct SidebarItem {
         let title: String
         let subtitle: String?
@@ -119,8 +138,11 @@ final class SidebarViewController: NSViewController {
     private let recentLocations: RecentLocationService
     private let accessPolicy: SandboxFileAccessPolicy
     private let scrollView = NSScrollView()
+    private let modeControl = NSSegmentedControl()
     private let stack = NSStackView()
     private var selectedItems: [FileItem] = []
+    private var selectedMode: SidebarMode = .navigation
+    private var userSelectedMode = false
     private var sizeTask: Task<Void, Never>?
     private var representedSelectionID = UUID()
 
@@ -144,6 +166,7 @@ final class SidebarViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        configureModeControl()
         configureScrollView()
         configureStack()
         rebuild()
@@ -153,8 +176,36 @@ final class SidebarViewController: NSViewController {
     func refresh() { rebuild() }
 
     func showSelection(_ items: [FileItem]) {
+        let hadNoSelection = selectedItems.isEmpty
         selectedItems = items
+        if items.isEmpty {
+            selectedMode = .navigation
+            userSelectedMode = false
+        } else if hadNoSelection && !userSelectedMode {
+            selectedMode = .inspector
+        }
         rebuild()
+    }
+
+    private func configureModeControl() {
+        modeControl.segmentCount = SidebarMode.inspector.rawValue + 1
+        for mode in [SidebarMode.navigation, .inspector] {
+            modeControl.setLabel(mode.title, forSegment: mode.rawValue)
+            modeControl.setImage(NSImage(systemSymbolName: mode.symbolName, accessibilityDescription: mode.title), forSegment: mode.rawValue)
+            modeControl.setWidth(94, forSegment: mode.rawValue)
+        }
+        modeControl.segmentStyle = .rounded
+        modeControl.trackingMode = .selectOne
+        modeControl.target = self
+        modeControl.action = #selector(modeChanged(_:))
+        modeControl.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(modeControl)
+        NSLayoutConstraint.activate([
+            modeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            modeControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            modeControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            modeControl.heightAnchor.constraint(equalToConstant: 30)
+        ])
     }
 
     private func configureScrollView() {
@@ -167,7 +218,7 @@ final class SidebarViewController: NSViewController {
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: modeControl.bottomAnchor, constant: 8),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
@@ -192,12 +243,75 @@ final class SidebarViewController: NSViewController {
         sizeTask?.cancel()
         representedSelectionID = UUID()
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        updateModeControl()
 
-        if selectedItems.isEmpty {
-            addSectionIfNeeded("Recent", items: recentItems())
-        } else {
+        switch selectedMode {
+        case .navigation:
+            addNavigationContent()
+        case .inspector:
             addFileInfo(for: selectedItems, selectionID: representedSelectionID)
         }
+    }
+
+    private func updateModeControl() {
+        if selectedItems.isEmpty {
+            selectedMode = .navigation
+        }
+        modeControl.selectedSegment = selectedMode.rawValue
+        modeControl.setEnabled(!selectedItems.isEmpty, forSegment: SidebarMode.inspector.rawValue)
+    }
+
+    @objc private func modeChanged(_ sender: NSSegmentedControl) {
+        guard let mode = SidebarMode(rawValue: sender.selectedSegment) else { return }
+        guard mode != .inspector || !selectedItems.isEmpty else {
+            selectedMode = .navigation
+            updateModeControl()
+            return
+        }
+        selectedMode = mode
+        userSelectedMode = true
+        rebuild()
+    }
+
+    private func addNavigationContent() {
+        if ExperimentalFlags.restrictFileAccessToAppSandboxRoot {
+            addSandboxBanner()
+            addSectionIfNeeded("Workspace", items: sandboxItems())
+        } else {
+            addSectionIfNeeded("Favorites", items: favoriteItems())
+            addSectionIfNeeded("Devices", items: deviceItems())
+        }
+        addSectionIfNeeded("Recent", items: recentItems())
+        if stack.arrangedSubviews.isEmpty {
+            addEmptyState("No accessible locations yet.")
+        }
+    }
+
+    private func favoriteItems() -> [SidebarItem] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return accessibleItems([
+            SidebarItem(title: "Home", subtitle: displayPath(for: home), url: home, symbol: "house", group: "Favorites"),
+            SidebarItem(title: "Desktop", subtitle: "~/Desktop", url: home.appendingPathComponent("Desktop", isDirectory: true), symbol: "desktopcomputer", group: "Favorites"),
+            SidebarItem(title: "Documents", subtitle: "~/Documents", url: home.appendingPathComponent("Documents", isDirectory: true), symbol: "doc", group: "Favorites"),
+            SidebarItem(title: "Downloads", subtitle: "~/Downloads", url: home.appendingPathComponent("Downloads", isDirectory: true), symbol: "arrow.down.circle", group: "Favorites"),
+            SidebarItem(title: "Applications", subtitle: "/Applications", url: URL(fileURLWithPath: "/Applications", isDirectory: true), symbol: "app.badge", group: "Favorites")
+        ])
+    }
+
+    private func sandboxItems() -> [SidebarItem] {
+        let root = ExperimentalFlags.appSandboxRoot
+        return accessibleItems([
+            SidebarItem(title: "Sandbox Root", subtitle: displayPath(for: root), url: root, symbol: "lock.shield", group: "Workspace"),
+            SidebarItem(title: "Left Pane", subtitle: displayPath(for: root.appendingPathComponent("Left Pane", isDirectory: true)), url: root.appendingPathComponent("Left Pane", isDirectory: true), symbol: "sidebar.left", group: "Workspace"),
+            SidebarItem(title: "Right Pane", subtitle: displayPath(for: root.appendingPathComponent("Right Pane", isDirectory: true)), url: root.appendingPathComponent("Right Pane", isDirectory: true), symbol: "sidebar.right", group: "Workspace")
+        ])
+    }
+
+    private func deviceItems() -> [SidebarItem] {
+        let root = URL(fileURLWithPath: "/", isDirectory: true)
+        return accessibleItems([
+            SidebarItem(title: "Macintosh HD", subtitle: "/", url: root, symbol: "internaldrive", group: "Devices")
+        ])
     }
 
     private func recentItems() -> [SidebarItem] {
@@ -218,21 +332,31 @@ final class SidebarViewController: NSViewController {
 
     private func addFileInfo(for items: [FileItem], selectionID: UUID) {
         guard let presentation = SelectionInspectorPresentation.make(for: items) else { return }
-        addHeader(title: presentation.title, subtitle: presentation.subtitle, icon: presentation.icon)
-        addCopyPathButton(for: presentation.selectedURLs)
-        addSection("Inspector")
-        for row in presentation.rows {
-            let identifier: String? = row.title == "Total Space" ? "total-size" : nil
-            addInfoRow(row, identifier: identifier)
+        addInspectorSummary(presentation)
+        let rows = visibleRows(presentation.rows)
+        addInspectorRows("Overview", rows: rows.filter { Self.overviewRowTitles.contains($0.title) })
+        addInspectorRows("Dates", rows: rows.filter { Self.dateRowTitles.contains($0.title) })
+        addInspectorRows("Ownership", rows: rows.filter { Self.ownershipRowTitles.contains($0.title) })
+        let knownTitles = Self.overviewRowTitles.union(Self.dateRowTitles).union(Self.ownershipRowTitles)
+        let extraRows = rows.filter { !knownTitles.contains($0.title) }
+        addInspectorRows("Details", rows: extraRows)
+        if items.count == 1, let item = items.first, isImage(item) {
+            addSection("Metadata")
+            addInfoRow(InfoRow(title: "GPS Location", value: "Reading metadata…", symbol: "location"), identifier: "gps-location")
         }
         if items.count == 1, let item = items.first {
-            if isImage(item) {
-                addInfoRow(InfoRow(title: "GPS Location", value: "Reading metadata…", symbol: "location"), identifier: "gps-location")
-            }
             loadDetails(for: item, selectionID: selectionID)
         } else {
             loadTotalSize(for: items, selectionID: selectionID)
         }
+    }
+
+    private static let overviewRowTitles: Set<String> = ["Selected Items", "Selected Size", "Total Space", "File Size", "Type", "Localized Type"]
+    private static let dateRowTitles: Set<String> = ["Created", "Modified"]
+    private static let ownershipRowTitles: Set<String> = ["Permissions", "Owner", "Group"]
+
+    private func visibleRows(_ rows: [InfoRow]) -> [InfoRow] {
+        rows.filter { !$0.value.isEmpty && $0.value != "Unknown" }
     }
 
     private func loadDetails(for item: FileItem, selectionID: UUID) {
@@ -308,46 +432,130 @@ final class SidebarViewController: NSViewController {
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.required, for: .vertical)
         stack.addArrangedSubview(label)
+        pinToSidebarContentWidth(label)
         stack.setCustomSpacing(6, after: label)
     }
 
-    private func addHeader(title: String, subtitle: String, icon: NSImage) {
-        let imageView = NSImageView(image: icon)
+    private func addSandboxBanner() {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = LiquidGlassStyle.compactCornerRadius
+        container.layer?.cornerCurve = .continuous
+        container.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(0.08).cgColor
+        container.layer?.borderColor = NSColor.systemYellow.withAlphaComponent(0.22).cgColor
+        container.layer?.borderWidth = 1
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let imageView = NSImageView(image: NSImage(systemSymbolName: "lock.shield", accessibilityDescription: nil) ?? NSImage())
+        imageView.symbolConfiguration = .init(pointSize: 13, weight: .semibold)
+        imageView.contentTintColor = .systemYellow
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = NSTextField(wrappingLabelWithString: "Sandbox mode is on. File access is limited to the test workspace.")
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = LiquidGlassStyle.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(imageView)
+        container.addSubview(label)
+        stack.addArrangedSubview(container)
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 42),
+            imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            imageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 11),
+            imageView.widthAnchor.constraint(equalToConstant: 17),
+            imageView.heightAnchor.constraint(equalToConstant: 17),
+            label.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 8),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8)
+        ])
+        stack.setCustomSpacing(12, after: container)
+    }
+
+    private func addInspectorSummary(_ presentation: SelectionInspectorPresentation) {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = LiquidGlassStyle.cornerRadius
+        container.layer?.cornerCurve = .continuous
+        container.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.035).cgColor
+        container.layer?.borderColor = LiquidGlassStyle.subtleStroke.cgColor
+        container.layer?.borderWidth = 1
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let imageView = NSImageView(image: presentation.icon)
         imageView.imageScaling = .scaleProportionallyDown
         imageView.translatesAutoresizingMaskIntoConstraints = false
-        let titleLabel = NSTextField(wrappingLabelWithString: title)
-        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+
+        let titleLabel = NSTextField(labelWithString: presentation.title)
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         titleLabel.textColor = LiquidGlassStyle.label
-        let subtitleLabel = NSTextField(labelWithString: subtitle)
+        titleLabel.lineBreakMode = .byTruncatingTail
+
+        let subtitleLabel = NSTextField(labelWithString: presentation.subtitle)
         subtitleLabel.font = .systemFont(ofSize: 11)
         subtitleLabel.textColor = LiquidGlassStyle.secondaryLabel
         subtitleLabel.lineBreakMode = .byTruncatingMiddle
-        titleLabel.alignment = .center
-        subtitleLabel.alignment = .center
 
         let textStack = NSStackView(views: [titleLabel, subtitleLabel])
         textStack.orientation = .vertical
-        textStack.alignment = .centerX
+        textStack.alignment = .leading
         textStack.spacing = 2
+        textStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let headerStack = NSStackView(views: [imageView, textStack])
-        headerStack.orientation = .vertical
-        headerStack.alignment = .centerX
-        headerStack.spacing = 8
-        stack.addArrangedSubview(headerStack)
+        let button = NSButton(title: presentation.selectedURLs.count == 1 ? "Copy Path" : "Copy Paths", target: self, action: #selector(copySelectionPaths(_:)))
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.identifier = NSUserInterfaceItemIdentifier(presentation.selectedURLs.map(\.path).joined(separator: "\n"))
+        button.toolTip = "Copy selected path information"
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(imageView)
+        container.addSubview(textStack)
+        container.addSubview(button)
+        stack.addArrangedSubview(container)
         NSLayoutConstraint.activate([
-            imageView.widthAnchor.constraint(equalToConstant: 40),
-            imageView.heightAnchor.constraint(equalToConstant: 40),
-            textStack.leadingAnchor.constraint(greaterThanOrEqualTo: headerStack.leadingAnchor),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: headerStack.trailingAnchor)
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 82),
+            imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+            imageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
+            imageView.widthAnchor.constraint(equalToConstant: 38),
+            imageView.heightAnchor.constraint(equalToConstant: 38),
+            textStack.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 10),
+            textStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            textStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            button.leadingAnchor.constraint(equalTo: textStack.leadingAnchor),
+            button.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: 8),
+            button.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -10)
         ])
-        stack.setCustomSpacing(12, after: headerStack)
+        stack.setCustomSpacing(14, after: container)
     }
 
     private func addInfoRow(_ info: InfoRow, identifier: String? = nil) {
         let row = SidebarInfoRowView(info: info)
         if let identifier { row.identifier = NSUserInterfaceItemIdentifier(identifier) }
         stack.addArrangedSubview(row)
+        pinToSidebarContentWidth(row)
+    }
+
+    private func pinToSidebarContentWidth(_ view: NSView) {
+        let widthConstraint = view.widthAnchor.constraint(
+            equalTo: stack.widthAnchor,
+            constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
+        )
+        widthConstraint.priority = .defaultHigh
+        widthConstraint.isActive = true
+    }
+
+    private func addInspectorRows(_ title: String, rows: [InfoRow]) {
+        guard !rows.isEmpty else { return }
+        addSection(title)
+        for row in rows {
+            let identifier: String? = row.title == "Total Space" ? "total-size" : nil
+            addInfoRow(row, identifier: identifier)
+        }
+        if let last = stack.arrangedSubviews.last {
+            stack.setCustomSpacing(12, after: last)
+        }
     }
 
     private func addCopyPathButton(for urls: [URL]) {
@@ -375,6 +583,14 @@ final class SidebarViewController: NSViewController {
         for view in stack.arrangedSubviews where view.identifier?.rawValue == identifier {
             (view as? SidebarInfoRowView)?.setValue(value)
         }
+    }
+
+    private func addEmptyState(_ message: String) {
+        let label = NSTextField(wrappingLabelWithString: message)
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = LiquidGlassStyle.secondaryLabel
+        label.alignment = .center
+        stack.addArrangedSubview(label)
     }
 
     private func addLocation(_ item: SidebarItem) {
@@ -422,50 +638,53 @@ private final class SidebarInfoRowView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    func setValue(_ value: String) { valueLabel.stringValue = value }
+    func setValue(_ value: String) {
+        valueLabel.stringValue = value
+        valueLabel.toolTip = value
+    }
 
     private func setup(info: SidebarViewController.InfoRow) {
-        wantsLayer = true
-        layer?.cornerRadius = LiquidGlassStyle.compactCornerRadius
-        layer?.cornerCurve = .continuous
-        layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.04).cgColor
         translatesAutoresizingMaskIntoConstraints = false
 
         let imageView = NSImageView(image: NSImage(systemSymbolName: info.symbol, accessibilityDescription: info.title) ?? NSImage())
-        imageView.symbolConfiguration = .init(pointSize: 13, weight: .medium)
+        imageView.symbolConfiguration = .init(pointSize: 12, weight: .medium)
         imageView.contentTintColor = LiquidGlassStyle.secondaryLabel
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.setContentHuggingPriority(.required, for: .horizontal)
 
         let titleLabel = NSTextField(labelWithString: info.title)
-        titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
         titleLabel.textColor = LiquidGlassStyle.secondaryLabel
         titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         valueLabel.stringValue = info.value
-        valueLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        valueLabel.font = .systemFont(ofSize: 12, weight: .medium)
         valueLabel.textColor = LiquidGlassStyle.label
-        valueLabel.alignment = .right
-        valueLabel.lineBreakMode = .byTruncatingMiddle
-        valueLabel.maximumNumberOfLines = 1
-        valueLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        valueLabel.alignment = .left
+        valueLabel.lineBreakMode = .byWordWrapping
+        valueLabel.maximumNumberOfLines = 2
+        valueLabel.toolTip = info.value
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let textStack = NSStackView(views: [titleLabel, valueLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 1
+        textStack.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(imageView)
-        addSubview(titleLabel)
-        addSubview(valueLabel)
+        addSubview(textStack)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
-            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 38),
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            imageView.topAnchor.constraint(equalTo: topAnchor, constant: 8),
             imageView.widthAnchor.constraint(equalToConstant: 18),
             imageView.heightAnchor.constraint(equalToConstant: 18),
-            titleLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 9),
-            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8),
-            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -8)
+            textStack.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 9),
+            textStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            textStack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            textStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5)
         ])
     }
 }

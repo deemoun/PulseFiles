@@ -42,8 +42,8 @@ final class SettingsViewController: NSViewController {
     private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations".localized, target: nil, action: nil)
     private let permanentDeleteCheckbox = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash".localized, target: nil, action: nil)
     private let experimentalSandboxCheckbox = NSButton(checkboxWithTitle: "Restrict browsing and file operations to the experimental sandbox".localized, target: nil, action: nil)
-    private let sidebarWidthSlider = NSSlider(value: 220, minValue: 180, maxValue: 300, target: nil, action: nil)
-    private let sidebarWidthLabel = NSTextField(labelWithString: "220 pt")
+    private let sidebarWidthSlider = NSSlider(value: 260, minValue: 220, maxValue: 340, target: nil, action: nil)
+    private let sidebarWidthLabel = NSTextField(labelWithString: "260 pt")
     private let leftDirectoryField = NSTextField()
     private let rightDirectoryField = NSTextField()
     private var colorWells: [FileVisualCategory: NSColorWell] = [:]

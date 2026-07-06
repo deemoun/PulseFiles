@@ -132,8 +132,8 @@ final class SettingsService {
     }
 
     var preferredSidebarWidth: Double {
-        get { defaults.object(forKey: "preferredSidebarWidth") as? Double ?? defaults.object(forKey: "sidebarWidth") as? Double ?? 220 }
-        set { defaults.set(min(max(newValue, 180), 300), forKey: "preferredSidebarWidth") }
+        get { defaults.object(forKey: "preferredSidebarWidth") as? Double ?? defaults.object(forKey: "sidebarWidth") as? Double ?? 260 }
+        set { defaults.set(min(max(newValue, 220), 340), forKey: "preferredSidebarWidth") }
     }
 
     var isSidebarVisible: Bool {
