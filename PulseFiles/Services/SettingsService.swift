@@ -84,7 +84,19 @@ final class SettingsService {
     }
 
     var experimentalSandboxEnabled: Bool {
-        get { ExperimentalFlags.restrictFileAccessToAppSandboxRoot }
+        get {
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("--pulsefiles-disable-experimental-sandbox") {
+                return false
+            }
+            if arguments.contains("--pulsefiles-enable-experimental-sandbox") {
+                return true
+            }
+            guard defaults.object(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) != nil else {
+                return true
+            }
+            return defaults.bool(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+        }
         set { defaults.set(newValue, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
     }
 
