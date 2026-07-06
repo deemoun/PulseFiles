@@ -428,11 +428,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             return item
         case .toggleTerminal:
             let item = toolbarItem(itemIdentifier, label: "Terminal", symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
-            item.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.terminalToggle)
+            item.view?.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.terminalToggle)
             return item
         case .toggleSidebar:
             let item = toolbarItem(itemIdentifier, label: "Sidebar", symbol: "sidebar.right", action: #selector(toolbarToggleSidebar(_:)))
-            item.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.sidebarToggle)
+            item.view?.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.sidebarToggle)
             sidebarToolbarItem = item
             updateSidebarToolbarItem()
             return item
