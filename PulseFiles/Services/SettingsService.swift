@@ -1,20 +1,35 @@
 import AppKit
 
 final class SettingsService {
+    static var jsonSettingsURL: URL {
+        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+        return baseURL
+            .appendingPathComponent("PulseFiles", isDirectory: true)
+            .appendingPathComponent("Settings.json")
+    }
+
     private let defaults: UserDefaults
+    private let syncsJSON: Bool
+    private var isSyncingJSON = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.syncsJSON = defaults === UserDefaults.standard
+        if syncsJSON {
+            importJSONIfChanged()
+            writeSettingsJSONIfNeeded()
+        }
     }
 
     var lastLeftDirectory: URL {
         get { directory(forKey: "lastLeftDirectory", fallback: defaultLeftDirectory) }
-        set { defaults.set(newValue, forKey: "lastLeftDirectory") }
+        set { set(newValue, forKey: "lastLeftDirectory") }
     }
 
     var lastRightDirectory: URL {
         get { directory(forKey: "lastRightDirectory", fallback: defaultRightDirectory) }
-        set { defaults.set(newValue, forKey: "lastRightDirectory") }
+        set { set(newValue, forKey: "lastRightDirectory") }
     }
 
     var launchLeftDirectory: URL { startupLeftDirectory ?? lastLeftDirectory }
@@ -32,17 +47,17 @@ final class SettingsService {
 
     var defaultSidebarVisible: Bool {
         get { defaults.object(forKey: "defaultSidebarVisible") as? Bool ?? defaults.object(forKey: "isSidebarVisible") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "defaultSidebarVisible") }
+        set { set(newValue, forKey: "defaultSidebarVisible") }
     }
 
     var experimentalTerminalEnabled: Bool {
         get { defaults.object(forKey: "experimentalTerminalEnabled") as? Bool ?? false }
-        set { defaults.set(newValue, forKey: "experimentalTerminalEnabled") }
+        set { set(newValue, forKey: "experimentalTerminalEnabled") }
     }
 
     var hasAcknowledgedTerminalWarning: Bool {
         get { defaults.object(forKey: "hasAcknowledgedTerminalWarning") as? Bool ?? false }
-        set { defaults.set(newValue, forKey: "hasAcknowledgedTerminalWarning") }
+        set { set(newValue, forKey: "hasAcknowledgedTerminalWarning") }
     }
 
     var defaultTerminalVisible: Bool {
@@ -50,37 +65,37 @@ final class SettingsService {
             guard experimentalTerminalEnabled else { return false }
             return defaults.object(forKey: "defaultTerminalVisible") as? Bool ?? false
         }
-        set { defaults.set(experimentalTerminalEnabled && newValue, forKey: "defaultTerminalVisible") }
+        set { set(experimentalTerminalEnabled && newValue, forKey: "defaultTerminalVisible") }
     }
 
     var defaultSinglePaneMode: Bool {
         get { defaults.object(forKey: "defaultSinglePaneMode") as? Bool ?? false }
-        set { defaults.set(newValue, forKey: "defaultSinglePaneMode") }
+        set { set(newValue, forKey: "defaultSinglePaneMode") }
     }
 
     var showHiddenFilesByDefault: Bool {
         get { defaults.object(forKey: "showHiddenFilesByDefault") as? Bool ?? false }
-        set { defaults.set(newValue, forKey: "showHiddenFilesByDefault") }
+        set { set(newValue, forKey: "showHiddenFilesByDefault") }
     }
 
     var confirmCopyOperations: Bool {
         get { defaults.object(forKey: "confirmCopyOperations") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "confirmCopyOperations") }
+        set { set(newValue, forKey: "confirmCopyOperations") }
     }
 
     var confirmMoveOperations: Bool {
         get { defaults.object(forKey: "confirmMoveOperations") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "confirmMoveOperations") }
+        set { set(newValue, forKey: "confirmMoveOperations") }
     }
 
     var confirmDeleteOperations: Bool {
         get { defaults.object(forKey: "confirmDeleteOperations") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "confirmDeleteOperations") }
+        set { set(newValue, forKey: "confirmDeleteOperations") }
     }
 
     var permanentlyDeleteInsteadOfTrash: Bool {
         get { defaults.object(forKey: "permanentlyDeleteInsteadOfTrash") as? Bool ?? false }
-        set { defaults.set(newValue, forKey: "permanentlyDeleteInsteadOfTrash") }
+        set { set(newValue, forKey: "permanentlyDeleteInsteadOfTrash") }
     }
 
     var experimentalSandboxEnabled: Bool {
@@ -97,7 +112,7 @@ final class SettingsService {
             }
             return defaults.bool(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
         }
-        set { defaults.set(newValue, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
+        set { set(newValue, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
     }
 
     var fileColorScheme: FileColorScheme {
@@ -119,11 +134,13 @@ final class SettingsService {
             }
             guard let data = try? JSONEncoder().encode(storedColors) else { return }
             defaults.set(data, forKey: "fileColorScheme")
+            writeSettingsJSONIfNeeded()
         }
     }
 
     func resetFileColorScheme() {
         defaults.removeObject(forKey: "fileColorScheme")
+        writeSettingsJSONIfNeeded()
     }
 
     var defaultSortDescriptor: FileSortDescriptor {
@@ -133,7 +150,7 @@ final class SettingsService {
 
     var preferredSidebarWidth: Double {
         get { defaults.object(forKey: "preferredSidebarWidth") as? Double ?? defaults.object(forKey: "sidebarWidth") as? Double ?? 260 }
-        set { defaults.set(min(max(newValue, 220), 340), forKey: "preferredSidebarWidth") }
+        set { set(min(max(newValue, 220), 340), forKey: "preferredSidebarWidth") }
     }
 
     var isSidebarVisible: Bool {
@@ -174,6 +191,7 @@ final class SettingsService {
         } else {
             defaults.removeObject(forKey: key)
         }
+        writeSettingsJSONIfNeeded()
     }
 
     private func sortDescriptor(forKey key: String, fallback: FileSortDescriptor) -> FileSortDescriptor {
@@ -187,9 +205,151 @@ final class SettingsService {
     private func setSortDescriptor(_ descriptor: FileSortDescriptor, forKey key: String) {
         guard let data = try? JSONEncoder().encode(descriptor) else { return }
         defaults.set(data, forKey: key)
+        writeSettingsJSONIfNeeded()
+    }
+
+    private func set(_ value: Bool, forKey key: String) {
+        defaults.set(value, forKey: key)
+        writeSettingsJSONIfNeeded()
+    }
+
+    private func set(_ value: Double, forKey key: String) {
+        defaults.set(value, forKey: key)
+        writeSettingsJSONIfNeeded()
+    }
+
+    private func set(_ value: URL, forKey key: String) {
+        defaults.set(value, forKey: key)
+        writeSettingsJSONIfNeeded()
+    }
+
+    func importJSONIfChanged() {
+        guard syncsJSON else { return }
+        let url = Self.jsonSettingsURL
+        guard FileManager.default.fileExists(atPath: url.path),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let modificationDate = attributes[.modificationDate] as? Date else { return }
+        let lastImport = defaults.object(forKey: "settingsJSONLastImportedModificationTime") as? Double ?? 0
+        guard modificationDate.timeIntervalSince1970 > lastImport else { return }
+        guard let data = try? Data(contentsOf: url),
+              let document = try? JSONDecoder().decode(SettingsJSONDocument.self, from: data) else { return }
+        applyJSON(document.settings)
+        defaults.set(modificationDate.timeIntervalSince1970, forKey: "settingsJSONLastImportedModificationTime")
+        writeSettingsJSONIfNeeded()
+    }
+
+    @discardableResult
+    func writeSettingsJSON() throws -> URL {
+        let url = Self.jsonSettingsURL
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let document = SettingsJSONDocument(version: 1, settings: makeJSONSettings())
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(document)
+        try data.write(to: url, options: .atomic)
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let modificationDate = attributes[.modificationDate] as? Date {
+            defaults.set(modificationDate.timeIntervalSince1970, forKey: "settingsJSONLastImportedModificationTime")
+        }
+        return url
+    }
+
+    private func writeSettingsJSONIfNeeded() {
+        guard syncsJSON, !isSyncingJSON else { return }
+        _ = try? writeSettingsJSON()
+    }
+
+    private func makeJSONSettings() -> SettingsJSON {
+        SettingsJSON(
+            defaultSidebarVisible: defaultSidebarVisible,
+            experimentalTerminalEnabled: experimentalTerminalEnabled,
+            hasAcknowledgedTerminalWarning: hasAcknowledgedTerminalWarning,
+            defaultTerminalVisible: defaultTerminalVisible,
+            defaultSinglePaneMode: defaultSinglePaneMode,
+            showHiddenFilesByDefault: showHiddenFilesByDefault,
+            confirmCopyOperations: confirmCopyOperations,
+            confirmMoveOperations: confirmMoveOperations,
+            confirmDeleteOperations: confirmDeleteOperations,
+            permanentlyDeleteInsteadOfTrash: permanentlyDeleteInsteadOfTrash,
+            experimentalSandboxEnabled: experimentalSandboxEnabled,
+            preferredSidebarWidth: preferredSidebarWidth,
+            lastLeftDirectory: lastLeftDirectory.path,
+            lastRightDirectory: lastRightDirectory.path,
+            startupLeftDirectory: startupLeftDirectory?.path,
+            startupRightDirectory: startupRightDirectory?.path,
+            defaultSortDescriptor: defaultSortDescriptor,
+            fileColorScheme: fileColorScheme.colors.reduce(into: [String: StoredColor]()) { partialResult, entry in
+                partialResult[entry.key.rawValue] = StoredColor(color: entry.value)
+            }
+        )
+    }
+
+    private func applyJSON(_ settings: SettingsJSON) {
+        isSyncingJSON = true
+        defer { isSyncingJSON = false }
+
+        if let value = settings.defaultSidebarVisible { defaults.set(value, forKey: "defaultSidebarVisible") }
+        if let value = settings.experimentalTerminalEnabled { defaults.set(value, forKey: "experimentalTerminalEnabled") }
+        if let value = settings.hasAcknowledgedTerminalWarning { defaults.set(value, forKey: "hasAcknowledgedTerminalWarning") }
+        if let value = settings.defaultTerminalVisible { defaults.set(value, forKey: "defaultTerminalVisible") }
+        if let value = settings.defaultSinglePaneMode { defaults.set(value, forKey: "defaultSinglePaneMode") }
+        if let value = settings.showHiddenFilesByDefault { defaults.set(value, forKey: "showHiddenFilesByDefault") }
+        if let value = settings.confirmCopyOperations { defaults.set(value, forKey: "confirmCopyOperations") }
+        if let value = settings.confirmMoveOperations { defaults.set(value, forKey: "confirmMoveOperations") }
+        if let value = settings.confirmDeleteOperations { defaults.set(value, forKey: "confirmDeleteOperations") }
+        if let value = settings.permanentlyDeleteInsteadOfTrash { defaults.set(value, forKey: "permanentlyDeleteInsteadOfTrash") }
+        if let value = settings.experimentalSandboxEnabled { defaults.set(value, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
+        if let value = settings.preferredSidebarWidth { defaults.set(min(max(value, 220), 340), forKey: "preferredSidebarWidth") }
+        if let value = settings.lastLeftDirectory { defaults.set(URL(fileURLWithPath: value, isDirectory: true), forKey: "lastLeftDirectory") }
+        if let value = settings.lastRightDirectory { defaults.set(URL(fileURLWithPath: value, isDirectory: true), forKey: "lastRightDirectory") }
+        applyOptionalDirectory(settings.startupLeftDirectory, forKey: "startupLeftDirectory")
+        applyOptionalDirectory(settings.startupRightDirectory, forKey: "startupRightDirectory")
+        if let value = settings.defaultSortDescriptor { setSortDescriptor(value, forKey: "defaultSortDescriptor") }
+        if let storedColors = settings.fileColorScheme {
+            let colors = storedColors.reduce(into: [FileVisualCategory: NSColor]()) { partialResult, entry in
+                guard let category = FileVisualCategory(rawValue: entry.key) else { return }
+                partialResult[category] = entry.value.color
+            }
+            fileColorScheme = FileColorScheme(colors: colors)
+        }
+    }
+
+    private func applyOptionalDirectory(_ path: String?, forKey key: String) {
+        guard let path else { return }
+        if path.isEmpty {
+            defaults.removeObject(forKey: key)
+        } else {
+            defaults.set(URL(fileURLWithPath: path, isDirectory: true), forKey: key)
+        }
     }
 }
 
+
+private struct SettingsJSONDocument: Codable {
+    let version: Int
+    let settings: SettingsJSON
+}
+
+private struct SettingsJSON: Codable {
+    var defaultSidebarVisible: Bool?
+    var experimentalTerminalEnabled: Bool?
+    var hasAcknowledgedTerminalWarning: Bool?
+    var defaultTerminalVisible: Bool?
+    var defaultSinglePaneMode: Bool?
+    var showHiddenFilesByDefault: Bool?
+    var confirmCopyOperations: Bool?
+    var confirmMoveOperations: Bool?
+    var confirmDeleteOperations: Bool?
+    var permanentlyDeleteInsteadOfTrash: Bool?
+    var experimentalSandboxEnabled: Bool?
+    var preferredSidebarWidth: Double?
+    var lastLeftDirectory: String?
+    var lastRightDirectory: String?
+    var startupLeftDirectory: String?
+    var startupRightDirectory: String?
+    var defaultSortDescriptor: FileSortDescriptor?
+    var fileColorScheme: [String: StoredColor]?
+}
 
 private struct StoredColor: Codable {
     let red: Double

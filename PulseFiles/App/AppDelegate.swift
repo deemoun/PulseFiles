@@ -19,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        (mainWindowController?.contentViewController as? MainWindowViewController)?.reloadSettingsFromJSONIfChanged()
+    }
+
     private func buildMainMenu() -> NSMenu {
         let menu = NSMenu(title: "PulseFiles")
         menu.addItem(appMenu())
@@ -40,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(aboutItem)
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Settings…".localized, action: #selector(MainWindowViewController.menuSettings(_:)), key: ",", modifiers: [.command]))
+        submenu.addItem(menuItem("Edit Settings JSON…".localized, action: #selector(MainWindowViewController.menuEditSettingsJSON(_:)), key: ",", modifiers: [.command, .option]))
         submenu.addItem(.separator())
         submenu.addItem(withTitle: "Quit PulseFiles".localized, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = submenu

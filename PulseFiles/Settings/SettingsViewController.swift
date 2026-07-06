@@ -69,6 +69,11 @@ final class SettingsViewController: NSViewController {
         loadSettings()
     }
 
+    func reloadFromSettings() {
+        loadSettings()
+        rebuildSettingsPage()
+    }
+
     private func buildLayout() {
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor

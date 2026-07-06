@@ -555,7 +555,14 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         presentSettings(sender)
     }
 
+    func reloadSettingsFromJSONIfChanged() {
+        settings.importJSONIfChanged()
+        applySettingsChanges()
+        (settingsWindowController?.contentViewController as? SettingsViewController)?.reloadFromSettings()
+    }
+
     private func presentSettings(_ sender: Any?) {
+        reloadSettingsFromJSONIfChanged()
         if let existingWindow = settingsWindowController?.window, existingWindow.isVisible {
             sizeAndPositionSettingsWindow(existingWindow, preferredContentSize: existingWindow.contentViewController?.preferredContentSize ?? NSSize(width: 680, height: 500))
             existingWindow.makeKeyAndOrderFront(nil)
@@ -1498,6 +1505,14 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
     @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
+    @objc func menuEditSettingsJSON(_ sender: Any?) {
+        do {
+            let url = try settings.writeSettingsJSON()
+            NSWorkspace.shared.open(url)
+        } catch {
+            showError(message: "Could Not Open Settings JSON".localized, detail: error.localizedDescription)
+        }
+    }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(menuToggleSidebar(_:)) {
