@@ -721,7 +721,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: "Open With")
 
-        let defaultItem = NSMenuItem(title: "Default Application", action: #selector(contextOpenWithDefault(_:)), keyEquivalent: "")
+        let defaultItem = NSMenuItem(title: defaultApplicationMenuTitle(for: url), action: #selector(contextOpenWithDefault(_:)), keyEquivalent: "")
         defaultItem.target = self
         defaultItem.representedObject = url
         submenu.addItem(defaultItem)
@@ -740,6 +740,13 @@ extension FilePaneViewController: FileTableViewActionDelegate {
 
         item.submenu = submenu
         return item
+    }
+
+    private func defaultApplicationMenuTitle(for url: URL) -> String {
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(toOpen: url) else {
+            return "Default Application"
+        }
+        return "Default: \(applicationURL.deletingPathExtension().lastPathComponent)"
     }
 
     @objc private func contextOpenParent() { onCommand?(.parent) }
