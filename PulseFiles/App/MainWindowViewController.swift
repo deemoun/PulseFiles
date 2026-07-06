@@ -35,6 +35,7 @@ final class MainWindowViewController: NSViewController {
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
+    private let terminalService = TerminalService()
     private let commandBar = CommandBarView()
 
     private let rootSplitView = NSSplitView()
@@ -169,7 +170,11 @@ final class MainWindowViewController: NSViewController {
 
     private func bindPaneCallbacks() {
         terminal.workingDirectoryProvider = { [weak self] in
-            self?.targetPane().currentDirectory ?? ExperimentalFlags.appSandboxRoot
+            guard let self else { return ExperimentalFlags.appSandboxRoot }
+            return self.terminalService.resolvedWorkingDirectory(
+                activePaneURL: self.targetPane().currentDirectory,
+                accessPolicy: self.accessPolicy
+            )
         }
         leftPane.onActivate = { [weak self] in self?.activePaneID = .left }
         rightPane.onActivate = { [weak self] in self?.activePaneID = .right }
@@ -668,7 +673,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             }
             installTerminalPanel(showWarning: true)
             settings.isTerminalVisible = true
-            terminal.suggestedWorkingDirectory = targetPane().currentDirectory
+            terminal.suggestedWorkingDirectory = terminalService.resolvedWorkingDirectory(
+                activePaneURL: targetPane().currentDirectory,
+                accessPolicy: accessPolicy
+            )
             view.layoutSubtreeIfNeeded()
             contentSplitView.setPosition(max(220, contentSplitView.bounds.height - 180), ofDividerAt: 0)
             terminal.focusCommandField()
@@ -703,10 +711,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func showFirstUseTerminalWarningIfNeeded() {
         guard !settings.hasAcknowledgedTerminalWarning else { return }
-        settings.hasAcknowledgedTerminalWarning = true
+        terminalService.acknowledgeFirstUseWarning(settings: settings)
+        let warningState = terminalService.warningState(settings: settings, accessPolicy: accessPolicy)
         let alert = NSAlert()
-        alert.messageText = "Experimental terminal warning"
-        alert.informativeText = "The terminal runs shell commands in the selected folder. Commands can modify or delete files, including files outside PulseFiles when sandbox restrictions are disabled."
+        alert.messageText = warningState.messageText
+        alert.informativeText = warningState.informativeText
         alert.alertStyle = .warning
         alert.addButton(withTitle: "I Understand")
         if let window = view.window {
