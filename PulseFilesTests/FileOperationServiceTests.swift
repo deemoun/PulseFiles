@@ -36,6 +36,27 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "new")
     }
 
+
+    func testCopyRetriesWhenGeneratedStagingPathAlreadyExists() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.simulateFirstGeneratedStagingPathExists(prefix: ".pulsefiles-copy", destinationLastPathComponent: destination.lastPathComponent)
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(fixture.failingFileManager?.copiedItems.count, 1)
+        XCTAssertEqual(fixture.failingFileManager?.simulatedExistingStagingPathHits, 1)
+        XCTAssertEqual(try String(contentsOf: destination), "source")
+        XCTAssertFalse(fixture.failingFileManager?.copiedItems.first?.destination.lastPathComponent == fixture.failingFileManager?.simulatedExistingStagingLastPathComponent)
+    }
+
     func testCopySkipLeavesDestinationUntouched() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")
@@ -499,15 +520,40 @@ private final class FailingFileManager: FileOperationFileManaging {
     var moveFailureError: Error = CocoaError(.fileWriteUnknown)
     var failRemoveURL: URL?
     var failBackupRemoval = false
+    private var simulatedExistingStagingPrefix: String?
+    private var simulatedExistingStagingDestinationLastPathComponent: String?
+    private(set) var simulatedExistingStagingLastPathComponent: String?
+    private(set) var simulatedExistingStagingPathHits = 0
     private(set) var copiedItems: [RecordedFileOperation] = []
     private(set) var movedItems: [RecordedFileOperation] = []
 
     func fileExists(atPath path: String) -> Bool {
-        FileManager.default.fileExists(atPath: path)
+        if shouldSimulateExistingGeneratedStagingPath(path) {
+            simulatedExistingStagingPathHits += 1
+            simulatedExistingStagingLastPathComponent = URL(fileURLWithPath: path).lastPathComponent
+            return true
+        }
+        return FileManager.default.fileExists(atPath: path)
     }
 
     func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool {
         FileManager.default.fileExists(atPath: path, isDirectory: isDirectory)
+    }
+
+    func simulateFirstGeneratedStagingPathExists(prefix: String, destinationLastPathComponent: String) {
+        simulatedExistingStagingPrefix = prefix
+        simulatedExistingStagingDestinationLastPathComponent = destinationLastPathComponent
+    }
+
+    private func shouldSimulateExistingGeneratedStagingPath(_ path: String) -> Bool {
+        guard simulatedExistingStagingPathHits == 0,
+              let prefix = simulatedExistingStagingPrefix,
+              let destinationLastPathComponent = simulatedExistingStagingDestinationLastPathComponent else {
+            return false
+        }
+
+        let lastPathComponent = URL(fileURLWithPath: path).lastPathComponent
+        return lastPathComponent.hasPrefix("\(prefix)-") && lastPathComponent.hasSuffix("-\(destinationLastPathComponent)")
     }
 
     func copyItem(at srcURL: URL, to dstURL: URL) throws {
