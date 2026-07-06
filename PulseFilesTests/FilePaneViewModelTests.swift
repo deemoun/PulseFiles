@@ -87,6 +87,54 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertFalse(fixture.accessPolicy.canAccess(fixture.root.deletingLastPathComponent().deletingLastPathComponent()))
     }
 
+    func testFailedNavigationToMissingFolderPreservesCurrentDirectoryAndItems() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = TestFileSystem()
+        let rootItem = TestFileSystem.item(named: "Keep.txt", in: sandbox.allowedDirectory)
+        let missing = sandbox.allowedDirectory.appendingPathComponent("Missing", isDirectory: true)
+        fileSystem.setItems([rootItem], for: sandbox.allowedDirectory)
+        fileSystem.setError(
+            NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoSuchFileError),
+            for: missing
+        )
+        let viewModel = FilePaneViewModel(
+            initialDirectory: sandbox.allowedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.policy
+        )
+
+        await load(viewModel)
+        viewModel.navigate(to: missing)
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.currentDirectory, sandbox.allowedDirectory)
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Keep.txt"])
+        XCTAssertEqual(viewModel.loadFailure?.directory, missing)
+        XCTAssertTrue(viewModel.loadFailure?.isMissingDirectory == true)
+        XCTAssertNotNil(viewModel.errorMessage)
+    }
+
+    func testFailedOutsideSandboxLoadPreservesSafeState() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = FileSystemService(accessPolicy: sandbox.policy)
+        let allowedFile = try sandbox.allowedFile("Allowed.txt", contents: "allowed")
+        let viewModel = FilePaneViewModel(
+            initialDirectory: sandbox.allowedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.unrestrictedPolicy
+        )
+
+        await load(viewModel)
+        viewModel.navigate(to: sandbox.externalDirectory)
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.currentDirectory, sandbox.allowedDirectory)
+        XCTAssertEqual(viewModel.visibleItems.map(\.url), [allowedFile])
+        XCTAssertEqual(viewModel.loadFailure?.directory, sandbox.externalDirectory)
+        XCTAssertTrue(viewModel.loadFailure?.isOutsideSandbox == true)
+        XCTAssertNotNil(viewModel.errorMessage)
+    }
+
     private func load(_ viewModel: FilePaneViewModel) async {
         await withCheckedContinuation { continuation in
             viewModel.loadCurrentDirectory {

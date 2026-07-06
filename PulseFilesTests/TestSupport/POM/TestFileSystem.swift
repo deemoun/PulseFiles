@@ -5,6 +5,7 @@ import Foundation
 final class TestFileSystem: FileSystemServicing {
     private var itemsByDirectory: [URL: [FileItem]]
     private(set) var requests: [(url: URL, includingHidden: Bool, sort: FileSortDescriptor)] = []
+    private var errorsByDirectory: [URL: Error] = [:]
 
     init(itemsByDirectory: [URL: [FileItem]] = [:]) {
         self.itemsByDirectory = itemsByDirectory
@@ -14,8 +15,15 @@ final class TestFileSystem: FileSystemServicing {
         itemsByDirectory[directory] = items
     }
 
+    func setError(_ error: Error, for directory: URL) {
+        errorsByDirectory[directory] = error
+    }
+
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem] {
         requests.append((url: url, includingHidden: includingHidden, sort: sort))
+        if let error = errorsByDirectory[url] {
+            throw error
+        }
         let items = itemsByDirectory[url, default: []]
         let visibleItems = includingHidden ? items : items.filter { !$0.isHidden }
         return FileSystemService.sorted(visibleItems, descriptor: sort)
