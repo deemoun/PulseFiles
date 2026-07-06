@@ -22,10 +22,98 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    fileprivate struct InfoRow {
+    struct InfoRow {
         let title: String
         let value: String
         let symbol: String
+    }
+
+    struct SelectionInspectorPresentation {
+        let title: String
+        let subtitle: String
+        let icon: NSImage
+        let rows: [InfoRow]
+        let selectedURLs: [URL]
+
+        static func make(for items: [FileItem]) -> SelectionInspectorPresentation? {
+            guard !items.isEmpty else { return nil }
+            if items.count == 1, let item = items.first {
+                return SelectionInspectorPresentation(
+                    title: item.displayName,
+                    subtitle: displayPath(for: item.url),
+                    icon: item.icon,
+                    rows: singleSelectionRows(for: item),
+                    selectedURLs: [item.url]
+                )
+            }
+
+            let totalSize = items.reduce(Int64(0)) { $0 + $1.size }
+            let folderCount = items.filter(\.isDirectory).count
+            let fileCount = items.count - folderCount
+            return SelectionInspectorPresentation(
+                title: "\(items.count) items selected",
+                subtitle: selectionBreakdown(fileCount: fileCount, folderCount: folderCount),
+                icon: NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: nil) ?? NSImage(),
+                rows: [
+                    InfoRow(title: "Selected Items", value: "\(items.count)", symbol: "number"),
+                    InfoRow(title: "Selected Size", value: FileSizeFormatter.string(fromByteCount: totalSize), symbol: "doc.on.doc"),
+                    InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"),
+                    InfoRow(title: "Type", value: "Mixed selection", symbol: "tag")
+                ],
+                selectedURLs: items.map(\.url)
+            )
+        }
+
+        private static func singleSelectionRows(for item: FileItem) -> [InfoRow] {
+            var rows = [
+                InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"),
+                InfoRow(title: "File Size", value: item.isDirectory ? "Folder" : FileSizeFormatter.string(fromByteCount: item.size), symbol: "doc.text"),
+                InfoRow(title: "Type", value: item.fileType.displayName, symbol: item.isDirectory ? "folder" : "tag"),
+                InfoRow(title: "Localized Type", value: item.localizedTypeDescription, symbol: "text.badge.checkmark")
+            ]
+            rows.append(InfoRow(title: "Created", value: formattedDate(item.creationDate), symbol: "calendar.badge.plus"))
+            rows.append(InfoRow(title: "Modified", value: formattedDate(item.modificationDate), symbol: "calendar"))
+            rows.append(InfoRow(title: "Permissions", value: formattedPermissions(item.posixPermissions), symbol: "lock.shield"))
+            rows.append(InfoRow(title: "Owner", value: nonEmpty(item.owner), symbol: "person"))
+            rows.append(InfoRow(title: "Group", value: nonEmpty(item.group), symbol: "person.2"))
+            return rows
+        }
+
+        private static func selectionBreakdown(fileCount: Int, folderCount: Int) -> String {
+            [pluralized(fileCount, singular: "file"), pluralized(folderCount, singular: "folder")]
+                .filter { !$0.hasPrefix("0 ") }
+                .joined(separator: ", ")
+        }
+
+        private static func pluralized(_ count: Int, singular: String) -> String {
+            "\(count) \(singular)\(count == 1 ? "" : "s")"
+        }
+
+        private static func formattedDate(_ date: Date?) -> String {
+            guard let date else { return "Unknown" }
+            return dateFormatter.string(from: date)
+        }
+
+        private static func formattedPermissions(_ permissions: Int?) -> String {
+            guard let permissions else { return "Unknown" }
+            return String(format: "%03o", permissions & 0o777)
+        }
+
+        private static func nonEmpty(_ value: String?) -> String {
+            guard let value, !value.isEmpty else { return "Unknown" }
+            return value
+        }
+
+        private static let dateFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            return formatter
+        }()
+
+        private static func displayPath(for url: URL) -> String {
+            url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        }
     }
 
     private let recentLocations: RecentLocationService
@@ -129,21 +217,20 @@ final class SidebarViewController: NSViewController {
     }
 
     private func addFileInfo(for items: [FileItem], selectionID: UUID) {
+        guard let presentation = SelectionInspectorPresentation.make(for: items) else { return }
+        addHeader(title: presentation.title, subtitle: presentation.subtitle, icon: presentation.icon)
+        addCopyPathButton(for: presentation.selectedURLs)
+        addSection("Inspector")
+        for row in presentation.rows {
+            let identifier: String? = row.title == "Total Space" ? "total-size" : nil
+            addInfoRow(row, identifier: identifier)
+        }
         if items.count == 1, let item = items.first {
-            addHeader(title: item.displayName, subtitle: displayPath(for: item.url), icon: item.icon)
-            addSection("Info")
-            addInfoRow(InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"), identifier: "total-size")
-            addInfoRow(InfoRow(title: "File Size", value: item.isDirectory ? "Folder" : FileSizeFormatter.string(fromByteCount: item.size), symbol: "doc.text"))
-            addInfoRow(InfoRow(title: "Type", value: item.localizedTypeDescription, symbol: item.isDirectory ? "folder" : "tag"))
             if isImage(item) {
                 addInfoRow(InfoRow(title: "GPS Location", value: "Reading metadata…", symbol: "location"), identifier: "gps-location")
             }
             loadDetails(for: item, selectionID: selectionID)
         } else {
-            addHeader(title: "\(items.count) items selected", subtitle: "Multiple selection", icon: NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: nil) ?? NSImage())
-            addSection("Info")
-            addInfoRow(InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"), identifier: "total-size")
-            addInfoRow(InfoRow(title: "Type", value: "Mixed selection", symbol: "tag"))
             loadTotalSize(for: items, selectionID: selectionID)
         }
     }
@@ -255,6 +342,17 @@ final class SidebarViewController: NSViewController {
         stack.addArrangedSubview(row)
     }
 
+    private func addCopyPathButton(for urls: [URL]) {
+        let button = NSButton(title: urls.count == 1 ? "Copy Path" : "Copy Paths", target: self, action: #selector(copySelectionPaths(_:)))
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.identifier = NSUserInterfaceItemIdentifier(urls.map(\.path).joined(separator: "\n"))
+        button.toolTip = "Copy selected path information"
+        button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        stack.addArrangedSubview(button)
+        stack.setCustomSpacing(10, after: button)
+    }
+
     private func updateInfoRow(identifier: String, value: String) {
         for view in stack.arrangedSubviews where view.identifier?.rawValue == identifier {
             (view as? SidebarInfoRowView)?.setValue(value)
@@ -275,6 +373,24 @@ final class SidebarViewController: NSViewController {
     @objc private func openLocation(_ sender: NSControl) {
         guard let path = sender.identifier?.rawValue else { return }
         onOpenLocation?(URL(fileURLWithPath: path), NSEvent.modifierFlags.contains(.option))
+    }
+
+    @objc private func copySelectionPaths(_ sender: NSControl) {
+        guard let paths = sender.identifier?.rawValue, !paths.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths, forType: .string)
+    }
+}
+
+private extension FileItemType {
+    var displayName: String {
+        switch self {
+        case .folder: return "Folder"
+        case .symbolicLink: return "Symbolic Link"
+        case .package: return "Package"
+        case .file: return "File"
+        case .unknown: return "Unknown"
+        }
     }
 }
 
