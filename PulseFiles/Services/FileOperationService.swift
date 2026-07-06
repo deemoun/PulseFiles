@@ -83,6 +83,28 @@ struct FileOperationProgress {
     let currentItemName: String
     let completedCount: Int
     let totalCount: Int
+    let completedRecursiveItemCount: Int?
+    let totalRecursiveItemCount: Int?
+    let completedByteCount: Int64?
+    let totalByteCount: Int64?
+
+    init(
+        currentItemName: String,
+        completedCount: Int,
+        totalCount: Int,
+        completedRecursiveItemCount: Int? = nil,
+        totalRecursiveItemCount: Int? = nil,
+        completedByteCount: Int64? = nil,
+        totalByteCount: Int64? = nil
+    ) {
+        self.currentItemName = currentItemName
+        self.completedCount = completedCount
+        self.totalCount = totalCount
+        self.completedRecursiveItemCount = completedRecursiveItemCount
+        self.totalRecursiveItemCount = totalRecursiveItemCount
+        self.completedByteCount = completedByteCount
+        self.totalByteCount = totalByteCount
+    }
 }
 
 struct FileOperationItemFailure {
@@ -138,11 +160,16 @@ protocol FileOperationFileManaging {
     func copyItem(at srcURL: URL, to dstURL: URL) throws
     func moveItem(at srcURL: URL, to dstURL: URL) throws
     func removeItem(at URL: URL) throws
+    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws
     func trashItem(at url: URL, resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws
     func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: FileManager.DirectoryEnumerationOptions) throws -> [URL]
 }
 
-extension FileManager: FileOperationFileManaging {}
+extension FileManager: FileOperationFileManaging {
+    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
+        try createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: nil)
+    }
+}
 
 final class FileOperationService: FileOperationServicing {
     private enum TransferKind {
@@ -155,6 +182,11 @@ final class FileOperationService: FileOperationServicing {
         let destination: URL
         let conflictResolution: FileConflictResolution
         let replacesExistingDestination: Bool
+    }
+
+    private struct RecursiveProgressState {
+        let totalItemCount: Int?
+        var completedItemCount: Int
     }
 
     private let fileManager: FileOperationFileManaging
@@ -278,6 +310,10 @@ final class FileOperationService: FileOperationServicing {
         let activePlans = plans.filter { $0.conflictResolution == .replace }
         let totalCount = activePlans.count
         var completedCount = 0
+        var recursiveProgress = RecursiveProgressState(
+            totalItemCount: progressHandler == nil ? nil : preScanRecursiveItemCount(for: activePlans.map(\.source)),
+            completedItemCount: 0
+        )
 
         skippedItems.append(contentsOf: plans.filter { $0.conflictResolution == .skip }.map(\.source))
 
@@ -292,26 +328,60 @@ final class FileOperationService: FileOperationServicing {
                 )
             }
 
-            await progressHandler?(FileOperationProgress(currentItemName: plan.source.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+            await emitProgress(
+                currentItem: plan.source,
+                completedCount: completedCount,
+                totalCount: totalCount,
+                recursiveProgress: recursiveProgress,
+                progressHandler: progressHandler
+            )
             do {
                 switch kind {
                 case .copy:
-                    let warnings = try safelyCopy(source: plan.source, to: plan.destination)
-                    cleanupWarnings.append(contentsOf: warnings)
-                case .move:
-                    let warnings = try safelyMove(
+                    let warnings = try await safelyCopy(
                         source: plan.source,
                         to: plan.destination,
-                        replacingExistingDestination: plan.replacesExistingDestination
+                        completedCount: completedCount,
+                        totalCount: totalCount,
+                        recursiveProgress: &recursiveProgress,
+                        progressHandler: progressHandler
+                    )
+                    cleanupWarnings.append(contentsOf: warnings)
+                case .move:
+                    let warnings = try await safelyMove(
+                        source: plan.source,
+                        to: plan.destination,
+                        replacingExistingDestination: plan.replacesExistingDestination,
+                        completedCount: completedCount,
+                        totalCount: totalCount,
+                        recursiveProgress: &recursiveProgress,
+                        progressHandler: progressHandler
                     )
                     cleanupWarnings.append(contentsOf: warnings)
                 }
                 completedItems.append(plan.source)
+            } catch is CancellationError {
+                return FileOperationResult(
+                    completedItems: completedItems,
+                    skippedItems: skippedItems,
+                    failedItems: failedItems,
+                    cleanupWarnings: cleanupWarnings,
+                    wasCancelled: true
+                )
             } catch {
                 failedItems.append(FileOperationItemFailure(url: plan.source, error: error))
             }
             completedCount += 1
-            await progressHandler?(FileOperationProgress(currentItemName: plan.source.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+            if recursiveProgress.totalItemCount == nil {
+                recursiveProgress.completedItemCount = completedCount
+            }
+            await emitProgress(
+                currentItem: plan.source,
+                completedCount: completedCount,
+                totalCount: totalCount,
+                recursiveProgress: recursiveProgress,
+                progressHandler: progressHandler
+            )
         }
 
         return FileOperationResult(
@@ -323,10 +393,24 @@ final class FileOperationService: FileOperationServicing {
         )
     }
 
-    private func safelyCopy(source: URL, to destination: URL) throws -> [FileOperationCleanupWarning] {
+    private func safelyCopy(
+        source: URL,
+        to destination: URL,
+        completedCount: Int,
+        totalCount: Int,
+        recursiveProgress: inout RecursiveProgressState,
+        progressHandler: FileOperationProgressHandler?
+    ) async throws -> [FileOperationCleanupWarning] {
         let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-copy")
         do {
-            try fileManager.copyItem(at: source, to: tempURL)
+            try await recursivelyCopy(
+                source: source,
+                to: tempURL,
+                topLevelCompletedCount: completedCount,
+                topLevelTotalCount: totalCount,
+                recursiveProgress: &recursiveProgress,
+                progressHandler: progressHandler
+            )
             return try placeStagedItem(tempURL, at: destination)
         } catch {
             try? removeIfExists(tempURL)
@@ -337,27 +421,70 @@ final class FileOperationService: FileOperationServicing {
     private func safelyMove(
         source: URL,
         to destination: URL,
-        replacingExistingDestination: Bool
-    ) throws -> [FileOperationCleanupWarning] {
+        replacingExistingDestination: Bool,
+        completedCount: Int,
+        totalCount: Int,
+        recursiveProgress: inout RecursiveProgressState,
+        progressHandler: FileOperationProgressHandler?
+    ) async throws -> [FileOperationCleanupWarning] {
         guard replacingExistingDestination else {
             do {
+                let movedItemCount = recursiveProgress.totalItemCount == nil ? 1 : (recursiveItemCount(for: source) ?? 1)
                 try fileManager.moveItem(at: source, to: destination)
+                if recursiveProgress.totalItemCount != nil {
+                    recursiveProgress.completedItemCount += movedItemCount
+                    await emitProgress(
+                        currentItem: source,
+                        completedCount: completedCount,
+                        totalCount: totalCount,
+                        recursiveProgress: recursiveProgress,
+                        progressHandler: progressHandler
+                    )
+                }
                 return []
             } catch {
                 guard shouldFallbackToCopyDelete(forMoveError: error) else {
                     throw error
                 }
-                return try copyThenDeleteMove(source: source, to: destination)
+                return try await copyThenDeleteMove(
+                    source: source,
+                    to: destination,
+                    completedCount: completedCount,
+                    totalCount: totalCount,
+                    recursiveProgress: &recursiveProgress,
+                    progressHandler: progressHandler
+                )
             }
         }
 
-        return try copyThenDeleteMove(source: source, to: destination)
+        return try await copyThenDeleteMove(
+            source: source,
+            to: destination,
+            completedCount: completedCount,
+            totalCount: totalCount,
+            recursiveProgress: &recursiveProgress,
+            progressHandler: progressHandler
+        )
     }
 
-    private func copyThenDeleteMove(source: URL, to destination: URL) throws -> [FileOperationCleanupWarning] {
+    private func copyThenDeleteMove(
+        source: URL,
+        to destination: URL,
+        completedCount: Int,
+        totalCount: Int,
+        recursiveProgress: inout RecursiveProgressState,
+        progressHandler: FileOperationProgressHandler?
+    ) async throws -> [FileOperationCleanupWarning] {
         let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-move")
         do {
-            try fileManager.copyItem(at: source, to: tempURL)
+            try await recursivelyCopy(
+                source: source,
+                to: tempURL,
+                topLevelCompletedCount: completedCount,
+                topLevelTotalCount: totalCount,
+                recursiveProgress: &recursiveProgress,
+                progressHandler: progressHandler
+            )
             var warnings = try placeStagedItem(tempURL, at: destination)
             do {
                 try fileManager.removeItem(at: source)
@@ -372,6 +499,105 @@ final class FileOperationService: FileOperationServicing {
             try? removeIfExists(tempURL)
             throw error
         }
+    }
+
+
+    private func preScanRecursiveItemCount(for urls: [URL]) -> Int? {
+        var total = 0
+        for url in urls {
+            guard !Task.isCancelled else { return nil }
+            total += recursiveItemCount(for: url) ?? 1
+        }
+        return total
+    }
+
+    private func recursiveItemCount(for url: URL) -> Int? {
+        guard isDirectory(url) else { return 1 }
+        do {
+            let children = try fileManager.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: []
+            )
+            var count = 1
+            for child in children {
+                guard !Task.isCancelled else { return nil }
+                count += recursiveItemCount(for: child) ?? 1
+            }
+            return count
+        } catch {
+            return 1
+        }
+    }
+
+    private func recursivelyCopy(
+        source: URL,
+        to destination: URL,
+        topLevelCompletedCount: Int,
+        topLevelTotalCount: Int,
+        recursiveProgress: inout RecursiveProgressState,
+        progressHandler: FileOperationProgressHandler?
+    ) async throws {
+        try Task.checkCancellation()
+        if isDirectory(source) {
+            try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
+            recursiveProgress.completedItemCount += 1
+            await emitProgress(
+                currentItem: source,
+                completedCount: topLevelCompletedCount,
+                totalCount: topLevelTotalCount,
+                recursiveProgress: recursiveProgress,
+                progressHandler: progressHandler
+            )
+
+            let children = try fileManager.contentsOfDirectory(
+                at: source,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: []
+            )
+            for child in children {
+                try Task.checkCancellation()
+                try await recursivelyCopy(
+                    source: child,
+                    to: destination.appendingPathComponent(child.lastPathComponent, isDirectory: isDirectory(child)),
+                    topLevelCompletedCount: topLevelCompletedCount,
+                    topLevelTotalCount: topLevelTotalCount,
+                    recursiveProgress: &recursiveProgress,
+                    progressHandler: progressHandler
+                )
+            }
+        } else {
+            try fileManager.copyItem(at: source, to: destination)
+            recursiveProgress.completedItemCount += 1
+            await emitProgress(
+                currentItem: source,
+                completedCount: topLevelCompletedCount,
+                totalCount: topLevelTotalCount,
+                recursiveProgress: recursiveProgress,
+                progressHandler: progressHandler
+            )
+        }
+    }
+
+    private func emitProgress(
+        currentItem: URL,
+        completedCount: Int,
+        totalCount: Int,
+        recursiveProgress: RecursiveProgressState,
+        progressHandler: FileOperationProgressHandler?
+    ) async {
+        await progressHandler?(FileOperationProgress(
+            currentItemName: currentItem.lastPathComponent,
+            completedCount: completedCount,
+            totalCount: totalCount,
+            completedRecursiveItemCount: recursiveProgress.totalItemCount == nil ? nil : recursiveProgress.completedItemCount,
+            totalRecursiveItemCount: recursiveProgress.totalItemCount
+        ))
+    }
+
+    private func isDirectory(_ url: URL) -> Bool {
+        var isDirectory = ObjCBool(false)
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
     private func shouldFallbackToCopyDelete(forMoveError error: Error) -> Bool {
