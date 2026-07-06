@@ -243,6 +243,132 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "new")
     }
 
+    func testMoveConflictWithSkipLeavesSourceAndDestinationUntouched() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try "new".write(to: source, atomically: true, encoding: .utf8)
+        try "old".write(to: destination, atomically: true, encoding: .utf8)
+
+        let result = try await fixture.service.move(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .skip },
+            progressHandler: nil
+        )
+
+        XCTAssertFalse(result.succeededCompletely)
+        XCTAssertFalse(result.wasCancelled)
+        XCTAssertEqual(result.completedItems, [])
+        XCTAssertEqual(result.skippedItems, [source])
+        XCTAssertEqual(result.failedItems.count, 0)
+        XCTAssertEqual(result.cleanupWarnings.count, 0)
+        XCTAssertEqual(try String(contentsOf: source), "new")
+        XCTAssertEqual(try String(contentsOf: destination), "old")
+    }
+
+    func testMoveConflictWithCancelLeavesSourceAndDestinationUntouched() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try "new".write(to: source, atomically: true, encoding: .utf8)
+        try "old".write(to: destination, atomically: true, encoding: .utf8)
+
+        let result = try await fixture.service.move(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel },
+            progressHandler: nil
+        )
+
+        XCTAssertFalse(result.succeededCompletely)
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertEqual(result.completedItems, [])
+        XCTAssertEqual(result.skippedItems, [])
+        XCTAssertEqual(result.failedItems.count, 0)
+        XCTAssertEqual(result.cleanupWarnings.count, 0)
+        XCTAssertEqual(try String(contentsOf: source), "new")
+        XCTAssertEqual(try String(contentsOf: destination), "old")
+    }
+
+    func testDuplicateDestinationsAreRejectedBeforeMutation() async throws {
+        let fixture = try makeFixture()
+        let firstFolder = fixture.left.appendingPathComponent("First", isDirectory: true)
+        let secondFolder = fixture.left.appendingPathComponent("Second", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondFolder, withIntermediateDirectories: true)
+        let firstSource = firstFolder.appendingPathComponent("Report.txt")
+        let secondSource = secondFolder.appendingPathComponent("Report.txt")
+        try "first".write(to: firstSource, atomically: true, encoding: .utf8)
+        try "second".write(to: secondSource, atomically: true, encoding: .utf8)
+
+        do {
+            _ = try await fixture.service.copy(
+                FileOperationRequest(sources: [firstSource, secondSource], destinationDirectory: fixture.right),
+                conflictHandler: { _ in .replace },
+                progressHandler: nil
+            )
+            XCTFail("Expected duplicate destination rejection")
+        } catch FileOperationError.duplicateDestination(let duplicateURL) {
+            XCTAssertEqual(duplicateURL, fixture.right.appendingPathComponent("Report.txt"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Report.txt").path))
+        XCTAssertEqual(try String(contentsOf: firstSource), "first")
+        XCTAssertEqual(try String(contentsOf: secondSource), "second")
+    }
+
+    func testMoveFolderIntoItselfIsRejectedBeforeMutation() async throws {
+        let fixture = try makeFixture()
+        let folder = fixture.left.appendingPathComponent("Folder", isDirectory: true)
+        let child = folder.appendingPathComponent("Child", isDirectory: true)
+        let nestedFile = child.appendingPathComponent("Nested.txt")
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        try "nested".write(to: nestedFile, atomically: true, encoding: .utf8)
+
+        do {
+            _ = try await fixture.service.move(
+                FileOperationRequest(sources: [folder], destinationDirectory: child),
+                conflictHandler: { _ in .replace },
+                progressHandler: nil
+            )
+            XCTFail("Expected folder-into-itself rejection")
+        } catch FileOperationError.destinationInsideSource(let rejectedSource, let rejectedDestination) {
+            XCTAssertEqual(rejectedSource, folder)
+            XCTAssertEqual(rejectedDestination, child.appendingPathComponent("Folder"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertEqual(try String(contentsOf: nestedFile), "nested")
+    }
+
+    func testCopyReportsPartialFailureWhenOneItemSucceedsAndAnotherFails() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let firstSource = fixture.left.appendingPathComponent("First.txt")
+        let secondSource = fixture.left.appendingPathComponent("Second.txt")
+        try "first".write(to: firstSource, atomically: true, encoding: .utf8)
+        try "second".write(to: secondSource, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failCopyFromURL = secondSource
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [firstSource, secondSource], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: nil
+        )
+
+        XCTAssertFalse(result.succeededCompletely)
+        XCTAssertFalse(result.wasCancelled)
+        XCTAssertEqual(result.completedItems, [firstSource])
+        XCTAssertEqual(result.skippedItems, [])
+        XCTAssertEqual(result.failedItems.map(\.url), [secondSource])
+        XCTAssertEqual(result.cleanupWarnings.count, 0)
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("First.txt")), "first")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Second.txt").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secondSource.path))
+    }
+
     func testMoveReportsWarningWhenOriginalCannotBeRemovedAfterFallbackCopy() async throws {
         let fixture = try makeFixture(useFailingManager: true)
         let source = fixture.left.appendingPathComponent("Report.txt")
@@ -368,6 +494,7 @@ private struct RecordedFileOperation: Equatable {
 }
 
 private final class FailingFileManager: FileOperationFileManaging {
+    var failCopyFromURL: URL?
     var failMoveToURL: URL?
     var moveFailureError: Error = CocoaError(.fileWriteUnknown)
     var failRemoveURL: URL?
@@ -384,6 +511,9 @@ private final class FailingFileManager: FileOperationFileManaging {
     }
 
     func copyItem(at srcURL: URL, to dstURL: URL) throws {
+        if let failCopyFromURL, srcURL.standardizedFileURL == failCopyFromURL.standardizedFileURL {
+            throw CocoaError(.fileReadNoPermission)
+        }
         copiedItems.append(RecordedFileOperation(source: srcURL, destination: dstURL))
         try FileManager.default.copyItem(at: srcURL, to: dstURL)
     }
