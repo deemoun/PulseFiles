@@ -10,11 +10,11 @@ final class SettingsViewController: NSViewController {
 
         var title: String {
             switch self {
-            case .general: return "General"
-            case .folders: return "Folders"
-            case .operations: return "Operations"
-            case .colors: return "Colors"
-            case .debug: return "Debug"
+            case .general: return "General".localized
+            case .folders: return "Folders".localized
+            case .operations: return "Operations".localized
+            case .colors: return "Colors".localized
+            case .debug: return "Debug".localized
             }
         }
 
@@ -32,16 +32,16 @@ final class SettingsViewController: NSViewController {
     var onChange: (() -> Void)?
 
     private let settings: SettingsService
-    private let sidebarCheckbox = NSButton(checkboxWithTitle: "Show sidebar by default", target: nil, action: nil)
-    private let terminalEnabledCheckbox = NSButton(checkboxWithTitle: "Enable experimental terminal", target: nil, action: nil)
-    private let terminalCheckbox = NSButton(checkboxWithTitle: "Show terminal by default", target: nil, action: nil)
-    private let singlePaneCheckbox = NSButton(checkboxWithTitle: "Use single pane by default", target: nil, action: nil)
-    private let hiddenFilesCheckbox = NSButton(checkboxWithTitle: "Show hidden files by default", target: nil, action: nil)
-    private let confirmCopyCheckbox = NSButton(checkboxWithTitle: "Confirm copy operations", target: nil, action: nil)
-    private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations", target: nil, action: nil)
-    private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations", target: nil, action: nil)
-    private let permanentDeleteCheckbox = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash", target: nil, action: nil)
-    private let experimentalSandboxCheckbox = NSButton(checkboxWithTitle: "Restrict browsing and file operations to the experimental sandbox", target: nil, action: nil)
+    private let sidebarCheckbox = NSButton(checkboxWithTitle: "Show sidebar by default".localized, target: nil, action: nil)
+    private let terminalEnabledCheckbox = NSButton(checkboxWithTitle: "Enable experimental terminal".localized, target: nil, action: nil)
+    private let terminalCheckbox = NSButton(checkboxWithTitle: "Show terminal by default".localized, target: nil, action: nil)
+    private let singlePaneCheckbox = NSButton(checkboxWithTitle: "Use single pane by default".localized, target: nil, action: nil)
+    private let hiddenFilesCheckbox = NSButton(checkboxWithTitle: "Show hidden files by default".localized, target: nil, action: nil)
+    private let confirmCopyCheckbox = NSButton(checkboxWithTitle: "Confirm copy operations".localized, target: nil, action: nil)
+    private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations".localized, target: nil, action: nil)
+    private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations".localized, target: nil, action: nil)
+    private let permanentDeleteCheckbox = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash".localized, target: nil, action: nil)
+    private let experimentalSandboxCheckbox = NSButton(checkboxWithTitle: "Restrict browsing and file operations to the experimental sandbox".localized, target: nil, action: nil)
     private let sidebarWidthSlider = NSSlider(value: 220, minValue: 180, maxValue: 300, target: nil, action: nil)
     private let sidebarWidthLabel = NSTextField(labelWithString: "220 pt")
     private let leftDirectoryField = NSTextField()
@@ -73,11 +73,11 @@ final class SettingsViewController: NSViewController {
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
-        let title = NSTextField(labelWithString: "Settings")
+        let title = NSTextField(labelWithString: "Settings".localized)
         title.font = .preferredFont(forTextStyle: .largeTitle)
         title.setContentHuggingPriority(.required, for: .vertical)
 
-        let subtitle = NSTextField(wrappingLabelWithString: "Configure PulseFiles defaults, startup folders, file operations, category colors, and debug safeguards.")
+        let subtitle = NSTextField(wrappingLabelWithString: "Configure PulseFiles defaults, startup folders, file operations, category colors, and debug safeguards.".localized)
         subtitle.textColor = .secondaryLabelColor
         subtitle.setContentHuggingPriority(.required, for: .vertical)
 
@@ -111,7 +111,7 @@ final class SettingsViewController: NSViewController {
         scrollView.borderType = .noBorder
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        let doneButton = NSButton(title: "Done", target: self, action: #selector(done(_:)))
+        let doneButton = NSButton(title: "Done".localized, target: self, action: #selector(done(_:)))
         doneButton.keyEquivalent = "\r"
         doneButton.bezelStyle = .rounded
 
@@ -228,7 +228,7 @@ final class SettingsViewController: NSViewController {
         case .general:
             return [
                 settingsSection(
-                    title: "Appearance & Layout",
+                    title: "Appearance & Layout".localized,
                     views: [
                         sidebarCheckbox,
                         terminalEnabledCheckbox,
@@ -239,7 +239,7 @@ final class SettingsViewController: NSViewController {
                     ]
                 ),
                 settingsSection(
-                    title: "File Browser",
+                    title: "File Browser".localized,
                     views: [
                         hiddenFilesCheckbox
                     ]
@@ -248,17 +248,17 @@ final class SettingsViewController: NSViewController {
         case .folders:
             return [
                 settingsSection(
-                    title: "Startup Folders",
+                    title: "Startup Folders".localized,
                     views: [
-                        directoryRow(title: "Left startup folder", field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:))),
-                        directoryRow(title: "Right startup folder", field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
+                        directoryRow(title: "Left startup folder".localized, field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:))),
+                        directoryRow(title: "Right startup folder".localized, field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
                     ]
                 )
             ]
         case .operations:
             return [
                 settingsSection(
-                    title: "File Operations",
+                    title: "File Operations".localized,
                     views: [
                         confirmCopyCheckbox,
                         confirmMoveCheckbox,
@@ -274,7 +274,7 @@ final class SettingsViewController: NSViewController {
         case .debug:
             return [
                 settingsSection(
-                    title: "Experimental Sandbox",
+                    title: "Experimental Sandbox".localized,
                     views: [
                         experimentalSandboxCheckbox,
                         sandboxRestrictionStatusView()
@@ -287,8 +287,8 @@ final class SettingsViewController: NSViewController {
 
     private func terminalV1StatusView() -> NSView {
         let message = settings.experimentalTerminalEnabled
-            ? "Terminal V1 is enabled. It runs shell commands in the active pane folder; commands can modify or delete files."
-            : "Terminal V1 is hidden by default. Enable it only if you accept the risk that shell commands can modify or delete files."
+            ? "Terminal V1 is enabled. It runs shell commands in the active pane folder; commands can modify or delete files.".localized
+            : "Terminal V1 is hidden by default. Enable it only if you accept the risk that shell commands can modify or delete files.".localized
         let label = NSTextField(wrappingLabelWithString: message)
         label.textColor = .secondaryLabelColor
         return label
@@ -297,11 +297,11 @@ final class SettingsViewController: NSViewController {
     private func sandboxRestrictionStatusView() -> NSView {
         let rootPath = ExperimentalFlags.appSandboxRoot.path
         let title = settings.experimentalSandboxEnabled
-            ? "Experimental sandbox mode is enabled"
-            : "Experimental sandbox mode is disabled"
+            ? "Experimental sandbox mode is enabled".localized
+            : "Experimental sandbox mode is disabled".localized
         let message = settings.experimentalSandboxEnabled
-            ? "\(ExperimentalFlags.sandboxRestrictionExplanation)\n\nSandbox root: \(rootPath)"
-            : "PulseFiles can browse real folders. Re-enable this before testing destructive file operations unless you intentionally want to work outside the test root.\n\nSandbox root: \(rootPath)"
+            ? "%@\n\nSandbox root: %@".localized(with: ExperimentalFlags.sandboxRestrictionExplanation, rootPath)
+            : "PulseFiles can browse real folders. Re-enable this before testing destructive file operations unless you intentionally want to work outside the test root.\n\nSandbox root: %@".localized(with: rootPath)
 
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
@@ -338,7 +338,7 @@ final class SettingsViewController: NSViewController {
     }
 
     private func sidebarWidthRow() -> NSStackView {
-        let row = NSStackView(views: [NSTextField(labelWithString: "Sidebar width"), sidebarWidthSlider, sidebarWidthLabel])
+        let row = NSStackView(views: [NSTextField(labelWithString: "Sidebar width".localized), sidebarWidthSlider, sidebarWidthLabel])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
@@ -363,10 +363,10 @@ final class SettingsViewController: NSViewController {
     }
 
     private func fileColorPaletteView() -> NSView {
-        let title = NSTextField(labelWithString: "File color palette")
+        let title = NSTextField(labelWithString: "File color palette".localized)
         title.font = .preferredFont(forTextStyle: .headline)
 
-        let description = NSTextField(wrappingLabelWithString: "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename.")
+        let description = NSTextField(wrappingLabelWithString: "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename.".localized)
         description.textColor = .secondaryLabelColor
 
         let rows = NSStackView()
@@ -381,7 +381,7 @@ final class SettingsViewController: NSViewController {
             row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
         }
 
-        let resetButton = NSButton(title: "Reset Palette", target: self, action: #selector(resetFileColorPalette(_:)))
+        let resetButton = NSButton(title: "Reset Palette".localized, target: self, action: #selector(resetFileColorPalette(_:)))
 
         let paletteContents = NSStackView(views: [description, rows, resetButton])
         paletteContents.orientation = .vertical
@@ -454,8 +454,8 @@ final class SettingsViewController: NSViewController {
     private func directoryRow(title: String, field: NSTextField, chooseAction: Selector, resetAction: Selector) -> NSStackView {
         let label = NSTextField(labelWithString: title)
         label.widthAnchor.constraint(equalToConstant: 124).isActive = true
-        let chooseButton = NSButton(title: "Choose…", target: self, action: chooseAction)
-        let resetButton = NSButton(title: "Use Last", target: self, action: resetAction)
+        let chooseButton = NSButton(title: "Choose…".localized, target: self, action: chooseAction)
+        let resetButton = NSButton(title: "Use Last".localized, target: self, action: resetAction)
         let row = NSStackView(views: [label, field, chooseButton, resetButton])
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -497,12 +497,12 @@ final class SettingsViewController: NSViewController {
     }
 
     private func updateSidebarWidthLabel() {
-        sidebarWidthLabel.stringValue = "\(Int(settings.preferredSidebarWidth)) pt"
+        sidebarWidthLabel.stringValue = "%d pt".localized(with: Int(settings.preferredSidebarWidth))
     }
 
     private func updateDirectoryFields() {
-        leftDirectoryField.stringValue = settings.startupLeftDirectory?.path ?? "Last left folder (\(settings.lastLeftDirectory.path))"
-        rightDirectoryField.stringValue = settings.startupRightDirectory?.path ?? "Last right folder (\(settings.lastRightDirectory.path))"
+        leftDirectoryField.stringValue = settings.startupLeftDirectory?.path ?? "Last left folder (%@)".localized(with: settings.lastLeftDirectory.path)
+        rightDirectoryField.stringValue = settings.startupRightDirectory?.path ?? "Last right folder (%@)".localized(with: settings.lastRightDirectory.path)
     }
 
 
@@ -570,7 +570,7 @@ final class SettingsViewController: NSViewController {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
+        panel.prompt = "Choose".localized
         if let window = view.window {
             panel.beginSheetModal(for: window) { response in
                 guard response == .OK, let url = panel.url else { return }

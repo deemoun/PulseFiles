@@ -270,7 +270,7 @@ final class MainWindowViewController: NSViewController {
 
     private func performCommand(_ command: MainCommand) {
         guard !isFileOperationActive || !command.conflictsWithFileOperation else {
-            showError(message: "Operation in Progress", detail: "Wait for the current file operation to finish before starting another file-changing action.")
+            showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
 
@@ -418,8 +418,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         switch itemIdentifier {
         case .search:
             let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = "Search"
-            item.searchField.placeholderString = "Filter active pane"
+            item.label = "Search".localized
+            item.searchField.placeholderString = "Filter active pane".localized
             item.searchField.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.searchField)
             item.searchField.target = self
             item.searchField.action = #selector(toolbarSearchChanged(_:))
@@ -427,19 +427,19 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             toolbarSearchField = item.searchField
             return item
         case .toggleTerminal:
-            let item = toolbarItem(itemIdentifier, label: "Terminal", symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
+            let item = toolbarItem(itemIdentifier, label: "Terminal".localized, symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
             item.view?.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.terminalToggle)
             return item
         case .toggleSidebar:
-            let item = toolbarItem(itemIdentifier, label: "Sidebar", symbol: "sidebar.right", action: #selector(toolbarToggleSidebar(_:)))
+            let item = toolbarItem(itemIdentifier, label: "Sidebar".localized, symbol: "sidebar.right", action: #selector(toolbarToggleSidebar(_:)))
             item.view?.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.sidebarToggle)
             sidebarToolbarItem = item
             updateSidebarToolbarItem()
             return item
         case .viewOptions:
-            return toolbarItem(itemIdentifier, label: "View", symbol: "line.3.horizontal.decrease.circle", action: #selector(toolbarViewOptions(_:)))
+            return toolbarItem(itemIdentifier, label: "View".localized, symbol: "line.3.horizontal.decrease.circle", action: #selector(toolbarViewOptions(_:)))
         case .settings:
-            return toolbarItem(itemIdentifier, label: "Settings", symbol: "gearshape", action: #selector(toolbarSettings(_:)))
+            return toolbarItem(itemIdentifier, label: "Settings".localized, symbol: "gearshape", action: #selector(toolbarSettings(_:)))
         default:
             return nil
         }
@@ -494,7 +494,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         let controller = SettingsViewController(settings: settings)
         controller.onChange = { [weak self] in self?.applySettingsChanges() }
         let window = NSWindow(contentViewController: controller)
-        window.title = "Settings"
+        window.title = "Settings".localized
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 600, height: 420)
@@ -569,16 +569,16 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func buildViewOptionsMenu() -> NSMenu {
-        let menu = NSMenu(title: "View Options")
-        menu.addItem(menuItem("Refresh", action: #selector(menuRefresh(_:)), key: "", modifiers: []))
-        menu.addItem(menuItem("Show Hidden Files", action: #selector(menuToggleHiddenFiles(_:)), key: "", modifiers: []))
+        let menu = NSMenu(title: "View Options".localized)
+        menu.addItem(menuItem("Refresh".localized, action: #selector(menuRefresh(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Show Hidden Files".localized, action: #selector(menuToggleHiddenFiles(_:)), key: "", modifiers: []))
         menu.addItem(.separator())
-        menu.addItem(menuItem("Sort by Name", action: #selector(menuSortByName(_:)), key: "", modifiers: []))
-        menu.addItem(menuItem("Sort by Size", action: #selector(menuSortBySize(_:)), key: "", modifiers: []))
-        menu.addItem(menuItem("Sort by Modified", action: #selector(menuSortByModified(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Name".localized, action: #selector(menuSortByName(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Size".localized, action: #selector(menuSortBySize(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Modified".localized, action: #selector(menuSortByModified(_:)), key: "", modifiers: []))
         menu.addItem(.separator())
-        menu.addItem(menuItem("Ascending", action: #selector(menuSortAscending(_:)), key: "", modifiers: []))
-        menu.addItem(menuItem("Descending", action: #selector(menuSortDescending(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Ascending".localized, action: #selector(menuSortAscending(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Descending".localized, action: #selector(menuSortDescending(_:)), key: "", modifiers: []))
         return menu
     }
 
@@ -657,10 +657,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func showTerminalDisabledAlert() {
         let alert = NSAlert()
-        alert.messageText = "Experimental terminal is disabled"
-        alert.informativeText = "Enable the experimental terminal in Settings before opening it. Shell commands can modify or delete files."
+        alert.messageText = "Experimental terminal is disabled".localized
+        alert.informativeText = "Enable the experimental terminal in Settings before opening it. Shell commands can modify or delete files.".localized
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "OK".localized)
         if let window = view.window {
             alert.beginSheetModal(for: window)
         } else {
@@ -676,7 +676,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         alert.messageText = warningState.messageText
         alert.informativeText = warningState.informativeText
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "I Understand")
+        alert.addButton(withTitle: "I Understand".localized)
         if let window = view.window {
             alert.beginSheetModal(for: window)
         } else {
@@ -747,10 +747,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func updateSidebarToolbarItem() {
         guard let item = sidebarToolbarItem else { return }
-        let label = isSidebarInstalled ? "Hide Sidebar" : "Show Sidebar"
+        let label = isSidebarInstalled ? "Hide Sidebar".localized : "Show Sidebar".localized
         let symbol = isSidebarInstalled ? "sidebar.right" : "sidebar.left"
         item.label = label
-        item.paletteLabel = "Sidebar"
+        item.paletteLabel = "Sidebar".localized
         item.toolTip = label
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
     }
@@ -758,10 +758,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func promptForNewFolder() {
         view.window?.makeFirstResponder(nil)
         let alert = NSAlert()
-        alert.messageText = "New Folder"
-        alert.informativeText = "Create a folder in \(targetPane().currentDirectory.path)"
-        alert.addButton(withTitle: "Create")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = "New Folder".localized
+        alert.informativeText = "Create a folder in %@".localized(with: targetPane().currentDirectory.path)
+        alert.addButton(withTitle: "Create".localized)
+        alert.addButton(withTitle: "Cancel".localized)
 
         let textField = NSTextField(string: uniqueFolderName(in: targetPane().currentDirectory))
         textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
@@ -782,10 +782,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func promptForNewFile() {
         view.window?.makeFirstResponder(nil)
         let alert = NSAlert()
-        alert.messageText = "New File"
-        alert.informativeText = "Create a file in \(targetPane().currentDirectory.path)"
-        alert.addButton(withTitle: "Create")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = "New File".localized
+        alert.informativeText = "Create a file in %@".localized(with: targetPane().currentDirectory.path)
+        alert.addButton(withTitle: "Create".localized)
+        alert.addButton(withTitle: "Cancel".localized)
 
         let textField = NSTextField(string: uniqueFileName(in: targetPane().currentDirectory))
         textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
@@ -835,9 +835,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
             targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
-            showError(message: "Invalid Folder Name", detail: error.localizedDescription)
+            showError(message: "Invalid Folder Name".localized, detail: error.localizedDescription)
         } catch {
-            showError(message: "Could Not Create Folder", detail: error.localizedDescription)
+            showError(message: "Could Not Create Folder".localized, detail: error.localizedDescription)
         }
     }
 
@@ -849,9 +849,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             try Data().write(to: destination, options: .withoutOverwriting)
             targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
-            showError(message: "Invalid File Name", detail: error.localizedDescription)
+            showError(message: "Invalid File Name".localized, detail: error.localizedDescription)
         } catch {
-            showError(message: "Could Not Create File", detail: error.localizedDescription)
+            showError(message: "Could Not Create File".localized, detail: error.localizedDescription)
         }
     }
 
@@ -866,26 +866,26 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 let configuration = NSWorkspace.OpenConfiguration()
                 NSWorkspace.shared.open([fileURL], withApplicationAt: applicationURL, configuration: configuration) { [weak self] _, error in
                     if let error {
-                        self?.showError(message: "Could Not Open File", detail: error.localizedDescription)
+                        self?.showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
                     }
                 }
             } else {
                 NSWorkspace.shared.open(fileURL)
             }
         } catch {
-            showError(message: "Could Not Open File", detail: error.localizedDescription)
+            showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
         }
     }
 
     private func promptForGoToFolder() {
         view.window?.makeFirstResponder(nil)
         let alert = NSAlert()
-        alert.messageText = "Go to Folder"
+        alert.messageText = "Go to Folder".localized
         alert.informativeText = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
-            ? "Enter a folder path inside the PulseFiles experimental sandbox."
-            : "Enter an absolute, home-relative, or active-pane-relative folder path."
-        alert.addButton(withTitle: "Go")
-        alert.addButton(withTitle: "Cancel")
+            ? "Enter a folder path inside the PulseFiles experimental sandbox.".localized
+            : "Enter an absolute, home-relative, or active-pane-relative folder path.".localized
+        alert.addButton(withTitle: "Go".localized)
+        alert.addButton(withTitle: "Cancel".localized)
 
         let textField = NSTextField(string: targetPane().currentDirectory.path)
         textField.frame = NSRect(x: 0, y: 0, width: 420, height: 24)
@@ -908,7 +908,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             let url = try resolveFolderPath(rawPath)
             targetPane().navigate(to: url)
         } catch {
-            showError(message: "Could Not Go to Folder", detail: error.localizedDescription)
+            showError(message: "Could Not Go to Folder".localized, detail: error.localizedDescription)
         }
     }
 
@@ -943,16 +943,16 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func promptForRename() {
         guard let item = targetPane().focusedItem else {
-            showError(message: "Nothing Selected", detail: "Select one item to rename.")
+            showError(message: "Nothing Selected".localized, detail: "Select one item to rename.".localized)
             return
         }
 
         view.window?.makeFirstResponder(nil)
         let alert = NSAlert()
-        alert.messageText = "Rename"
+        alert.messageText = "Rename".localized
         alert.informativeText = item.url.path
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Rename".localized)
+        alert.addButton(withTitle: "Cancel".localized)
 
         let textField = NSTextField(string: item.filename)
         textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
@@ -971,7 +971,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func rename(item: FileItem, to rawName: String) {
-        startFileOperation(named: "Rename") { [fileOperations] progressHandler in
+        startFileOperation(named: "Rename".localized) { [fileOperations] progressHandler in
             try await fileOperations.rename(item.url, to: rawName, progressHandler: progressHandler)
         }
     }
@@ -979,12 +979,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func confirmDeleteSelectedItems() {
         let items = targetPane().selectedItems
         guard !items.isEmpty else {
-            showError(message: "Nothing Selected", detail: "Select one or more items to delete.")
+            showError(message: "Nothing Selected".localized, detail: "Select one or more items to delete.".localized)
             return
         }
         let permanentlyDelete = settings.permanentlyDeleteInsteadOfTrash
-        let operationName = permanentlyDelete ? "Permanently Delete" : "Move to Trash"
-        let confirmButtonTitle = permanentlyDelete ? "Permanently Delete" : "Move to Trash"
+        let operationName = permanentlyDelete ? "Permanently Delete".localized : "Move to Trash".localized
+        let confirmButtonTitle = permanentlyDelete ? "Permanently Delete".localized : "Move to Trash".localized
         if !permanentlyDelete && settings.confirmDeleteOperations == false {
             delete(items: items, permanently: permanentlyDelete)
             return
@@ -992,14 +992,14 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "\(operationName)?"
+        alert.messageText = "%@?".localized(with: operationName)
         alert.informativeText = confirmationSummary(
             operationName: operationName,
             urls: items.map(\.url),
             destinationDirectory: nil
         )
         alert.addButton(withTitle: confirmButtonTitle)
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Cancel".localized)
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
@@ -1014,7 +1014,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func delete(items: [FileItem], permanently: Bool) {
-        let operationName = permanently ? "Permanently Delete" : "Move to Trash"
+        let operationName = permanently ? "Permanently Delete".localized : "Move to Trash".localized
         startFileOperation(named: operationName) { [fileOperations] progressHandler in
             if permanently {
                 return try await fileOperations.delete(items.map(\.url), progressHandler: progressHandler)
@@ -1024,13 +1024,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func copySelectedItems() {
-        performFileTransfer(kind: "Copy", shouldConfirm: settings.confirmCopyOperations) { [fileOperations] request, conflictHandler, progressHandler in
+        performFileTransfer(kind: "Copy".localized, shouldConfirm: settings.confirmCopyOperations) { [fileOperations] request, conflictHandler, progressHandler in
             try await fileOperations.copy(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
 
     private func moveSelectedItems() {
-        performFileTransfer(kind: "Move", shouldConfirm: settings.confirmMoveOperations) { [fileOperations] request, conflictHandler, progressHandler in
+        performFileTransfer(kind: "Move".localized, shouldConfirm: settings.confirmMoveOperations) { [fileOperations] request, conflictHandler, progressHandler in
             try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
@@ -1042,7 +1042,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     ) {
         let sources = targetPane().selectedItems.map(\.url)
         guard !sources.isEmpty else {
-            showError(message: "Nothing Selected", detail: "Select one or more items in the active pane.")
+            showError(message: "Nothing Selected".localized, detail: "Select one or more items in the active pane.".localized)
             return
         }
 
@@ -1067,17 +1067,17 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func transferDroppedItems(_ urls: [URL], to destinationDirectory: URL, copy: Bool) {
         guard !urls.isEmpty else { return }
         guard !isFileOperationActive else {
-            showError(message: "Operation in Progress", detail: "Wait for the current file operation to finish before starting another file-changing action.")
+            showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
         do {
             try validateDroppedItems(urls, destinationDirectory: destinationDirectory)
         } catch {
-            showError(message: "Could Not Accept Drop", detail: error.localizedDescription)
+            showError(message: "Could Not Accept Drop".localized, detail: error.localizedDescription)
             return
         }
 
-        let kind = copy ? "Copy" : "Move"
+        let kind = copy ? "Copy".localized : "Move".localized
         let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
         let start: () -> Void = { [weak self, fileOperations] in
             self?.startFileOperation(named: kind) { [weak self] progressHandler in
@@ -1128,15 +1128,15 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     ) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        let itemLabel = urls.count == 1 ? "Item" : "\(urls.count) Items"
-        alert.messageText = "\(operationName) \(itemLabel)?"
+        let itemLabel = urls.count == 1 ? "Item".localized : "%d Items".localized(with: urls.count)
+        alert.messageText = "%@ %@?".localized(with: operationName, itemLabel)
         alert.informativeText = confirmationSummary(
             operationName: operationName,
             urls: urls,
             destinationDirectory: destinationDirectory
         )
         alert.addButton(withTitle: confirmButtonTitle)
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Cancel".localized)
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .alertFirstButtonReturn else { return }
@@ -1151,16 +1151,16 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func confirmationSummary(operationName: String, urls: [URL], destinationDirectory: URL?) -> String {
-        let itemLabel = urls.count == 1 ? "1 item" : "\(urls.count) items"
-        var lines = ["\(operationName) \(itemLabel):"]
+        let itemLabel = urls.count == 1 ? "1 item".localized : "%d items".localized(with: urls.count)
+        var lines = ["%@ %@:".localized(with: operationName, itemLabel)]
         let visibleNames = urls.prefix(8).map { "- \($0.lastPathComponent)" }
         lines.append(contentsOf: visibleNames)
         if urls.count > visibleNames.count {
-            lines.append("- ...and \(urls.count - visibleNames.count) more")
+            lines.append("- ...and %d more".localized(with: urls.count - visibleNames.count))
         }
         if let destinationDirectory {
             lines.append("")
-            lines.append("Destination: \(destinationDirectory.path)")
+            lines.append("Destination: %@".localized(with: destinationDirectory.path))
         }
         return lines.joined(separator: "\n")
     }
@@ -1187,7 +1187,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 self.refreshBothPanes()
                 self.showOperationResult(result, operationName: operationName)
             } catch {
-                self.showError(message: "Could Not \(operationName) Items", detail: error.localizedDescription)
+                self.showError(message: "Could Not %@ Items".localized(with: operationName), detail: error.localizedDescription)
             }
         }
     }
@@ -1201,15 +1201,15 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func showOperationResult(_ result: FileOperationResult, operationName: String) {
         guard !result.succeededCompletely else { return }
         var details = [
-            "Completed: \(result.completedItems.count)",
-            "Skipped: \(result.skippedItems.count)",
-            "Failed: \(result.failedItems.count)",
-            "Cleanup warnings: \(result.cleanupWarnings.count)"
+            "Completed: %d".localized(with: result.completedItems.count),
+            "Skipped: %d".localized(with: result.skippedItems.count),
+            "Failed: %d".localized(with: result.failedItems.count),
+            "Cleanup warnings: %d".localized(with: result.cleanupWarnings.count)
         ]
-        if result.wasCancelled { details.append("The operation was cancelled before all items completed.") }
+        if result.wasCancelled { details.append("The operation was cancelled before all items completed.".localized) }
         details.append(contentsOf: result.failedItems.map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" })
         details.append(contentsOf: result.cleanupWarnings.map { "\($0.url.lastPathComponent): \($0.message)" })
-        showError(message: "\(operationName) Finished With Issues", detail: details.joined(separator: "\n"))
+        showError(message: "%@ Finished With Issues".localized(with: operationName), detail: details.joined(separator: "\n"))
     }
 
     private func setConflictingFileActionsEnabled(_ isEnabled: Bool) {
@@ -1223,11 +1223,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func promptForConflict(destination: URL, operationName: String) async -> FileConflictResolution {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "\(destination.lastPathComponent) Already Exists"
-        alert.informativeText = "\(operationName) would replace an item in \(destination.deletingLastPathComponent().path)."
-        alert.addButton(withTitle: "Replace")
-        alert.addButton(withTitle: "Skip")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = "%@ Already Exists".localized(with: destination.lastPathComponent)
+        alert.informativeText = "%@ would replace an item in %@.".localized(with: operationName, destination.deletingLastPathComponent().path)
+        alert.addButton(withTitle: "Replace".localized)
+        alert.addButton(withTitle: "Skip".localized)
+        alert.addButton(withTitle: "Cancel".localized)
 
         guard let window = view.window else { return .cancel }
         return await withCheckedContinuation { continuation in
@@ -1260,7 +1260,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         alert.alertStyle = .warning
         alert.messageText = message
         alert.informativeText = detail
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "OK".localized)
         if let window = view.window {
             alert.beginSheetModal(for: window)
         } else {
@@ -1353,7 +1353,7 @@ extension MainWindowViewController: NSMenuItemValidation {
             return true
         }
         if menuItem.action == #selector(menuTogglePaneLayout(_:)) {
-            menuItem.title = isSinglePaneMode ? "Use Dual Pane" : "Use Single Pane"
+            menuItem.title = isSinglePaneMode ? "Use Dual Pane".localized : "Use Single Pane".localized
             menuItem.state = isSinglePaneMode ? .on : .off
             return true
         }
@@ -1362,7 +1362,7 @@ extension MainWindowViewController: NSMenuItemValidation {
             return true
         }
         if menuItem.action == #selector(menuMoveToTrash(_:)) {
-            menuItem.title = settings.permanentlyDeleteInsteadOfTrash ? "Permanently Delete" : "Move to Trash"
+            menuItem.title = settings.permanentlyDeleteInsteadOfTrash ? "Permanently Delete".localized : "Move to Trash".localized
             return true
         }
         let sort = targetPane().sortDescriptor

@@ -19,7 +19,7 @@ enum ExperimentalFlags {
         return defaults.bool(forKey: restrictFileAccessUserDefaultsKey)
     }
 
-    static let sandboxRestrictionExplanation = "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable."
+    static var sandboxRestrictionExplanation: String { "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable.".localized }
 
     static var appSandboxRoot: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
