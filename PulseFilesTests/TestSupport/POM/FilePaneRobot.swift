@@ -12,6 +12,7 @@ final class FilePaneRobot: FilePanePageObject {
     let viewModel: FilePaneViewModel
     private(set) var selectedURLs: Set<URL> = []
     private(set) var isActive = false
+    private(set) var isVisible = true
 
     init(paneID: PaneID, viewModel: FilePaneViewModel, isActive: Bool = false) {
         self.paneID = paneID
@@ -52,6 +53,12 @@ final class FilePaneRobot: FilePanePageObject {
     @discardableResult
     func select(_ urls: [URL]) -> Self {
         selectedURLs = Set(urls)
+        return self
+    }
+
+    @discardableResult
+    func expectVisible(_ expected: Bool = true, file: StaticString = #filePath, line: UInt = #line) -> Self {
+        XCTAssertEqual(isVisible, expected, file: file, line: line)
         return self
     }
 
