@@ -7,6 +7,9 @@ enum MainCommand: Equatable {
     case rename
     case copy
     case move
+    case copyToClipboard
+    case cutToClipboard
+    case pasteFromClipboard
     case trash
     case refresh
     case reveal

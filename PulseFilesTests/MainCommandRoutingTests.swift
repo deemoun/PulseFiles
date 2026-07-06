@@ -40,7 +40,7 @@ final class MainCommandRoutingTests: XCTestCase {
     func testSelectionCommandsAreDisabledWhenNoSelectionExists() {
         let state = makeState(activePaneID: .left)
 
-        for command in [MainCommand.open, .rename, .trash, .reveal, .copy, .move] {
+        for command in [MainCommand.open, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noSelection))
         }
     }
@@ -49,7 +49,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let selected = URL(fileURLWithPath: "/outside-sandbox/secret.txt")
         let state = makeState(activePaneID: .left, leftSelection: [selected], sandboxAllowsSelectedURLs: false)
 
-        for command in [MainCommand.open, .rename, .trash, .reveal, .copy, .move] {
+        for command in [MainCommand.open, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .sandboxRejectedSelection))
         }
     }
@@ -57,9 +57,26 @@ final class MainCommandRoutingTests: XCTestCase {
     func testSearchFieldFocusDoesNotStealStandardTextShortcuts() {
         XCTAssertNil(router.commandForKeyDown(keyCode: 0, command: true, isTextInputFocused: true), "Command-A should remain select-all in search text fields.")
         XCTAssertNil(router.commandForKeyDown(keyCode: 8, command: true, isTextInputFocused: true), "Command-C should remain copy text in search text fields.")
+        XCTAssertNil(router.commandForKeyDown(keyCode: 7, command: true, isTextInputFocused: true), "Command-X should remain cut text in search text fields.")
         XCTAssertNil(router.commandForKeyDown(keyCode: 9, command: true, isTextInputFocused: true), "Command-V should remain paste in search text fields.")
         XCTAssertNil(router.commandForKeyDown(keyCode: 120, isTextInputFocused: true), "F2 should not rename while editing search text.")
         XCTAssertEqual(router.commandForKeyDown(keyCode: 50, command: true, isTextInputFocused: true), .toggleTerminal)
+    }
+
+
+    func testClipboardShortcutsRouteWhenTextInputIsNotFocused() {
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 8, command: true), .copyToClipboard)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 7, command: true), .cutToClipboard)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 9, command: true), .pasteFromClipboard)
+    }
+
+    func testClipboardSelectionCommandsRouteToActivePane() {
+        let selected = URL(fileURLWithPath: "/sandbox/left/file.txt")
+        let state = makeState(activePaneID: .left, leftSelection: [selected])
+
+        XCTAssertEqual(router.route(.copyToClipboard, in: state), .activePane(command: .copyToClipboard, pane: .left, urls: [selected]))
+        XCTAssertEqual(router.route(.cutToClipboard, in: state), .activePane(command: .cutToClipboard, pane: .left, urls: [selected]))
+        XCTAssertEqual(router.route(.pasteFromClipboard, in: state), .enabled(command: .pasteFromClipboard))
     }
 
     func testFileMutatingCommandsAreDisabledDuringActiveFileOperation() {
@@ -69,6 +86,8 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.route(.rename, in: state), .disabled(command: .rename, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.copy, in: state), .disabled(command: .copy, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.move, in: state), .disabled(command: .move, reason: .fileOperationInProgress))
+        XCTAssertEqual(router.route(.cutToClipboard, in: state), .disabled(command: .cutToClipboard, reason: .fileOperationInProgress))
+        XCTAssertEqual(router.route(.pasteFromClipboard, in: state), .disabled(command: .pasteFromClipboard, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.trash, in: state), .disabled(command: .trash, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.refresh, in: state), .activePane(command: .refresh, pane: .left, urls: [selected]))
     }

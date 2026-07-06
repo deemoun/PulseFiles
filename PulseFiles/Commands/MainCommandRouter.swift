@@ -81,6 +81,10 @@ struct MainCommandRouter {
                     destinationDirectory: state.inactivePane.currentDirectory
                 )
             }
+        case .copyToClipboard, .cutToClipboard:
+            return selectedRoute(command, in: state) {
+                .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
+            }
         case .open, .rename, .trash, .reveal:
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
@@ -105,6 +109,9 @@ struct MainCommandRouter {
         let plain = !command && !shift && !option && !control
         let shiftOnly = shift && !command && !option && !control
 
+        if command && !shift && !option && !control && keyCode == 8 { return .copyToClipboard }
+        if command && !shift && !option && !control && keyCode == 7 { return .cutToClipboard }
+        if command && !shift && !option && !control && keyCode == 9 { return .pasteFromClipboard }
         if command && !shift && !option && !control && keyCode == 50 { return .toggleTerminal }
         if command && !shift && !option && !control && keyCode == 17 { return .togglePaneLayout }
         if plain && keyCode == 48 { return .switchPane }
@@ -135,7 +142,7 @@ struct MainCommandRouter {
 extension MainCommand {
     var conflictsWithFileOperation: Bool {
         switch self {
-        case .newFile, .newFolder, .rename, .copy, .move, .trash:
+        case .newFile, .newFolder, .rename, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
             return true
         default:
             return false

@@ -37,6 +37,7 @@ final class MainWindowViewController: NSViewController {
     private let terminal = TerminalViewController()
     private let terminalService = TerminalService()
     private let commandBar = CommandBarView()
+    private let fileClipboard = FileClipboard()
 
     private let rootSplitView = NSSplitView()
     private let contentSplitView = NSSplitView()
@@ -287,6 +288,12 @@ final class MainWindowViewController: NSViewController {
             copySelectedItems()
         case .move:
             moveSelectedItems()
+        case .copyToClipboard:
+            writeSelectionToClipboard(operation: .copy)
+        case .cutToClipboard:
+            writeSelectionToClipboard(operation: .move)
+        case .pasteFromClipboard:
+            pasteClipboardItems()
         case .trash:
             confirmDeleteSelectedItems()
         case .refresh:
@@ -1045,8 +1052,22 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             showError(message: "Nothing Selected".localized, detail: "Select one or more items in the active pane.".localized)
             return
         }
+        performFileTransfer(
+            kind: kind,
+            sources: sources,
+            destinationDirectory: targetPane(useInactive: true).currentDirectory,
+            shouldConfirm: shouldConfirm,
+            operation: operation
+        )
+    }
 
-        let destinationDirectory = targetPane(useInactive: true).currentDirectory
+    private func performFileTransfer(
+        kind: String,
+        sources: [URL],
+        destinationDirectory: URL,
+        shouldConfirm: Bool,
+        operation: @escaping (FileOperationRequest, @escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult
+    ) {
         let request = FileOperationRequest(sources: sources, destinationDirectory: destinationDirectory)
         let start: () -> Void = { [weak self] in
             self?.startFileOperation(named: kind) { [weak self] progressHandler in
@@ -1061,6 +1082,45 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             confirmFileOperation(kind, urls: sources, destinationDirectory: destinationDirectory, confirmButtonTitle: kind, completion: start)
         } else {
             start()
+        }
+    }
+
+
+    private func writeSelectionToClipboard(operation: FileClipboard.Operation) {
+        let sources = targetPane().selectedItems.map(\.url)
+        guard !sources.isEmpty else {
+            showError(message: "Nothing Selected".localized, detail: "Select one or more items in the active pane.".localized)
+            return
+        }
+        do {
+            for url in sources {
+                try accessPolicy.validateAccess(to: url)
+            }
+            fileClipboard.write(urls: sources, operation: operation)
+        } catch {
+            showError(message: "Could Not Use Clipboard".localized, detail: error.localizedDescription)
+        }
+    }
+
+    private func pasteClipboardItems() {
+        guard let payload = fileClipboard.read(), !payload.urls.isEmpty else {
+            showError(message: "Clipboard Is Empty".localized, detail: "Copy or cut one or more files before pasting.".localized)
+            return
+        }
+        let kind = payload.operation == .copy ? "Paste Copy".localized : "Paste Move".localized
+        let shouldConfirm = payload.operation == .copy ? settings.confirmCopyOperations : settings.confirmMoveOperations
+        performFileTransfer(
+            kind: kind,
+            sources: payload.urls,
+            destinationDirectory: targetPane().currentDirectory,
+            shouldConfirm: shouldConfirm
+        ) { [fileOperations] request, conflictHandler, progressHandler in
+            switch payload.operation {
+            case .copy:
+                return try await fileOperations.copy(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+            case .move:
+                return try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+            }
         }
     }
 
@@ -1319,6 +1379,9 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
     @objc func menuCopy(_ sender: Any?) { performCommand(.copy) }
     @objc func menuMove(_ sender: Any?) { performCommand(.move) }
+    @objc func menuCopyToClipboard(_ sender: Any?) { performCommand(.copyToClipboard) }
+    @objc func menuCutToClipboard(_ sender: Any?) { performCommand(.cutToClipboard) }
+    @objc func menuPasteFromClipboard(_ sender: Any?) { performCommand(.pasteFromClipboard) }
     @objc func menuMoveToTrash(_ sender: Any?) { performCommand(.trash) }
     @objc func menuRefresh(_ sender: Any?) { performCommand(.refresh) }
     @objc func menuReveal(_ sender: Any?) { performCommand(.reveal) }
