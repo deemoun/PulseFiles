@@ -33,6 +33,7 @@ enum MainCommand: Equatable {
     case switchPane
     case focusLeftPane
     case focusRightPane
+    case cancelOperation
 
     init(commandBarAction: CommandBarAction) {
         switch commandBarAction {
@@ -42,6 +43,7 @@ enum MainCommand: Equatable {
         case .copy: self = .copy
         case .move: self = .move
         case .delete: self = .trash
+        case .cancelOperation: self = .cancelOperation
         case .view, .edit: self = .open
         }
     }

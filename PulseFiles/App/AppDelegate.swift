@@ -160,6 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(menuItem("Cut".localized, action: #selector(MainWindowViewController.menuCutToClipboard(_:)), key: "x", modifiers: [.command]))
         submenu.addItem(menuItem("Paste".localized, action: #selector(MainWindowViewController.menuPasteFromClipboard(_:)), key: "v", modifiers: [.command]))
         submenu.addItem(.separator())
+        submenu.addItem(menuItem("Cancel Operation".localized, action: #selector(MainWindowViewController.menuCancelOperation(_:)), key: ".", modifiers: [.command]))
+        submenu.addItem(.separator())
         submenu.addItem(menuItem("Copy to Opposite Pane".localized, action: #selector(MainWindowViewController.menuCopy(_:)), key: "", modifiers: []))
         submenu.addItem(menuItem("Move to Opposite Pane".localized, action: #selector(MainWindowViewController.menuMove(_:)), key: "m", modifiers: [.command]))
         item.submenu = submenu

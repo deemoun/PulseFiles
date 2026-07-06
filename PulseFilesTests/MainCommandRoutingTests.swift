@@ -62,9 +62,21 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertNil(router.commandForKeyDown(keyCode: 9, command: true, isTextInputFocused: true), "Command-V should remain paste in search text fields.")
         XCTAssertNil(router.commandForKeyDown(keyCode: 120, isTextInputFocused: true), "F2 should not rename while editing search text.")
         XCTAssertNil(router.commandForKeyDown(keyCode: 49, isTextInputFocused: true), "Space should remain text input in search text fields.")
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 47, command: true, isTextInputFocused: true), .cancelOperation)
         XCTAssertEqual(router.commandForKeyDown(keyCode: 50, command: true, isTextInputFocused: true), .toggleTerminal)
     }
 
+    func testCancelOperationRoutesOnlyDuringActiveFileOperation() {
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 47, command: true), .cancelOperation)
+        XCTAssertEqual(
+            router.route(.cancelOperation, in: makeState(activePaneID: .left, isFileOperationActive: true)),
+            .enabled(command: .cancelOperation)
+        )
+        XCTAssertEqual(
+            router.route(.cancelOperation, in: makeState(activePaneID: .left, isFileOperationActive: false)),
+            .disabled(command: .cancelOperation, reason: .noActiveFileOperation)
+        )
+    }
 
     func testSpaceRoutesToQuickLookFocusedItemOutsideTextInput() {
         let focused = URL(fileURLWithPath: "/sandbox/left/focused.png")
