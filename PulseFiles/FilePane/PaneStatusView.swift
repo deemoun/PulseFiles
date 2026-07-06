@@ -25,16 +25,16 @@ final class PaneStatusView: NSVisualEffectView {
 
     func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?) {
         if isLoading {
-            label.stringValue = "Loading..."
+            label.stringValue = "Loading...".localized
             return
         }
         if let errorMessage {
-            label.stringValue = "Unable to read folder: \(errorMessage)"
+            label.stringValue = "Unable to read folder: %@".localized(with: errorMessage)
             return
         }
         let selectedSize = selectedItems.reduce(Int64(0)) { $0 + $1.size }
         let folderCount = items.filter(\.isDirectory).count
-        let size = selectedItems.isEmpty ? "" : " · \(FileSizeFormatter.string(fromByteCount: selectedSize)) selected"
-        label.stringValue = "\(items.count) items · \(folderCount) folders · \(selectedItems.count) selected\(size)"
+        let size = selectedItems.isEmpty ? "" : " · %@ selected".localized(with: FileSizeFormatter.string(fromByteCount: selectedSize))
+        label.stringValue = "%d items · %d folders · %d selected%@".localized(with: items.count, folderCount, selectedItems.count, size)
     }
 }

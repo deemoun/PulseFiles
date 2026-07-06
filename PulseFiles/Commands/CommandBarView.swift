@@ -79,7 +79,7 @@ final class CommandBarView: NSVisualEffectView {
 
         let actions: [CommandBarAction] = [.rename, .view, .edit, .copy, .move, isShowingShiftActions ? .newFile : .newFolder, .delete]
         for action in actions {
-            let button = NSButton(title: "\(action.shortcut)  \(action.rawValue)", target: self, action: #selector(runAction(_:)))
+            let button = NSButton(title: "\(action.shortcut)  \(action.title)", target: self, action: #selector(runAction(_:)))
             LiquidGlassStyle.applyButtonChrome(to: button)
             button.font = .systemFont(ofSize: 12, weight: .medium)
             button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)

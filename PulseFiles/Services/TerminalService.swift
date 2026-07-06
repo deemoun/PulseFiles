@@ -66,14 +66,14 @@ struct TerminalWarningState: Equatable {
     let areSandboxRestrictionsEnabled: Bool
 
     var messageText: String {
-        "Experimental terminal warning"
+        "Experimental terminal warning".localized
     }
 
     var informativeText: String {
         if areSandboxRestrictionsEnabled {
-            return "The terminal runs shell commands in the selected folder. Commands can modify or delete files inside the PulseFiles experimental sandbox."
+            return "The terminal runs shell commands in the selected folder. Commands can modify or delete files inside the PulseFiles experimental sandbox.".localized
         }
 
-        return "The terminal runs shell commands in the selected folder. Commands can modify or delete files, including files outside PulseFiles because sandbox restrictions are disabled."
+        return "The terminal runs shell commands in the selected folder. Commands can modify or delete files, including files outside PulseFiles because sandbox restrictions are disabled.".localized
     }
 }

@@ -15,50 +15,50 @@ enum FileOperationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .emptySelection:
-            return "No files are selected."
+            return "No files are selected.".localized
         case .duplicateSource(let url):
-            return "\(url.lastPathComponent) is selected more than once."
+            return "%@ is selected more than once.".localized(with: url.lastPathComponent)
         case .duplicateDestination(let url):
-            return "Multiple selected items would write to \(url.lastPathComponent)."
+            return "Multiple selected items would write to %@.".localized(with: url.lastPathComponent)
         case .sourceMissing(let url):
-            return "\(url.lastPathComponent) no longer exists."
+            return "%@ no longer exists.".localized(with: url.lastPathComponent)
         case .destinationDirectoryMissing:
-            return "The destination folder does not exist."
+            return "The destination folder does not exist.".localized
         case .destinationNotDirectory(let url):
-            return "\(url.lastPathComponent) is not a folder."
+            return "%@ is not a folder.".localized(with: url.lastPathComponent)
         case .destinationInsideSource:
-            return "Invalid destination."
+            return "Invalid destination.".localized
         case .destinationExists(let url):
-            return "\(url.lastPathComponent) already exists."
+            return "%@ already exists.".localized(with: url.lastPathComponent)
         case .unsafeReplacement:
-            return "Could not safely replace the existing item."
+            return "Could not safely replace the existing item.".localized
         case .sourceCleanupFailed:
-            return "The item was copied, but the original could not be removed."
+            return "The item was copied, but the original could not be removed.".localized
         }
     }
 
     var failureReason: String? {
         switch self {
         case .emptySelection:
-            return "Select one or more items in the active pane."
+            return "Select one or more items in the active pane.".localized
         case .duplicateSource(let url):
-            return "PulseFiles rejected the operation before changing files because \(url.path) appeared more than once."
+            return "PulseFiles rejected the operation before changing files because %@ appeared more than once.".localized(with: url.path)
         case .duplicateDestination(let url):
-            return "PulseFiles rejected the operation before changing files because more than one source would write to \(url.path)."
+            return "PulseFiles rejected the operation before changing files because more than one source would write to %@.".localized(with: url.path)
         case .sourceMissing(let url):
-            return "\(url.path) was not found before the operation started."
+            return "%@ was not found before the operation started.".localized(with: url.path)
         case .destinationDirectoryMissing(let url):
-            return "\(url.path) was not found before the operation started."
+            return "%@ was not found before the operation started.".localized(with: url.path)
         case .destinationNotDirectory(let url):
-            return "\(url.path) must be a folder."
+            return "%@ must be a folder.".localized(with: url.path)
         case .destinationInsideSource(let source, let destination):
-            return "Cannot copy or move \(source.lastPathComponent) into \(destination.path)."
+            return "Cannot copy or move %@ into %@.".localized(with: source.lastPathComponent, destination.path)
         case .destinationExists(let url):
-            return "The destination already contains \(url.lastPathComponent)."
+            return "The destination already contains %@.".localized(with: url.lastPathComponent)
         case .unsafeReplacement(let destination, let backup):
-            return "The original item was kept at \(backup.path). \(destination.path) was not overwritten."
+            return "The original item was kept at %@. %@ was not overwritten.".localized(with: backup.path, destination.path)
         case .sourceCleanupFailed(let source, let destination):
-            return "\(destination.path) now exists, but the original remains at \(source.path)."
+            return "%@ now exists, but the original remains at %@.".localized(with: destination.path, source.path)
         }
     }
 }
@@ -414,7 +414,7 @@ final class FileOperationService: FileOperationServicing {
         } catch {
             return [FileOperationCleanupWarning(
                 url: backupURL,
-                message: "The old item was replaced, but PulseFiles could not remove the backup at \(backupURL.path)."
+                message: "The old item was replaced, but PulseFiles could not remove the backup at %@.".localized(with: backupURL.path)
             )]
         }
     }

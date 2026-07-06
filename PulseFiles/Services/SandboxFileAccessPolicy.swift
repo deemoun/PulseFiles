@@ -6,14 +6,14 @@ enum SandboxAccessError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .outsideExperimentalSandbox:
-            return "Experimental sandbox mode is enabled."
+            return "Experimental sandbox mode is enabled.".localized
         }
     }
 
     var failureReason: String? {
         switch self {
         case .outsideExperimentalSandbox(let url):
-            return "\(url.path) is outside the PulseFiles experimental sandbox."
+            return "%@ is outside the PulseFiles experimental sandbox.".localized(with: url.path)
         }
     }
 }

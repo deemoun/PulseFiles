@@ -12,17 +12,17 @@ struct FileNameValidator {
         var errorDescription: String? {
             switch self {
             case .empty:
-                return "Names cannot be empty or contain only whitespace."
+                return "Names cannot be empty or contain only whitespace.".localized
             case .containsSlash:
-                return "Names cannot contain slashes (/)."
+                return "Names cannot contain slashes (/).".localized
             case .reservedRelativePath:
-                return "The names . and .. are reserved for folder navigation."
+                return "The names . and .. are reserved for folder navigation.".localized
             case .containsNullCharacter:
-                return "Names cannot contain null characters."
+                return "Names cannot contain null characters.".localized
             case .reservedName(let name):
-                return "\(name) is reserved by macOS and cannot be used as a file name."
+                return "%@ is reserved by macOS and cannot be used as a file name.".localized(with: name)
             case .duplicateName(let existingName):
-                return "An item named \(existingName) already exists in this folder."
+                return "An item named %@ already exists in this folder.".localized(with: existingName)
             }
         }
     }
