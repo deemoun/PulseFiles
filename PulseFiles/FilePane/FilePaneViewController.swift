@@ -641,6 +641,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             menu.addItem(contextMenuItem("Move to Opposite Pane", action: #selector(contextMove)))
             menu.addItem(.separator())
             menu.addItem(contextMenuItem("Copy Path", action: #selector(contextCopyPath)))
+            menu.addItem(contextMenuItem("Reveal in Finder", action: #selector(contextReveal)))
             menu.addItem(contextMenuItem("Delete", action: #selector(contextTrash)))
         } else {
             menu.addItem(contextMenuItem("New File", action: #selector(contextNewFile)))
@@ -692,6 +693,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     @objc private func contextNewFile() { onCommand?(.newFile) }
     @objc private func contextNewFolder() { onCommand?(.newFolder) }
     @objc private func contextRefresh() { onCommand?(.refresh) }
+    @objc private func contextReveal() { onCommand?(.reveal) }
     @objc private func contextToggleHidden() { onCommand?(.toggleHiddenFiles) }
     @objc private func contextOpenWithDefault(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }

@@ -1,6 +1,6 @@
 import Foundation
 
-enum PaneID {
+enum PaneID: Equatable {
     case left
     case right
 

@@ -1,6 +1,6 @@
 import Foundation
 
-enum MainCommand {
+enum MainCommand: Equatable {
     case open
     case newFile
     case newFolder
@@ -9,6 +9,7 @@ enum MainCommand {
     case move
     case trash
     case refresh
+    case reveal
     case toggleHiddenFiles
     case sortByName
     case sortBySize

@@ -166,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "View")
         submenu.addItem(menuItem("Refresh", action: #selector(MainWindowViewController.menuRefresh(_:)), key: "r", modifiers: [.command]))
+        submenu.addItem(menuItem("Reveal in Finder", action: #selector(MainWindowViewController.menuReveal(_:)), key: "r", modifiers: [.command, .shift]))
         submenu.addItem(menuItem("Show Hidden Files", action: #selector(MainWindowViewController.menuToggleHiddenFiles(_:)), key: ".", modifiers: [.command, .shift]))
         submenu.addItem(.separator())
         let sortSubmenu = NSMenu(title: "Sort By")
