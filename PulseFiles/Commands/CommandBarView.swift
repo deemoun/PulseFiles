@@ -12,6 +12,7 @@ final class CommandBarView: NSVisualEffectView {
         material = .hudWindow
         blendingMode = .withinWindow
         state = .active
+        setAccessibilityIdentifier(AccessibilityIdentifiers.CommandBar.panel)
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
         build()
@@ -22,6 +23,7 @@ final class CommandBarView: NSVisualEffectView {
     }
 
     private func build() {
+        stack.setAccessibilityIdentifier(AccessibilityIdentifiers.CommandBar.list)
         stack.orientation = .horizontal
         stack.spacing = 8
         stack.distribution = .fillEqually
@@ -81,6 +83,7 @@ final class CommandBarView: NSVisualEffectView {
             LiquidGlassStyle.applyButtonChrome(to: button)
             button.font = .systemFont(ofSize: 12, weight: .medium)
             button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
+            button.setAccessibilityIdentifier("\(AccessibilityIdentifiers.CommandBar.field).\(action.rawValue)")
             button.lineBreakMode = .byTruncatingTail
             button.toolTip = action.rawValue
             button.setButtonType(.momentaryPushIn)

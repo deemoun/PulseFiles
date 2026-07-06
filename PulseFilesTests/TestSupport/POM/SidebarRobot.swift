@@ -10,6 +10,9 @@ final class SidebarRobot: SidebarPageObject {
     private let bookmarkService: BookmarkService
     private let recentLocationService: RecentLocationService
 
+    var toggleAccessibilityIdentifier: String { AccessibilityIdentifiers.Toolbar.sidebarToggle }
+    var listAccessibilityIdentifier: String { AccessibilityIdentifiers.Sidebar.list }
+
     init(bookmarkService: BookmarkService, recentLocationService: RecentLocationService) {
         self.bookmarkService = bookmarkService
         self.recentLocationService = recentLocationService

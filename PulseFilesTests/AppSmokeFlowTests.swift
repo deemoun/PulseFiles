@@ -22,6 +22,7 @@ final class AppSmokeFlowTests: XCTestCase {
         launchedApp
             .expectLaunched()
             .expectPanesVisible()
+            .expectAccessibilityIdentifiers()
             .expectActivePane(.left)
             .switchPane()
             .expectActivePane(.right)
@@ -31,6 +32,16 @@ final class AppSmokeFlowTests: XCTestCase {
             .expectSidebarVisible(false)
             .toggleSidebar()
             .expectSidebarVisible(true)
+
+        app.rightPane
+            .expectAccessibilityIdentifiers()
+
+        XCTAssertEqual(app.commandBar.fieldAccessibilityIdentifier, AccessibilityIdentifiers.CommandBar.field)
+        XCTAssertEqual(app.commandBar.listAccessibilityIdentifier, AccessibilityIdentifiers.CommandBar.list)
+        XCTAssertEqual(app.sidebar.toggleAccessibilityIdentifier, AccessibilityIdentifiers.Toolbar.sidebarToggle)
+        XCTAssertEqual(app.sidebar.listAccessibilityIdentifier, AccessibilityIdentifiers.Sidebar.list)
+        XCTAssertEqual(app.terminal.panelAccessibilityIdentifier, AccessibilityIdentifiers.Terminal.panel)
+        XCTAssertEqual(app.terminal.toggleAccessibilityIdentifier, AccessibilityIdentifiers.Toolbar.terminalToggle)
 
         app.leftPane
             .filter("alpha")

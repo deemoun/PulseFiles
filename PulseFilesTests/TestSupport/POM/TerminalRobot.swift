@@ -9,6 +9,9 @@ import XCTest
 final class TerminalRobot: TerminalPageObject {
     private let settings: SettingsService
 
+    var panelAccessibilityIdentifier: String { AccessibilityIdentifiers.Terminal.panel }
+    var toggleAccessibilityIdentifier: String { AccessibilityIdentifiers.Toolbar.terminalToggle }
+
     init(settings: SettingsService) {
         self.settings = settings
     }

@@ -420,15 +420,19 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "Search"
             item.searchField.placeholderString = "Filter active pane"
+            item.searchField.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.searchField)
             item.searchField.target = self
             item.searchField.action = #selector(toolbarSearchChanged(_:))
             item.searchField.sendsSearchStringImmediately = true
             toolbarSearchField = item.searchField
             return item
         case .toggleTerminal:
-            return toolbarItem(itemIdentifier, label: "Terminal", symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
+            let item = toolbarItem(itemIdentifier, label: "Terminal", symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
+            item.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.terminalToggle)
+            return item
         case .toggleSidebar:
             let item = toolbarItem(itemIdentifier, label: "Sidebar", symbol: "sidebar.right", action: #selector(toolbarToggleSidebar(_:)))
+            item.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.sidebarToggle)
             sidebarToolbarItem = item
             updateSidebarToolbarItem()
             return item

@@ -13,6 +13,9 @@ final class CommandBarRobot: CommandBarPageObject {
     private(set) var isOpen = false
     private(set) var executedCommands: [MainCommand] = []
 
+    var fieldAccessibilityIdentifier: String { AccessibilityIdentifiers.CommandBar.field }
+    var listAccessibilityIdentifier: String { AccessibilityIdentifiers.CommandBar.list }
+
     init(handler: CommandHandler? = nil) {
         self.handler = handler
     }

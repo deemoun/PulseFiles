@@ -20,6 +20,7 @@ final class TerminalViewController: NSViewController {
         view.layer?.masksToBounds = true
         view.layer?.borderWidth = 1
         view.layer?.borderColor = LiquidGlassStyle.panelStroke.cgColor
+        view.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.panel)
     }
 
     override func viewDidLoad() {
@@ -38,6 +39,7 @@ final class TerminalViewController: NSViewController {
     }
 
     private func buildLayout() {
+        terminalView.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.textView)
         terminalView.isEditable = true
         terminalView.isSelectable = true
         terminalView.allowsUndo = false
