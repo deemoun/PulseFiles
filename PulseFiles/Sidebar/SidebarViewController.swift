@@ -176,8 +176,8 @@ final class SidebarViewController: NSViewController {
         stack.setAccessibilityIdentifier(AccessibilityIdentifiers.Sidebar.list)
         stack.orientation = .vertical
         stack.alignment = .width
-        stack.spacing = 4
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 10, bottom: 14, right: 10)
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 12, bottom: 14, right: 12)
         stack.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = stack
         NSLayoutConstraint.activate([
@@ -304,10 +304,11 @@ final class SidebarViewController: NSViewController {
         let label = NSTextField(labelWithString: title.uppercased())
         label.font = .systemFont(ofSize: 10, weight: .bold)
         label.textColor = LiquidGlassStyle.secondaryLabel
+        label.alignment = .left
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.required, for: .vertical)
         stack.addArrangedSubview(label)
-        stack.setCustomSpacing(5, after: label)
+        stack.setCustomSpacing(6, after: label)
     }
 
     private func addHeader(title: String, subtitle: String, icon: NSImage) {
@@ -321,19 +322,26 @@ final class SidebarViewController: NSViewController {
         subtitleLabel.font = .systemFont(ofSize: 11)
         subtitleLabel.textColor = LiquidGlassStyle.secondaryLabel
         subtitleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.alignment = .center
+        subtitleLabel.alignment = .center
+
         let textStack = NSStackView(views: [titleLabel, subtitleLabel])
         textStack.orientation = .vertical
+        textStack.alignment = .centerX
         textStack.spacing = 2
-        let row = NSStackView(views: [imageView, textStack])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 8
-        stack.addArrangedSubview(row)
+
+        let headerStack = NSStackView(views: [imageView, textStack])
+        headerStack.orientation = .vertical
+        headerStack.alignment = .centerX
+        headerStack.spacing = 8
+        stack.addArrangedSubview(headerStack)
         NSLayoutConstraint.activate([
-            imageView.widthAnchor.constraint(equalToConstant: 32),
-            imageView.heightAnchor.constraint(equalToConstant: 32)
+            imageView.widthAnchor.constraint(equalToConstant: 40),
+            imageView.heightAnchor.constraint(equalToConstant: 40),
+            textStack.leadingAnchor.constraint(greaterThanOrEqualTo: headerStack.leadingAnchor),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: headerStack.trailingAnchor)
         ])
-        stack.setCustomSpacing(14, after: row)
+        stack.setCustomSpacing(12, after: headerStack)
     }
 
     private func addInfoRow(_ info: InfoRow, identifier: String? = nil) {
@@ -349,8 +357,18 @@ final class SidebarViewController: NSViewController {
         button.identifier = NSUserInterfaceItemIdentifier(urls.map(\.path).joined(separator: "\n"))
         button.toolTip = "Copy selected path information"
         button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        stack.addArrangedSubview(button)
-        stack.setCustomSpacing(10, after: button)
+
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        button.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(button)
+        stack.addArrangedSubview(container)
+        NSLayoutConstraint.activate([
+            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            button.topAnchor.constraint(equalTo: container.topAnchor),
+            button.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+        stack.setCustomSpacing(12, after: container)
     }
 
     private func updateInfoRow(identifier: String, value: String) {
@@ -395,7 +413,7 @@ private extension FileItemType {
 }
 
 private final class SidebarInfoRowView: NSView {
-    private let valueLabel = NSTextField(wrappingLabelWithString: "")
+    private let valueLabel = NSTextField(labelWithString: "")
 
     init(info: SidebarViewController.InfoRow) {
         super.init(frame: .zero)
@@ -414,35 +432,40 @@ private final class SidebarInfoRowView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
 
         let imageView = NSImageView(image: NSImage(systemSymbolName: info.symbol, accessibilityDescription: info.title) ?? NSImage())
-        imageView.symbolConfiguration = .init(pointSize: 12, weight: .medium)
+        imageView.symbolConfiguration = .init(pointSize: 13, weight: .medium)
         imageView.contentTintColor = LiquidGlassStyle.secondaryLabel
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.setContentHuggingPriority(.required, for: .horizontal)
 
         let titleLabel = NSTextField(labelWithString: info.title)
         titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
         titleLabel.textColor = LiquidGlassStyle.secondaryLabel
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         valueLabel.stringValue = info.value
         valueLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         valueLabel.textColor = LiquidGlassStyle.label
+        valueLabel.alignment = .right
         valueLabel.lineBreakMode = .byTruncatingMiddle
-
-        let textStack = NSStackView(views: [titleLabel, valueLabel])
-        textStack.orientation = .vertical
-        textStack.spacing = 1
-        textStack.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.maximumNumberOfLines = 1
+        valueLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
         addSubview(imageView)
-        addSubview(textStack)
+        addSubview(titleLabel)
+        addSubview(valueLabel)
         NSLayoutConstraint.activate([
-            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
-            imageView.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            imageView.widthAnchor.constraint(equalToConstant: 16),
-            imageView.heightAnchor.constraint(equalToConstant: 16),
-            textStack.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 8),
-            textStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
-            textStack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            textStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 18),
+            imageView.heightAnchor.constraint(equalToConstant: 18),
+            titleLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 9),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8),
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -8)
         ])
     }
 }
