@@ -11,11 +11,29 @@ final class FilePaneViewModel {
     private(set) var items: [FileItem] = []
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    private(set) var loadFailure: DirectoryLoadFailure?
     private(set) var searchQuery = ""
 
     var onChange: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
+
+    struct DirectoryLoadFailure {
+        let directory: URL
+        let error: Error
+
+        var message: String { error.localizedDescription }
+        var isOutsideSandbox: Bool {
+            if case SandboxAccessError.outsideExperimentalSandbox = error { return true }
+            return false
+        }
+
+        var isMissingDirectory: Bool {
+            let nsError = error as NSError
+            return nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoSuchFileError
+                || nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
+        }
+    }
 
     init(
         initialDirectory: URL,
@@ -72,15 +90,24 @@ final class FilePaneViewModel {
         navigate(to: parent)
     }
 
+    func navigateToSandboxRoot() {
+        navigate(to: accessPolicy.validatedDirectory(ExperimentalFlags.appSandboxRoot))
+    }
+
+    func navigateToParentOfFailedDirectory() {
+        guard let failedDirectory = loadFailure?.directory else { return }
+        let parent = failedDirectory.deletingLastPathComponent()
+        guard parent != failedDirectory else { return }
+        navigate(to: accessPolicy.validatedDirectory(parent))
+    }
+
     func goBack() {
         guard let url = state.history.goBack() else { return }
-        state.currentDirectory = url
         load(directory: url, addToHistory: false)
     }
 
     func goForward() {
         guard let url = state.history.goForward() else { return }
-        state.currentDirectory = url
         load(directory: url, addToHistory: false)
     }
 
@@ -132,14 +159,11 @@ final class FilePaneViewModel {
         loadTask?.cancel()
         isLoading = true
         errorMessage = nil
+        loadFailure = nil
         onChange?()
 
-        if addToHistory {
-            state.history.visit(directory)
-        }
-        state.currentDirectory = directory
-        onDirectoryChanged?(directory)
-        directoryMonitor.startMonitoring(directory)
+        let previousDirectory = state.currentDirectory
+        let previousItems = items
 
         let includeHidden = state.showsHiddenFiles
         let sort = state.sort
@@ -149,12 +173,20 @@ final class FilePaneViewModel {
                 let loadedItems = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
                 guard !Task.isCancelled else { return }
                 items = loadedItems
+                state.currentDirectory = directory
+                if addToHistory && directory != previousDirectory {
+                    state.history.visit(directory)
+                }
+                onDirectoryChanged?(directory)
+                directoryMonitor.startMonitoring(directory)
                 isLoading = false
                 onChange?()
                 onLoaded?()
             } catch {
                 guard !Task.isCancelled else { return }
-                items = []
+                state.currentDirectory = previousDirectory
+                items = previousItems
+                loadFailure = DirectoryLoadFailure(directory: directory, error: error)
                 errorMessage = error.localizedDescription
                 isLoading = false
                 onChange?()

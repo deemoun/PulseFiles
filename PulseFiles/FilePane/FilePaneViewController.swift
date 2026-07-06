@@ -316,12 +316,7 @@ final class FilePaneViewController: NSViewController {
         if !selectPendingItemIfAvailable(), tableView.selectedRow == -1, tableView.numberOfRows > 0 {
             selectDefaultRow()
         }
-        statusView.configure(
-            items: viewModel.visibleItems,
-            selectedItems: selectedItems,
-            isLoading: viewModel.isLoading,
-            errorMessage: viewModel.errorMessage
-        )
+        configureStatusView()
         onSelectionChanged?(selectedItems)
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files")
@@ -358,6 +353,66 @@ final class FilePaneViewController: NSViewController {
         }
         guard !rows.isEmpty else { return }
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
+    }
+
+    private func configureStatusView() {
+        statusView.configure(
+            items: viewModel.visibleItems,
+            selectedItems: selectedItems,
+            isLoading: viewModel.isLoading,
+            errorMessage: viewModel.errorMessage,
+            actions: statusActions()
+        )
+    }
+
+    private func statusActions() -> [PaneStatusView.Action] {
+        guard let loadFailure = viewModel.loadFailure, !viewModel.isLoading else { return [] }
+        if loadFailure.isOutsideSandbox {
+            return [
+                PaneStatusView.Action(
+                    title: "Open Sandbox".localized,
+                    accessibilityLabel: "Open experimental sandbox root".localized,
+                    handler: { [weak self] in self?.viewModel.navigateToSandboxRoot() }
+                )
+            ]
+        }
+        if loadFailure.isMissingDirectory {
+            return [
+                PaneStatusView.Action(
+                    title: "Back".localized,
+                    accessibilityLabel: "Go back to the previous folder".localized,
+                    handler: { [weak self] in self?.viewModel.goBack() }
+                ),
+                PaneStatusView.Action(
+                    title: "Parent".localized,
+                    accessibilityLabel: "Open the missing folder’s parent".localized,
+                    handler: { [weak self] in self?.viewModel.navigateToParentOfFailedDirectory() }
+                ),
+                PaneStatusView.Action(
+                    title: "Choose…".localized,
+                    accessibilityLabel: "Choose another folder".localized,
+                    handler: { [weak self] in self?.chooseRecoveryDirectory() }
+                )
+            ]
+        }
+        return []
+    }
+
+    private func chooseRecoveryDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose".localized
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
+            guard response == .OK, let url = panel?.url else { return }
+            self?.navigate(to: url)
+        }
+        if let window = view.window {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            completion(panel.runModal())
+        }
     }
 
     @objc private func refresh() {
@@ -435,12 +490,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         reloadRowsForSelectionColorChange()
-        statusView.configure(
-            items: viewModel.visibleItems,
-            selectedItems: selectedItems,
-            isLoading: viewModel.isLoading,
-            errorMessage: viewModel.errorMessage
-        )
+        configureStatusView()
         onSelectionChanged?(selectedItems)
         if !isReloadingData {
             onActivate?()
