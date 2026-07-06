@@ -291,6 +291,10 @@ final class MainWindowViewController: NSViewController {
             confirmDeleteSelectedItems()
         case .refresh:
             targetPane().loadDirectory()
+        case .reveal:
+            if let item = targetPane().focusedItem {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            }
         case .toggleHiddenFiles:
             targetPane().toggleHiddenFiles()
         case .sortByName:
@@ -373,68 +377,19 @@ final class MainWindowViewController: NSViewController {
         let shift = event.modifierFlags.contains(.shift)
         let option = event.modifierFlags.contains(.option)
         let control = event.modifierFlags.contains(.control)
-        let plain = !command && !shift && !option && !control
-        let shiftOnly = shift && !command && !option && !control
         if event.keyCode == 53 {
             view.window?.makeFirstResponder(targetPane().tableView)
             return true
         }
-        if command && event.keyCode == 48 {
-            return false
-        }
-        if isTextInputFirstResponder, !(command && event.keyCode == 50) {
-            return false
-        }
-        if command && !shift && !option && !control && event.keyCode == 50 {
-            performCommand(.toggleTerminal)
-            return true
-        }
-        if command && !shift && !option && !control && event.keyCode == 17 {
-            performCommand(.togglePaneLayout)
-            return true
-        }
-        if plain && event.keyCode == 48 {
-            performCommand(.switchPane)
-            return true
-        }
-        if shiftOnly && event.keyCode == 98 {
-            performCommand(.newFile)
-            return true
-        }
-        if plain && event.keyCode == 98 {
-            performCommand(.newFolder)
-            return true
-        }
-        if plain && event.keyCode == 120 {
-            performCommand(.rename)
-            return true
-        }
-        if plain && event.keyCode == 96 {
-            performCommand(.copy)
-            return true
-        }
-        if plain && event.keyCode == 97 {
-            performCommand(.move)
-            return true
-        }
-        if plain && event.keyCode == 100 {
-            performCommand(.trash)
-            return true
-        }
-        if command && !shift && !option && !control && event.keyCode == 15 {
-            performCommand(.refresh)
-            return true
-        }
-        if command && shift && !option && !control && event.keyCode == 123 {
-            performCommand(.focusLeftPane)
-            return true
-        }
-        if command && shift && !option && !control && event.keyCode == 124 {
-            performCommand(.focusRightPane)
-            return true
-        }
-        if command && option && !shift && !control && event.keyCode == 37 {
-            performCommand(.downloads)
+        if let routedCommand = MainCommandRouter().commandForKeyDown(
+            keyCode: event.keyCode,
+            command: command,
+            shift: shift,
+            option: option,
+            control: control,
+            isTextInputFocused: isTextInputFirstResponder
+        ) {
+            performCommand(routedCommand)
             return true
         }
         if event.isFunctionKey {
@@ -1362,6 +1317,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuMove(_ sender: Any?) { performCommand(.move) }
     @objc func menuMoveToTrash(_ sender: Any?) { performCommand(.trash) }
     @objc func menuRefresh(_ sender: Any?) { performCommand(.refresh) }
+    @objc func menuReveal(_ sender: Any?) { performCommand(.reveal) }
     @objc func menuToggleHiddenFiles(_ sender: Any?) { performCommand(.toggleHiddenFiles) }
     @objc func menuSortByName(_ sender: Any?) { performCommand(.sortByName) }
     @objc func menuSortBySize(_ sender: Any?) { performCommand(.sortBySize) }
@@ -1428,17 +1384,6 @@ extension MainWindowViewController: NSMenuItemValidation {
         }
         menuItem.state = .off
         return true
-    }
-}
-
-private extension MainCommand {
-    var conflictsWithFileOperation: Bool {
-        switch self {
-        case .newFile, .newFolder, .rename, .copy, .move, .trash:
-            return true
-        default:
-            return false
-        }
     }
 }
 
