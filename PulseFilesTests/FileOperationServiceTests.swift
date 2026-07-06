@@ -347,26 +347,18 @@ final class FileOperationServiceTests: XCTestCase {
     }
 
     private func makeFixture(useFailingManager: Bool = false) throws -> Fixture {
-        let root = try makeTemporaryDirectory()
-        let left = root.appendingPathComponent("Left", isDirectory: true)
-        let right = root.appendingPathComponent("Right", isDirectory: true)
-        try FileManager.default.createDirectory(at: left, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: right, withIntermediateDirectories: true)
-        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: root)
+        let sandbox = try SandboxFixture(testCase: self)
+        let left = try sandbox.temporaryDirectory.folder("AllowedSandbox/Left")
+        let right = try sandbox.temporaryDirectory.folder("AllowedSandbox/Right")
         if useFailingManager {
             let failingFileManager = FailingFileManager()
-            return Fixture(root: root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: policy), failingFileManager: failingFileManager)
+            return Fixture(root: sandbox.root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: sandbox.policy), failingFileManager: failingFileManager)
         }
-        return Fixture(root: root, left: left, right: right, service: FileOperationService(accessPolicy: policy), failingFileManager: nil)
+        return Fixture(root: sandbox.root, left: left, right: right, service: sandbox.fileOperationService(), failingFileManager: nil)
     }
 
     private func makeTemporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock {
-            try? FileManager.default.removeItem(at: directory)
-        }
-        return directory
+        try TemporaryDirectoryFixture(testCase: self).root
     }
 }
 
