@@ -507,7 +507,7 @@ final class SidebarViewController: NSViewController {
         button.bezelStyle = .rounded
         button.controlSize = .small
         button.identifier = NSUserInterfaceItemIdentifier(presentation.selectedURLs.map(\.path).joined(separator: "\n"))
-        button.toolTip = "Copy selected path information"
+        button.toolTip = "Copy selected path information".localized
         button.translatesAutoresizingMaskIntoConstraints = false
 
         container.addSubview(imageView)
@@ -563,7 +563,7 @@ final class SidebarViewController: NSViewController {
         button.bezelStyle = .rounded
         button.controlSize = .small
         button.identifier = NSUserInterfaceItemIdentifier(urls.map(\.path).joined(separator: "\n"))
-        button.toolTip = "Copy selected path information"
+        button.toolTip = "Copy selected path information".localized
         button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
         let container = NSView()

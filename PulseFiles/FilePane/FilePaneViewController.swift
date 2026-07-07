@@ -171,11 +171,11 @@ final class FilePaneViewController: NSViewController {
         directoryIcon.imageScaling = .scaleProportionallyDown
         directoryIcon.setContentHuggingPriority(.required, for: .horizontal)
 
-        hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Toggle Hidden Files")
+        hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Toggle Hidden Files".localized)
         LiquidGlassStyle.applyButtonChrome(to: hiddenButton)
         hiddenButton.target = self
         hiddenButton.action = #selector(toggleHidden)
-        hiddenButton.toolTip = "Toggle hidden files"
+        hiddenButton.toolTip = "Toggle hidden files".localized
 
         breadcrumb.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.breadcrumb(for: paneID))
         breadcrumb.onSelect = { [weak self] url in self?.navigate(to: url) }
@@ -319,7 +319,7 @@ final class FilePaneViewController: NSViewController {
         configureStatusView()
         onSelectionChanged?(selectedItems)
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
-        hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files")
+        hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files".localized)
     }
 
     @discardableResult
@@ -586,7 +586,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         text.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text)
         if identifier == "name" {
-            let imageView = NSImageView(image: NSImage(systemSymbolName: "arrow.up.folder", accessibilityDescription: "Parent Folder") ?? NSImage())
+            let imageView = NSImageView(image: NSImage(systemSymbolName: "arrow.up.folder", accessibilityDescription: "Parent Folder".localized) ?? NSImage())
             imageView.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(imageView)
             NSLayoutConstraint.activate([
@@ -684,7 +684,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
 
         let menu = NSMenu(title: "File")
         if isParentRow(row) {
-            menu.addItem(contextMenuItem("Open Parent Folder", action: #selector(contextOpenParent)))
+            menu.addItem(contextMenuItem("Open Parent Folder".localized, action: #selector(contextOpenParent)))
             return menu
         }
 
