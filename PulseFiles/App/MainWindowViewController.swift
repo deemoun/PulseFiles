@@ -359,6 +359,8 @@ final class MainWindowViewController: NSViewController {
             }
         case .cancelOperation:
             cancelActiveFileOperation()
+        case .debugLogs:
+            presentDebugLogs(nil)
         }
     }
 
@@ -1553,7 +1555,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
     @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
-    @objc func menuDebugLogs(_ sender: Any?) { presentDebugLogs(sender) }
+    @objc func menuShowDebugLogs(_ sender: Any?) { performCommand(.debugLogs) }
     @objc func menuEditSettingsJSON(_ sender: Any?) {
         do {
             let url = try settings.writeSettingsJSON()
