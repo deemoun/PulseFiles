@@ -112,3 +112,31 @@ final class DiagnosticLogService {
             .joined(separator: "\n")
     }
 }
+
+
+enum DiagnosticLogger {
+    static func log(_ level: DiagnosticLogLevel, category: String, _ message: String) {
+        Task { @MainActor in
+            DiagnosticLogService.shared.log(level, category: category, message)
+        }
+    }
+
+    static func sanitizedPath(_ url: URL) -> String {
+        let standardizedPath = url.standardizedFileURL.path
+        let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        if standardizedPath == homePath {
+            return "~"
+        }
+        if standardizedPath.hasPrefix(homePath + "/") {
+            return "~/" + String(standardizedPath.dropFirst(homePath.count + 1))
+        }
+        let sandboxPath = ExperimentalFlags.appSandboxRoot.standardizedFileURL.path
+        if standardizedPath == sandboxPath {
+            return "[sandbox-root]"
+        }
+        if standardizedPath.hasPrefix(sandboxPath + "/") {
+            return "[sandbox-root]/" + String(standardizedPath.dropFirst(sandboxPath.count + 1))
+        }
+        return url.lastPathComponent.isEmpty ? standardizedPath : "…/\(url.lastPathComponent)"
+    }
+}

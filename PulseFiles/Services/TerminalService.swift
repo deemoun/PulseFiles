@@ -10,26 +10,34 @@ final class TerminalService {
     }
 
     func defaultVisibilityState(settings: SettingsService) -> TerminalVisibilityState {
-        TerminalVisibilityState(
+        DiagnosticLogger.log(.debug, category: "Terminal", "Resolved terminal visibility defaults: experimentEnabled=\(settings.experimentalTerminalEnabled); visibleByDefault=\(settings.defaultTerminalVisible)")
+        return TerminalVisibilityState(
             isExperimentEnabled: settings.experimentalTerminalEnabled,
             isVisibleByDefault: settings.defaultTerminalVisible
         )
     }
 
     func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy = .current) -> TerminalWarningState {
-        TerminalWarningState(
+        DiagnosticLogger.log(.info, category: "Terminal", "Resolved terminal warning state: acknowledged=\(settings.hasAcknowledgedTerminalWarning); sandboxRestrictionsEnabled=\(accessPolicy.isEnabled)")
+        return TerminalWarningState(
             isAcknowledged: settings.hasAcknowledgedTerminalWarning,
             areSandboxRestrictionsEnabled: accessPolicy.isEnabled
         )
     }
 
     func acknowledgeFirstUseWarning(settings: SettingsService) {
+        DiagnosticLogger.log(.info, category: "Terminal", "Terminal first-use warning acknowledged")
         settings.hasAcknowledgedTerminalWarning = true
     }
 
     func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy = .current) -> URL {
-        guard let activePaneURL else { return accessPolicy.rootURL }
-        return accessPolicy.validatedDirectory(activePaneURL)
+        guard let activePaneURL else {
+            DiagnosticLogger.log(.debug, category: "Terminal", "Resolved working directory to sandbox root because active pane URL was unavailable")
+            return accessPolicy.rootURL
+        }
+        let resolvedURL = accessPolicy.validatedDirectory(activePaneURL)
+        DiagnosticLogger.log(.debug, category: "Terminal", "Resolved working directory: path=\(DiagnosticLogger.sanitizedPath(resolvedURL))")
+        return resolvedURL
     }
 
     func sanitizedEnvironment(from environment: [String: String]) -> [String: String] {

@@ -207,12 +207,21 @@ final class FileOperationService: FileOperationServicing {
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
     ) async throws -> FileOperationResult {
-        try preflightTransferRequest(request)
+        DiagnosticLogger.log(.info, category: "FileOperation", "Copy operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
+        do {
+            try preflightTransferRequest(request)
+        } catch {
+            logPreflightFailure(operation: "copy", error: error)
+            throw error
+        }
         let plans = try await resolveTransferPlans(for: request, conflictHandler: conflictHandler)
         if plans.contains(where: { $0.conflictResolution == .cancel }) {
+            DiagnosticLogger.log(.info, category: "FileOperation", "Copy operation cancelled during conflict resolution: skippedCount=\(plans.filter { $0.conflictResolution == .skip }.count)")
             return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
         }
-        return await performTransfer(plans, kind: .copy, progressHandler: progressHandler)
+        let result = await performTransfer(plans, kind: .copy, progressHandler: progressHandler)
+        logCompletion(operation: "copy", result: result)
+        return result
     }
 
     func move(
@@ -220,12 +229,21 @@ final class FileOperationService: FileOperationServicing {
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
     ) async throws -> FileOperationResult {
-        try preflightTransferRequest(request)
+        DiagnosticLogger.log(.info, category: "FileOperation", "Move operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
+        do {
+            try preflightTransferRequest(request)
+        } catch {
+            logPreflightFailure(operation: "move", error: error)
+            throw error
+        }
         let plans = try await resolveTransferPlans(for: request, conflictHandler: conflictHandler)
         if plans.contains(where: { $0.conflictResolution == .cancel }) {
+            DiagnosticLogger.log(.info, category: "FileOperation", "Move operation cancelled during conflict resolution: skippedCount=\(plans.filter { $0.conflictResolution == .skip }.count)")
             return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
         }
-        return await performTransfer(plans, kind: .move, progressHandler: progressHandler)
+        let result = await performTransfer(plans, kind: .move, progressHandler: progressHandler)
+        logCompletion(operation: "move", result: result)
+        return result
     }
 
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
@@ -238,22 +256,33 @@ final class FileOperationService: FileOperationServicing {
         let destinationName = try FileNameValidator.validate(rawName, in: parentDirectory, replacing: source)
         let destination = parentDirectory.appendingPathComponent(destinationName)
 
-        try preflightRename(source: source, destination: destination)
+        do {
+            try preflightRename(source: source, destination: destination)
+        } catch {
+            logPreflightFailure(operation: "rename", error: error)
+            throw error
+        }
+        DiagnosticLogger.log(.info, category: "FileOperation", "Rename operation starting: source=\(DiagnosticLogger.sanitizedPath(source)); destination=\(DiagnosticLogger.sanitizedPath(destination))")
         await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: 0, totalCount: 1))
 
         do {
             try fileManager.moveItem(at: source, to: destination)
             await progressHandler?(FileOperationProgress(currentItemName: destination.lastPathComponent, completedCount: 1, totalCount: 1))
-            return FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false)
+            let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false)
+            logCompletion(operation: "rename", result: result)
+            return result
         } catch {
             await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: 1, totalCount: 1))
-            return FileOperationResult(completedItems: [], skippedItems: [], failedItems: [FileOperationItemFailure(url: source, error: error)], wasCancelled: false)
+            let result = FileOperationResult(completedItems: [], skippedItems: [], failedItems: [FileOperationItemFailure(url: source, error: error)], wasCancelled: false)
+            logCompletion(operation: "rename", result: result)
+            return result
         }
     }
 
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
-        try preflightDelete(urls)
-        return await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
+        DiagnosticLogger.log(.info, category: "FileOperation", "Trash operation starting: itemCount=\(urls.count)")
+        do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "trash", error: error); throw error }
+        let result = await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
             #if os(macOS)
             var resultingURL: NSURL?
             try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
@@ -261,13 +290,18 @@ final class FileOperationService: FileOperationServicing {
             throw CocoaError(.featureUnsupported)
             #endif
         }
+        logCompletion(operation: "trash", result: result)
+        return result
     }
 
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
-        try preflightDelete(urls)
-        return await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
+        DiagnosticLogger.log(.info, category: "FileOperation", "Delete operation starting: itemCount=\(urls.count)")
+        do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "delete", error: error); throw error }
+        let result = await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
             try fileManager.removeItem(at: url)
         }
+        logCompletion(operation: "delete", result: result)
+        return result
     }
 
     private func performDelete(
@@ -282,6 +316,7 @@ final class FileOperationService: FileOperationServicing {
 
         for url in urls {
             if Task.isCancelled {
+                DiagnosticLogger.log(.info, category: "FileOperation", "Delete operation cancelled: completedCount=\(completedItems.count); failedCount=\(failedItems.count)")
                 return FileOperationResult(completedItems: completedItems, skippedItems: [], failedItems: failedItems, wasCancelled: true)
             }
             await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
@@ -289,6 +324,7 @@ final class FileOperationService: FileOperationServicing {
                 try operation(fileManager, url)
                 completedItems.append(url)
             } catch {
+                DiagnosticLogger.log(.error, category: "FileOperation", "Item operation failed: path=\(DiagnosticLogger.sanitizedPath(url)); reason=\(error.localizedDescription)")
                 failedItems.append(FileOperationItemFailure(url: url, error: error))
             }
             completedCount += 1
@@ -319,6 +355,7 @@ final class FileOperationService: FileOperationServicing {
 
         for plan in activePlans {
             if Task.isCancelled {
+                DiagnosticLogger.log(.info, category: "FileOperation", "Transfer operation cancelled: completedCount=\(completedItems.count); skippedCount=\(skippedItems.count); failedCount=\(failedItems.count); cleanupWarningCount=\(cleanupWarnings.count)")
                 return FileOperationResult(
                     completedItems: completedItems,
                     skippedItems: skippedItems,
@@ -361,6 +398,7 @@ final class FileOperationService: FileOperationServicing {
                 }
                 completedItems.append(plan.source)
             } catch is CancellationError {
+                DiagnosticLogger.log(.info, category: "FileOperation", "Transfer operation cancelled by task check: completedCount=\(completedItems.count); skippedCount=\(skippedItems.count); failedCount=\(failedItems.count); cleanupWarningCount=\(cleanupWarnings.count)")
                 return FileOperationResult(
                     completedItems: completedItems,
                     skippedItems: skippedItems,
@@ -369,6 +407,7 @@ final class FileOperationService: FileOperationServicing {
                     wasCancelled: true
                 )
             } catch {
+                DiagnosticLogger.log(.error, category: "FileOperation", "Transfer item failed: source=\(DiagnosticLogger.sanitizedPath(plan.source)); destination=\(DiagnosticLogger.sanitizedPath(plan.destination)); reason=\(error.localizedDescription)")
                 failedItems.append(FileOperationItemFailure(url: plan.source, error: error))
             }
             completedCount += 1
@@ -643,6 +682,7 @@ final class FileOperationService: FileOperationServicing {
             try fileManager.removeItem(at: backupURL)
             return []
         } catch {
+            DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove replacement backup at \(DiagnosticLogger.sanitizedPath(backupURL)); reason=\(error.localizedDescription)")
             return [FileOperationCleanupWarning(
                 url: backupURL,
                 message: "The old item was replaced, but PulseFiles could not remove the backup at %@.".localized(with: backupURL.path)
@@ -661,6 +701,7 @@ final class FileOperationService: FileOperationServicing {
             let resolution: FileConflictResolution
             if replacesExistingDestination {
                 resolution = await conflictHandler(destination)
+                DiagnosticLogger.log(.info, category: "FileOperation", "Conflict decision: destination=\(DiagnosticLogger.sanitizedPath(destination)); resolution=\(resolution.logValue)")
             } else {
                 resolution = .replace
             }
@@ -769,7 +810,32 @@ final class FileOperationService: FileOperationServicing {
         try fileManager.removeItem(at: url)
     }
 
+    private func logPreflightFailure(operation: String, error: Error) {
+        DiagnosticLogger.log(.warning, category: "FileOperation", "Preflight failed: operation=\(operation); reason=\(error.localizedDescription)")
+    }
+
+    private func logCompletion(operation: String, result: FileOperationResult) {
+        let level: DiagnosticLogLevel = result.succeededCompletely ? .info : (result.wasCancelled ? .warning : .error)
+        DiagnosticLogger.log(level, category: "FileOperation", "Operation completed: operation=\(operation); completed=\(result.completedItems.count); skipped=\(result.skippedItems.count); failed=\(result.failedItems.count); cleanupWarnings=\(result.cleanupWarnings.count); cancelled=\(result.wasCancelled)")
+        for warning in result.cleanupWarnings {
+            DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: path=\(DiagnosticLogger.sanitizedPath(warning.url)); reason=\(warning.message)")
+        }
+        for failure in result.failedItems {
+            DiagnosticLogger.log(.error, category: "FileOperation", "Partial failure: path=\(DiagnosticLogger.sanitizedPath(failure.url)); reason=\(failure.error.localizedDescription)")
+        }
+    }
+
     private func normalizedPath(_ url: URL) -> String {
         url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+}
+
+private extension FileConflictResolution {
+    var logValue: String {
+        switch self {
+        case .replace: return "replace"
+        case .skip: return "skip"
+        case .cancel: return "cancel"
+        }
     }
 }
