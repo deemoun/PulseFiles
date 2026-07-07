@@ -14,9 +14,9 @@ final class DebugLogViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let levelFilter = NSPopUpButton(frame: .zero, pullsDown: false)
     private let categoryFilter = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let clearButton = NSButton(title: "Clear".localized, target: nil, action: nil)
-    private let copyButton = NSButton(title: "Copy".localized, target: nil, action: nil)
-    private let emptyLabel = NSTextField(labelWithString: "No debug log entries match the current filters.".localized)
+    private let clearButton = NSButton(title: "Clear Logs".localized, target: nil, action: nil)
+    private let copyButton = NSButton(title: "Copy Logs".localized, target: nil, action: nil)
+    private let emptyLabel = NSTextField(labelWithString: "No log entries yet.".localized)
     private let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
