@@ -21,6 +21,21 @@ Phase 1 is implemented:
 - Unit tests for navigation history, sorting, path utilities, and bookmark persistence.
 - Experimental sandbox-root access flag defaults to enabled, limiting navigation to `~/Library/Application Support/PulseFiles/ExperimentalSandbox`.
 
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| Tab | Switch pane |
+| Return | Open the selected item, or rename/confirm text when editing |
+| Backspace / Command-Up | Navigate to the parent folder |
+| Command-[ / Command-] | Navigate back / forward |
+| Command-Shift-G | Go to folder |
+| Command-N / Command-Shift-N | Create a new folder / file |
+| Command-C / Command-X / Command-V | Copy / cut / paste with the clipboard |
+| Command-Shift-. | Show or hide hidden files |
+| Command-` | Toggle Terminal V1 after enabling it in Settings |
+| Command-Period | Cancel the active file operation |
+
 ## Terminal V1 status
 
 The integrated terminal is a V1 experimental feature. It is hidden and disabled by default. To use it, open Settings and enable **Enable experimental terminal**; optionally enable **Show terminal by default** after that. On first use, PulseFiles warns that shell commands can modify or delete files, including files outside the app's experimental sandbox when sandbox restrictions are disabled.
