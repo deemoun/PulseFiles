@@ -260,6 +260,7 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func updateActivePane() {
+        DiagnosticLogger.log(.info, category: "MainWindow", "Active pane switched: pane=\(String(describing: activePaneID)); directory=\(DiagnosticLogger.sanitizedPath(targetPane().currentDirectory))")
         leftPane.setActive(activePaneID == .left)
         rightPane.setActive(activePaneID == .right)
         terminal.suggestedWorkingDirectory = targetPane().currentDirectory
@@ -273,7 +274,9 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func performCommand(_ command: MainCommand) {
+        DiagnosticLogger.log(.info, category: "MainWindow", "Command execution requested: command=\(command); activePane=\(String(describing: activePaneID))")
         guard !isFileOperationActive || !command.conflictsWithFileOperation else {
+            DiagnosticLogger.log(.warning, category: "MainWindow", "Command rejected during active file operation: command=\(command)")
             showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
@@ -559,6 +562,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     func reloadSettingsFromJSONIfChanged() {
+        DiagnosticLogger.log(.info, category: "MainWindow", "Settings reload requested from JSON")
         settings.importJSONIfChanged()
         applySettingsChanges()
         (settingsWindowController?.contentViewController as? SettingsViewController)?.reloadFromSettings()
@@ -647,6 +651,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func applySettingsChanges() {
+        DiagnosticLogger.log(.info, category: "MainWindow", "Applying settings changes: terminalEnabled=\(settings.experimentalTerminalEnabled); terminalDefaultVisible=\(settings.defaultTerminalVisible); sidebarDefaultVisible=\(settings.defaultSidebarVisible); singlePane=\(settings.defaultSinglePaneMode)")
         FileTypeColorPalette.activeScheme = settings.fileColorScheme
         view.layer?.backgroundColor = LiquidGlassStyle.windowBackground.cgColor
         view.window?.backgroundColor = LiquidGlassStyle.windowBackground
@@ -744,12 +749,14 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func toggleTerminal() {
+        DiagnosticLogger.log(.info, category: "Terminal", "Terminal toggle requested: currentlyVisible=\(isTerminalInstalled); experimentEnabled=\(settings.experimentalTerminalEnabled)")
         if isTerminalInstalled {
             removeTerminalPanel()
             settings.isTerminalVisible = false
             view.window?.makeFirstResponder(targetPane().tableView)
         } else {
             guard settings.experimentalTerminalEnabled else {
+                DiagnosticLogger.log(.warning, category: "Terminal", "Terminal toggle denied because experimental terminal is disabled")
                 showTerminalDisabledAlert()
                 return
             }
@@ -767,6 +774,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func installTerminalPanel(showWarning: Bool = false) {
         guard !isTerminalInstalled else { return }
+        DiagnosticLogger.log(.info, category: "Terminal", "Installing terminal panel: showWarning=\(showWarning)")
         if showWarning {
             showFirstUseTerminalWarningIfNeeded()
         }
@@ -809,6 +817,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func removeTerminalPanel() {
         guard isTerminalInstalled else { return }
+        DiagnosticLogger.log(.info, category: "Terminal", "Removing terminal panel")
         terminalHeightConstraint?.isActive = false
         contentSplitView.removeArrangedSubview(terminal.view)
         terminal.view.removeFromSuperview()
@@ -1125,7 +1134,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         alert.addButton(withTitle: "Cancel".localized)
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
+            guard let self, response == .alertFirstButtonReturn else {
+                DiagnosticLogger.log(.info, category: "MainWindow", "User cancelled destructive confirmation: operation=\(operationName); itemCount=\(items.count)")
+                return
+            }
             self.delete(items: items, permanently: permanentlyDelete)
         }
 
@@ -1315,7 +1327,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         alert.addButton(withTitle: "Cancel".localized)
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .alertFirstButtonReturn else { return }
+            guard response == .alertFirstButtonReturn else {
+                DiagnosticLogger.log(.info, category: "MainWindow", "User cancelled destructive confirmation: operation=\(operationName); itemCount=\(urls.count)")
+                return
+            }
             completion()
         }
 

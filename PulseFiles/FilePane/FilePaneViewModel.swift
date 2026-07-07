@@ -80,13 +80,23 @@ final class FilePaneViewModel {
     }
 
     func navigate(to url: URL) {
-        load(directory: accessPolicy.validatedDirectory(url), addToHistory: true)
+        let validatedURL = accessPolicy.validatedDirectory(url)
+        if validatedURL != url {
+            DiagnosticLogger.log(.warning, category: "FilePane", "Rejected navigation outside sandbox: requested=\(DiagnosticLogger.sanitizedPath(url)); redirected=\(DiagnosticLogger.sanitizedPath(validatedURL))")
+        }
+        load(directory: validatedURL, addToHistory: true)
     }
 
     func goParent() {
         let parent = state.currentDirectory.deletingLastPathComponent()
-        guard parent != state.currentDirectory else { return }
-        guard accessPolicy.canAccess(parent) else { return }
+        guard parent != state.currentDirectory else {
+            DiagnosticLogger.log(.debug, category: "FilePane", "Rejected parent navigation at filesystem root")
+            return
+        }
+        guard accessPolicy.canAccess(parent) else {
+            DiagnosticLogger.log(.warning, category: "FilePane", "Rejected parent navigation outside sandbox: current=\(DiagnosticLogger.sanitizedPath(state.currentDirectory)); parent=\(DiagnosticLogger.sanitizedPath(parent))")
+            return
+        }
         navigate(to: parent)
     }
 
@@ -142,7 +152,9 @@ final class FilePaneViewModel {
 
     func setSearchQuery(_ query: String) {
         guard searchQuery != query else { return }
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchQuery = query
+        DiagnosticLogger.log(.debug, category: "FilePane", "Search filter changed: active=\(!trimmedQuery.isEmpty); queryLength=\(trimmedQuery.count); totalItems=\(items.count); visibleItems=\(visibleItems.count)")
         onChange?()
     }
 
@@ -157,6 +169,7 @@ final class FilePaneViewModel {
 
     private func load(directory: URL, addToHistory: Bool, onLoaded: (() -> Void)? = nil) {
         loadTask?.cancel()
+        DiagnosticLogger.log(.info, category: "FilePane", "Directory load started: path=\(DiagnosticLogger.sanitizedPath(directory)); includeHidden=\(state.showsHiddenFiles); sort=\(state.sort.key.rawValue); ascending=\(state.sort.ascending)")
         isLoading = true
         errorMessage = nil
         loadFailure = nil
@@ -172,6 +185,7 @@ final class FilePaneViewModel {
             do {
                 let loadedItems = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
                 guard !Task.isCancelled else { return }
+                DiagnosticLogger.log(.info, category: "FilePane", "Directory load succeeded: path=\(DiagnosticLogger.sanitizedPath(directory)); itemCount=\(loadedItems.count)")
                 items = loadedItems
                 state.currentDirectory = directory
                 if addToHistory && directory != previousDirectory {
@@ -184,6 +198,7 @@ final class FilePaneViewModel {
                 onLoaded?()
             } catch {
                 guard !Task.isCancelled else { return }
+                DiagnosticLogger.log(.error, category: "FilePane", "Directory load failed: path=\(DiagnosticLogger.sanitizedPath(directory)); reason=\(error.localizedDescription)")
                 state.currentDirectory = previousDirectory
                 items = previousItems
                 loadFailure = DirectoryLoadFailure(directory: directory, error: error)

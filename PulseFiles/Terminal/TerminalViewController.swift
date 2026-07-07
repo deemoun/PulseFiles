@@ -72,7 +72,13 @@ final class TerminalViewController: NSViewController {
 
     private func run(_ rawCommand: String) {
         let command = rawCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty, runningProcess == nil else {
+        guard !command.isEmpty else {
+            DiagnosticLogger.log(.debug, category: "Terminal", "Ignored empty terminal command")
+            appendPrompt()
+            return
+        }
+        guard runningProcess == nil else {
+            DiagnosticLogger.log(.warning, category: "Terminal", "Ignored terminal command because a process is already running")
             appendPrompt()
             return
         }
@@ -81,6 +87,7 @@ final class TerminalViewController: NSViewController {
             suggestedWorkingDirectory = workingDirectoryProvider()
         }
 
+        DiagnosticLogger.log(.info, category: "Terminal", "Starting terminal process: shell=\(terminalService.shellPath); workingDirectory=\(DiagnosticLogger.sanitizedPath(suggestedWorkingDirectory)); commandLength=\(command.count)")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: terminalService.shellPath)
         process.arguments = ["-lc", command]
@@ -103,6 +110,7 @@ final class TerminalViewController: NSViewController {
         process.terminationHandler = { [weak self] process in
             pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
+                DiagnosticLogger.log(process.terminationStatus == 0 ? .info : .warning, category: "Terminal", "Terminal process exited: status=\(process.terminationStatus); reason=\(process.terminationReason.rawValue)")
                 self?.runningProcess = nil
                 if process.terminationStatus != 0 {
                     self?.appendLine("[exit \(process.terminationStatus)]")
@@ -114,6 +122,7 @@ final class TerminalViewController: NSViewController {
         do {
             try process.run()
         } catch {
+            DiagnosticLogger.log(.error, category: "Terminal", "Failed to start terminal process: reason=\(error.localizedDescription)")
             appendLine("Could not run command: \(error.localizedDescription)")
             runningProcess = nil
             appendPrompt()
