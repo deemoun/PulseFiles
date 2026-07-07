@@ -250,6 +250,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Window".localized)
         submenu.addItem(menuItem("Minimize".localized, action: #selector(NSWindow.performMiniaturize(_:)), key: "m", modifiers: [.command]))
+        submenu.addItem(.separator())
+        submenu.addItem(menuItem("Debug Logs".localized, action: #selector(MainWindowViewController.menuDebugLogs(_:)), key: "l", modifiers: [.command, .option]))
         item.submenu = submenu
         NSApplication.shared.windowsMenu = submenu
         return item

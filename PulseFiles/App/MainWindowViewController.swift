@@ -48,6 +48,7 @@ final class MainWindowViewController: NSViewController {
     private weak var sidebarToolbarItem: NSToolbarItem?
     private var activeFilterText = ""
     private var settingsWindowController: NSWindowController?
+    private var debugLogWindowController: NSWindowController?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var flagsChangedEventMonitor: Any?
@@ -596,6 +597,44 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             height: min(max(preferredContentSize.height, 420), min(540, maxContentHeight))
         )
 
+        window.setContentSize(contentSize)
+        let frameSize = window.frame.size
+        let origin = NSPoint(
+            x: visibleFrame.midX - frameSize.width / 2,
+            y: visibleFrame.midY - frameSize.height / 2
+        )
+        window.setFrame(NSRect(origin: origin, size: frameSize), display: true)
+    }
+
+    private func presentDebugLogs(_ sender: Any?) {
+        if let existingWindow = debugLogWindowController?.window, existingWindow.isVisible {
+            sizeAndPositionDebugLogWindow(existingWindow, preferredContentSize: existingWindow.contentViewController?.preferredContentSize ?? NSSize(width: 900, height: 520))
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let controller = DebugLogViewController()
+        let window = NSWindow(contentViewController: controller)
+        window.title = "Debug Logs".localized
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 720, height: 360)
+        sizeAndPositionDebugLogWindow(window, preferredContentSize: controller.preferredContentSize)
+        window.delegate = self
+
+        let windowController = NSWindowController(window: window)
+        debugLogWindowController = windowController
+        windowController.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func sizeAndPositionDebugLogWindow(_ window: NSWindow, preferredContentSize: NSSize) {
+        let screen = view.window?.screen ?? NSScreen.main
+        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1000, height: 760)
+        let contentSize = NSSize(
+            width: min(max(preferredContentSize.width, 720), max(720, visibleFrame.width - 120)),
+            height: min(max(preferredContentSize.height, 360), max(360, visibleFrame.height - 120))
+        )
         window.setContentSize(contentSize)
         let frameSize = window.frame.size
         let origin = NSPoint(
@@ -1470,9 +1509,14 @@ extension MainWindowViewController: NSSplitViewDelegate {
 
 extension MainWindowViewController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === settingsWindowController?.window else { return }
-        settingsWindowController = nil
-        view.window?.makeKeyAndOrderFront(nil)
+        guard let window = notification.object as? NSWindow else { return }
+        if window === settingsWindowController?.window {
+            settingsWindowController = nil
+            view.window?.makeKeyAndOrderFront(nil)
+        } else if window === debugLogWindowController?.window {
+            debugLogWindowController = nil
+            view.window?.makeKeyAndOrderFront(nil)
+        }
     }
 }
 
@@ -1509,6 +1553,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
     @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
+    @objc func menuDebugLogs(_ sender: Any?) { presentDebugLogs(sender) }
     @objc func menuEditSettingsJSON(_ sender: Any?) {
         do {
             let url = try settings.writeSettingsJSON()

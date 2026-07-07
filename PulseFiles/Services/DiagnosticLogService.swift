@@ -22,6 +22,7 @@ enum DiagnosticLogLevel: String, CaseIterable, Comparable {
 @MainActor
 final class DiagnosticLogService {
     static let shared = DiagnosticLogService()
+    static let entriesDidChangeNotification = Notification.Name("DiagnosticLogServiceEntriesDidChange")
 
     private static let defaultMaximumEntryCount = 750
     private static let maximumMessageLength = 2_000
@@ -63,10 +64,16 @@ final class DiagnosticLogService {
         )
         entries.append(entry)
         trimEntriesIfNeeded()
+        postEntriesDidChangeNotification()
     }
 
     func clear() {
         entries.removeAll(keepingCapacity: true)
+        postEntriesDidChangeNotification()
+    }
+
+    private func postEntriesDidChangeNotification() {
+        NotificationCenter.default.post(name: Self.entriesDidChangeNotification, object: self)
     }
 
     private func trimEntriesIfNeeded() {
