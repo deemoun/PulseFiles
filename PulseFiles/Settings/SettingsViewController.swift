@@ -32,6 +32,7 @@ final class SettingsViewController: NSViewController {
     var onChange: (() -> Void)?
 
     private let settings: SettingsService
+    private let liquidGlassCheckbox = NSButton(checkboxWithTitle: "Enable liquid glass interface".localized, target: nil, action: nil)
     private let sidebarCheckbox = NSButton(checkboxWithTitle: "Show sidebar by default".localized, target: nil, action: nil)
     private let terminalEnabledCheckbox = NSButton(checkboxWithTitle: "Enable experimental terminal".localized, target: nil, action: nil)
     private let terminalCheckbox = NSButton(checkboxWithTitle: "Show terminal by default".localized, target: nil, action: nil)
@@ -94,7 +95,7 @@ final class SettingsViewController: NSViewController {
         headerStack.spacing = 4
         headerStack.translatesAutoresizingMaskIntoConstraints = false
 
-        [sidebarCheckbox, terminalEnabledCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox, experimentalSandboxCheckbox].forEach {
+        [liquidGlassCheckbox, sidebarCheckbox, terminalEnabledCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox, experimentalSandboxCheckbox].forEach {
             $0.target = self
             $0.action = #selector(controlChanged(_:))
         }
@@ -236,6 +237,7 @@ final class SettingsViewController: NSViewController {
                     title: "Appearance & Layout".localized,
                     views: [
                         sidebarCheckbox,
+                        liquidGlassCheckbox,
                         terminalEnabledCheckbox,
                         terminalCheckbox,
                         terminalV1StatusView(),
@@ -477,6 +479,7 @@ final class SettingsViewController: NSViewController {
 
     private func loadSettings() {
         sidebarCheckbox.state = settings.defaultSidebarVisible ? .on : .off
+        liquidGlassCheckbox.state = settings.liquidGlassEnabled ? .on : .off
         terminalEnabledCheckbox.state = settings.experimentalTerminalEnabled ? .on : .off
         terminalCheckbox.state = settings.defaultTerminalVisible ? .on : .off
         terminalCheckbox.isEnabled = settings.experimentalTerminalEnabled
@@ -541,6 +544,7 @@ final class SettingsViewController: NSViewController {
 
     @objc private func controlChanged(_ sender: Any?) {
         settings.defaultSidebarVisible = sidebarCheckbox.state == .on
+        settings.liquidGlassEnabled = liquidGlassCheckbox.state == .on
         let previousTerminalEnabled = settings.experimentalTerminalEnabled
         settings.experimentalTerminalEnabled = terminalEnabledCheckbox.state == .on
         settings.defaultTerminalVisible = settings.experimentalTerminalEnabled && terminalCheckbox.state == .on

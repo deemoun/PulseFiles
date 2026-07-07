@@ -50,6 +50,11 @@ final class SettingsService {
         set { set(newValue, forKey: "defaultSidebarVisible") }
     }
 
+    var liquidGlassEnabled: Bool {
+        get { defaults.object(forKey: LiquidGlassStyle.preferenceKey) as? Bool ?? false }
+        set { set(newValue, forKey: LiquidGlassStyle.preferenceKey) }
+    }
+
     var experimentalTerminalEnabled: Bool {
         get { defaults.object(forKey: "experimentalTerminalEnabled") as? Bool ?? false }
         set { set(newValue, forKey: "experimentalTerminalEnabled") }
@@ -262,6 +267,7 @@ final class SettingsService {
     private func makeJSONSettings() -> SettingsJSON {
         SettingsJSON(
             defaultSidebarVisible: defaultSidebarVisible,
+            liquidGlassEnabled: liquidGlassEnabled,
             experimentalTerminalEnabled: experimentalTerminalEnabled,
             hasAcknowledgedTerminalWarning: hasAcknowledgedTerminalWarning,
             defaultTerminalVisible: defaultTerminalVisible,
@@ -289,6 +295,7 @@ final class SettingsService {
         defer { isSyncingJSON = false }
 
         if let value = settings.defaultSidebarVisible { defaults.set(value, forKey: "defaultSidebarVisible") }
+        if let value = settings.liquidGlassEnabled { defaults.set(value, forKey: LiquidGlassStyle.preferenceKey) }
         if let value = settings.experimentalTerminalEnabled { defaults.set(value, forKey: "experimentalTerminalEnabled") }
         if let value = settings.hasAcknowledgedTerminalWarning { defaults.set(value, forKey: "hasAcknowledgedTerminalWarning") }
         if let value = settings.defaultTerminalVisible { defaults.set(value, forKey: "defaultTerminalVisible") }
@@ -332,6 +339,7 @@ private struct SettingsJSONDocument: Codable {
 
 private struct SettingsJSON: Codable {
     var defaultSidebarVisible: Bool?
+    var liquidGlassEnabled: Bool?
     var experimentalTerminalEnabled: Bool?
     var hasAcknowledgedTerminalWarning: Bool?
     var defaultTerminalVisible: Bool?

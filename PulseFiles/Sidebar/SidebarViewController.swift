@@ -158,7 +158,7 @@ final class SidebarViewController: NSViewController {
 
     override func loadView() {
         view = NSVisualEffectView()
-        (view as? NSVisualEffectView)?.material = .hudWindow
+        (view as? NSVisualEffectView)?.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         (view as? NSVisualEffectView)?.blendingMode = .withinWindow
         view.setAccessibilityIdentifier(AccessibilityIdentifiers.Sidebar.panel)
         LiquidGlassStyle.applyPanelChrome(to: view)
@@ -173,7 +173,11 @@ final class SidebarViewController: NSViewController {
         recentLocations.onChange = { [weak self] _ in self?.rebuild() }
     }
 
-    func refresh() { rebuild() }
+    func refresh() {
+        (view as? NSVisualEffectView)?.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+        LiquidGlassStyle.applyPanelChrome(to: view)
+        rebuild()
+    }
 
     func showSelection(_ items: [FileItem]) {
         let hadNoSelection = selectedItems.isEmpty

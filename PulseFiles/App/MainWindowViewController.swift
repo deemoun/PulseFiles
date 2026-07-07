@@ -607,6 +607,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func applySettingsChanges() {
         FileTypeColorPalette.activeScheme = settings.fileColorScheme
+        view.layer?.backgroundColor = LiquidGlassStyle.windowBackground.cgColor
+        view.window?.backgroundColor = LiquidGlassStyle.windowBackground
         setSidebarVisible(settings.defaultSidebarVisible)
         let shouldShowTerminal = settings.experimentalTerminalEnabled && settings.defaultTerminalVisible
         if shouldShowTerminal != isTerminalInstalled {
@@ -631,6 +633,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             }
         }
         sidebar.refresh()
+        commandBar.refreshAppearance()
+        terminal.refreshAppearance()
         view.layoutSubtreeIfNeeded()
         applySidebarSplitPosition()
         leftPane.refreshAppearance()

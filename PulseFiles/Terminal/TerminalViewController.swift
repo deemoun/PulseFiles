@@ -34,6 +34,11 @@ final class TerminalViewController: NSViewController {
         appendPrompt()
     }
 
+    func refreshAppearance() {
+        view.layer?.cornerRadius = LiquidGlassStyle.isEnabled ? LiquidGlassStyle.cornerRadius : LiquidGlassStyle.compactCornerRadius
+        view.layer?.borderColor = LiquidGlassStyle.panelStroke.cgColor
+    }
+
     func focusCommandField() {
         view.window?.makeFirstResponder(terminalView)
     }

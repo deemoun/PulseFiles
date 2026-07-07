@@ -10,7 +10,7 @@ final class CommandBarView: NSVisualEffectView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        material = .hudWindow
+        material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         blendingMode = .withinWindow
         state = .active
         setAccessibilityIdentifier(AccessibilityIdentifiers.CommandBar.panel)
@@ -68,6 +68,12 @@ final class CommandBarView: NSVisualEffectView {
         ])
 
         reloadButtons()
+    }
+
+    func refreshAppearance() {
+        material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+        reloadButtons()
+        LiquidGlassStyle.applyButtonChrome(to: cancelOperationButton)
     }
 
     func setShiftPressed(_ isShiftPressed: Bool) {

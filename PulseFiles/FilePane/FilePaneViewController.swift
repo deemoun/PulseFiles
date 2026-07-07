@@ -130,11 +130,15 @@ final class FilePaneViewController: NSViewController {
     func setActive(_ active: Bool) {
         guard isPaneActive != active else { return }
         isPaneActive = active
-        activeStripe.layer?.backgroundColor = active ? NSColor.systemBlue.cgColor : NSColor.clear.cgColor
-        view.layer?.borderWidth = 1
-        view.layer?.borderColor = active ? LiquidGlassStyle.activeStroke.cgColor : LiquidGlassStyle.panelStroke.cgColor
-        view.layer?.backgroundColor = active ? LiquidGlassStyle.activeFill.cgColor : LiquidGlassStyle.panelFill.cgColor
+        updatePaneChrome()
         tableView.reloadData()
+    }
+
+    private func updatePaneChrome() {
+        activeStripe.layer?.backgroundColor = isPaneActive ? NSColor.systemBlue.cgColor : NSColor.clear.cgColor
+        view.layer?.borderWidth = 1
+        view.layer?.borderColor = isPaneActive ? LiquidGlassStyle.activeStroke.cgColor : LiquidGlassStyle.panelStroke.cgColor
+        view.layer?.backgroundColor = isPaneActive ? LiquidGlassStyle.activeFill.cgColor : LiquidGlassStyle.panelFill.cgColor
     }
 
     func focusDefaultRowForActivation() {
@@ -301,6 +305,8 @@ final class FilePaneViewController: NSViewController {
     }
 
     func refreshAppearance() {
+        LiquidGlassStyle.applyPanelChrome(to: view)
+        updatePaneChrome()
         tableView.reloadData()
     }
 
