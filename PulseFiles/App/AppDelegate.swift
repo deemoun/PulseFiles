@@ -1,8 +1,20 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static let editSettingsJSONDebugDefaultsKey = "PulseFilesShowEditSettingsJSONMenuItem"
+    static let editSettingsJSONDebugLaunchArgument = "--pulsefiles-show-edit-settings-json-menu-item"
+
+    private let launchArguments: [String]
+    private let userDefaults: UserDefaults
+
     private var mainWindowController: MainWindowController?
     private var aboutWindowController: NSWindowController?
+
+    init(launchArguments: [String] = ProcessInfo.processInfo.arguments, userDefaults: UserDefaults = .standard) {
+        self.launchArguments = launchArguments
+        self.userDefaults = userDefaults
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FileTypeColorPalette.activeScheme = SettingsService().fileColorScheme
@@ -23,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         (mainWindowController?.contentViewController as? MainWindowViewController)?.reloadSettingsFromJSONIfChanged()
     }
 
-    private func buildMainMenu() -> NSMenu {
+    func buildMainMenu() -> NSMenu {
         let menu = NSMenu(title: "PulseFiles")
         menu.addItem(appMenu())
         menu.addItem(fileMenu())
@@ -44,11 +56,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(aboutItem)
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Settings…".localized, action: #selector(MainWindowViewController.menuSettings(_:)), key: ",", modifiers: [.command]))
-        submenu.addItem(menuItem("Edit Settings JSON…".localized, action: #selector(MainWindowViewController.menuEditSettingsJSON(_:)), key: ",", modifiers: [.command, .option]))
+        if showsEditSettingsJSONMenuItem {
+            submenu.addItem(menuItem("Edit Settings JSON…".localized, action: #selector(MainWindowViewController.menuEditSettingsJSON(_:)), key: ",", modifiers: [.command, .option]))
+        }
         submenu.addItem(.separator())
         submenu.addItem(withTitle: "Quit PulseFiles".localized, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = submenu
         return item
+    }
+
+    private var showsEditSettingsJSONMenuItem: Bool {
+        launchArguments.contains(Self.editSettingsJSONDebugLaunchArgument)
+            || userDefaults.bool(forKey: Self.editSettingsJSONDebugDefaultsKey)
     }
 
     @objc private func showAbout(_ sender: Any?) {

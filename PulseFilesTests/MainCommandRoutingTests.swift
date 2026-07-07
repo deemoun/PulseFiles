@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import PulseFiles
 
 final class MainCommandRoutingTests: XCTestCase {
@@ -148,5 +149,47 @@ final class MainCommandRoutingTests: XCTestCase {
             isFileOperationActive: isFileOperationActive,
             sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs
         )
+    }
+}
+
+final class MainMenuConstructionTests: XCTestCase {
+    func testEditSettingsJSONMenuItemIsHiddenByDefault() {
+        let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.default")!
+        defaults.removePersistentDomain(forName: "MainMenuConstructionTests.default")
+
+        let menu = AppDelegate(launchArguments: ["PulseFiles"], userDefaults: defaults).buildMainMenu()
+
+        XCTAssertFalse(menu.containsItem(titled: "Edit Settings JSON…"))
+    }
+
+    func testEditSettingsJSONMenuItemIsShownWithDebugLaunchArgument() {
+        let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.launchArgument")!
+        defaults.removePersistentDomain(forName: "MainMenuConstructionTests.launchArgument")
+
+        let menu = AppDelegate(
+            launchArguments: ["PulseFiles", AppDelegate.editSettingsJSONDebugLaunchArgument],
+            userDefaults: defaults
+        ).buildMainMenu()
+
+        XCTAssertTrue(menu.containsItem(titled: "Edit Settings JSON…"))
+    }
+
+    func testEditSettingsJSONMenuItemIsShownWithDebugDefaultsFlag() {
+        let suiteName = "MainMenuConstructionTests.defaultsFlag"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(true, forKey: AppDelegate.editSettingsJSONDebugDefaultsKey)
+
+        let menu = AppDelegate(launchArguments: ["PulseFiles"], userDefaults: defaults).buildMainMenu()
+
+        XCTAssertTrue(menu.containsItem(titled: "Edit Settings JSON…"))
+    }
+}
+
+private extension NSMenu {
+    func containsItem(titled title: String) -> Bool {
+        items.contains { item in
+            item.title == title || item.submenu?.containsItem(titled: title) == true
+        }
     }
 }
