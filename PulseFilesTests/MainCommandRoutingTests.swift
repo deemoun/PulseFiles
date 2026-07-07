@@ -67,6 +67,10 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.commandForKeyDown(keyCode: 50, command: true, isTextInputFocused: true), .toggleTerminal)
     }
 
+    func testDebugLogsRouteAsAlwaysEnabledCommand() {
+        XCTAssertEqual(router.route(.debugLogs, in: makeState(activePaneID: .left)), .enabled(command: .debugLogs))
+    }
+
     func testCancelOperationRoutesOnlyDuringActiveFileOperation() {
         XCTAssertEqual(router.commandForKeyDown(keyCode: 47, command: true), .cancelOperation)
         XCTAssertEqual(
@@ -153,6 +157,15 @@ final class MainCommandRoutingTests: XCTestCase {
 }
 
 final class MainMenuConstructionTests: XCTestCase {
+    func testDebugLogsMenuItemIsAvailableFromWindowMenu() {
+        let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.debugLogs")!
+        defaults.removePersistentDomain(forName: "MainMenuConstructionTests.debugLogs")
+
+        let menu = AppDelegate(launchArguments: ["PulseFiles"], userDefaults: defaults).buildMainMenu()
+
+        XCTAssertTrue(menu.containsItem(titled: "Debug Logs…"))
+    }
+
     func testEditSettingsJSONMenuItemIsHiddenByDefault() {
         let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.default")!
         defaults.removePersistentDomain(forName: "MainMenuConstructionTests.default")
