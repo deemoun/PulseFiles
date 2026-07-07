@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class DiagnosticLogServiceTests: XCTestCase {
-    func testLogRecordsEntryMetadata() {
+    func testLogAppendsEntryWithTimestampLevelCategoryAndMessage() {
         let id = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let date = Date(timeIntervalSince1970: 42)
         let service = DiagnosticLogService(
@@ -14,15 +14,12 @@ final class DiagnosticLogServiceTests: XCTestCase {
 
         service.log(.info, category: "Navigation", "Opened folder")
 
-        XCTAssertEqual(service.entries, [
-            DiagnosticLogEntry(
-                id: id,
-                timestamp: date,
-                level: .info,
-                category: "Navigation",
-                message: "Opened folder"
-            )
-        ])
+        XCTAssertEqual(service.entries.count, 1)
+        XCTAssertEqual(service.entries.first?.id, id)
+        XCTAssertEqual(service.entries.first?.timestamp, date)
+        XCTAssertEqual(service.entries.first?.level, .info)
+        XCTAssertEqual(service.entries.first?.category, "Navigation")
+        XCTAssertEqual(service.entries.first?.message, "Opened folder")
     }
 
     func testLogKeepsMostRecentEntriesWithinBound() {
@@ -38,6 +35,15 @@ final class DiagnosticLogServiceTests: XCTestCase {
         service.log(.debug, category: "Test", "four")
 
         XCTAssertEqual(service.entries.map(\.message), ["two", "three", "four"])
+        XCTAssertEqual(
+            service.entries.map(\.id),
+            [
+                UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+                UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+                UUID(uuidString: "00000000-0000-0000-0000-000000000004")!
+            ],
+            "Bounded retention should drop the oldest entry and keep append order for retained entries."
+        )
     }
 
     func testClearRemovesEntries() {
