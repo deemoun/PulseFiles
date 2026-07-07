@@ -239,9 +239,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func helpMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Help".localized)
-        submenu.addItem(withTitle: "PulseFiles Help".localized, action: nil, keyEquivalent: "")
+        let helpItem = NSMenuItem(title: "PulseFiles Help".localized, action: #selector(showHelp(_:)), keyEquivalent: "?")
+        helpItem.keyEquivalentModifierMask = [.command]
+        helpItem.target = self
+        submenu.addItem(helpItem)
         item.submenu = submenu
         return item
+    }
+
+
+    @objc private func showHelp(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "PulseFiles Help".localized
+        alert.informativeText = "PulseFiles Help Shortcuts".localized
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK".localized)
+
+        if let window = mainWindowController?.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     private func menuItem(_ title: String, action: Selector, key: String, modifiers: NSEvent.ModifierFlags) -> NSMenuItem {
