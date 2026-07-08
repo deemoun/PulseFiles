@@ -196,7 +196,7 @@ final class FilePaneViewController: NSViewController {
         tableView.allowsMultipleSelection = true
         tableView.allowsColumnReordering = false
         tableView.allowsColumnResizing = true
-        tableView.rowHeight = 24
+        tableView.rowHeight = 32
         tableView.doubleAction = #selector(openDoubleClickedItem)
         tableView.target = self
         tableView.headerView = NSTableHeaderView()
@@ -475,8 +475,8 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             NSLayoutConstraint.activate([
                 imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
                 imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 18),
-                imageView.heightAnchor.constraint(equalToConstant: 18),
+                imageView.widthAnchor.constraint(equalToConstant: 20),
+                imageView.heightAnchor.constraint(equalToConstant: 20),
                 text.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
                 text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
@@ -598,8 +598,8 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             NSLayoutConstraint.activate([
                 imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
                 imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 18),
-                imageView.heightAnchor.constraint(equalToConstant: 18),
+                imageView.widthAnchor.constraint(equalToConstant: 20),
+                imageView.heightAnchor.constraint(equalToConstant: 20),
                 text.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
                 text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
