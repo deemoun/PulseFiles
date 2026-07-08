@@ -28,7 +28,7 @@ enum FileOperationError: LocalizedError, Equatable {
         case .destinationNotDirectory(let url):
             return "%@ is not a folder.".localized(with: url.lastPathComponent)
         case .destinationInsideSource:
-            return "Invalid destination.".localized
+            return "Cannot copy or move a folder into itself.".localized
         case .destinationExists(let url):
             return "%@ already exists.".localized(with: url.lastPathComponent)
         case .unsafeReplacement:

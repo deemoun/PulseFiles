@@ -145,7 +145,11 @@ final class FileOperationServiceTests: XCTestCase {
                 progressHandler: nil
             )
             XCTFail("Expected folder-into-itself rejection")
-        } catch FileOperationError.destinationInsideSource {
+        } catch FileOperationError.destinationInsideSource(let rejectedSource, let rejectedDestination) {
+            let error = FileOperationError.destinationInsideSource(source: rejectedSource, destination: rejectedDestination)
+            XCTAssertEqual(error.errorDescription, "Cannot copy or move a folder into itself.")
+            XCTAssertEqual(error.localizedDescription, "Cannot copy or move a folder into itself.")
+            XCTAssertEqual(error.failureReason, "Cannot copy or move Folder into \(child.appendingPathComponent("Folder").path).")
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
