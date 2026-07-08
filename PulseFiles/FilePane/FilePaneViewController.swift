@@ -204,7 +204,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func buildHeader() {
-        header.material = .hudWindow
+        header.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         header.blendingMode = .withinWindow
         header.state = .active
 
@@ -232,7 +232,7 @@ final class FilePaneViewController: NSViewController {
         tableView.allowsMultipleSelection = true
         tableView.allowsColumnReordering = false
         tableView.allowsColumnResizing = true
-        tableView.rowHeight = 32
+        tableView.rowHeight = 34
         tableView.doubleAction = #selector(openDoubleClickedItem)
         tableView.target = self
         tableView.headerView = NSTableHeaderView()
@@ -347,6 +347,8 @@ final class FilePaneViewController: NSViewController {
     }
 
     func refreshAppearance() {
+        header.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+        LiquidGlassStyle.applyButtonChrome(to: hiddenButton)
         LiquidGlassStyle.applyPanelChrome(to: view)
         updatePaneChrome()
         tableView.reloadData()
