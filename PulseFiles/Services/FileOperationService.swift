@@ -731,7 +731,7 @@ final class FileOperationService: FileOperationServicing {
         for source in request.sources {
             try accessPolicy.validateAccess(to: source)
             try validateExistingSource(source)
-            let normalizedSource = normalizedPath(source)
+            let normalizedSource = FilePathComparison.normalizedPath(source)
             guard normalizedSources.insert(normalizedSource).inserted else {
                 throw FileOperationError.duplicateSource(source)
             }
@@ -739,7 +739,7 @@ final class FileOperationService: FileOperationServicing {
             let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
             try accessPolicy.validateAccess(to: destination)
             try validateDestination(destination, for: source)
-            let normalizedDestination = normalizedPath(destination)
+            let normalizedDestination = FilePathComparison.normalizedPath(destination)
             guard normalizedDestinations.insert(normalizedDestination).inserted else {
                 throw FileOperationError.duplicateDestination(destination)
             }
@@ -752,7 +752,7 @@ final class FileOperationService: FileOperationServicing {
         try validateExistingSource(source)
         try validateExistingDirectory(source.deletingLastPathComponent())
         try validateDestination(destination, for: source)
-        if fileManager.fileExists(atPath: destination.path), normalizedPath(source) != normalizedPath(destination) {
+        if fileManager.fileExists(atPath: destination.path), FilePathComparison.normalizedPath(source) != FilePathComparison.normalizedPath(destination) {
             throw FileOperationError.destinationExists(destination)
         }
     }
@@ -763,7 +763,7 @@ final class FileOperationService: FileOperationServicing {
         for url in urls {
             try accessPolicy.validateAccess(to: url)
             try validateExistingSource(url)
-            guard normalizedSources.insert(normalizedPath(url)).inserted else {
+            guard normalizedSources.insert(FilePathComparison.normalizedPath(url)).inserted else {
                 throw FileOperationError.duplicateSource(url)
             }
         }
@@ -786,9 +786,7 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func validateDestination(_ destination: URL, for source: URL) throws {
-        let sourcePath = normalizedPath(source)
-        let destinationPath = normalizedPath(destination)
-        if destinationPath == sourcePath || destinationPath.hasPrefix(sourcePath + "/") {
+        if FilePathComparison.isSameOrDescendant(destination, ofDirectory: source) {
             throw FileOperationError.destinationInsideSource(source: source, destination: destination)
         }
     }
@@ -825,9 +823,6 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-    private func normalizedPath(_ url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().path
-    }
 }
 
 private extension FileConflictResolution {
