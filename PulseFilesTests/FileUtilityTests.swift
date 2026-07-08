@@ -103,3 +103,23 @@ final class FileNameValidatorTests: XCTestCase {
         return directory
     }
 }
+
+final class FilePathComparisonTests: XCTestCase {
+    func testRecognizesSamePathAfterStandardization() {
+        let root = URL(fileURLWithPath: "/tmp/PulseFiles")
+        let candidate = root.appendingPathComponent("Nested/../Folder")
+        let folder = root.appendingPathComponent("Folder")
+
+        XCTAssertTrue(FilePathComparison.isSamePath(candidate, folder))
+    }
+
+    func testRecognizesDescendantButNotSiblingPrefix() {
+        let source = URL(fileURLWithPath: "/tmp/PulseFiles/Folder", isDirectory: true)
+        let child = source.appendingPathComponent("Child", isDirectory: true)
+        let siblingWithSharedPrefix = URL(fileURLWithPath: "/tmp/PulseFiles/Folder Backup", isDirectory: true)
+
+        XCTAssertTrue(FilePathComparison.isSameOrDescendant(source, ofDirectory: source))
+        XCTAssertTrue(FilePathComparison.isSameOrDescendant(child, ofDirectory: source))
+        XCTAssertFalse(FilePathComparison.isSameOrDescendant(siblingWithSharedPrefix, ofDirectory: source))
+    }
+}

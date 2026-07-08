@@ -555,26 +555,54 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        guard dropDestination(forRow: row, operation: dropOperation) != nil else { return [] }
-        return NSApp.currentEvent?.modifierFlags.contains(.option) == true ? .copy : .move
+        guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return [] }
+        let urls = draggedFileURLs(from: info.draggingPasteboard)
+        guard !urls.isEmpty else { return [] }
+        let shouldCopy = NSApp.currentEvent?.modifierFlags.contains(.option) == true
+        guard canDrop(urls, into: destination, shouldCopy: shouldCopy) else { return [] }
+        return shouldCopy ? .copy : .move
     }
 
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return false }
-        let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
+        let urls = draggedFileURLs(from: info.draggingPasteboard)
+        guard !urls.isEmpty else { return false }
+        let shouldCopy = NSApp.currentEvent?.modifierFlags.contains(.option) == true
+        guard canDrop(urls, into: destination, shouldCopy: shouldCopy) else { return false }
+        onDropURLs?(urls, destination, shouldCopy)
+        return true
+    }
+
+    private func draggedFileURLs(from pasteboard: NSPasteboard) -> [URL] {
+        pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
             .compactMap { object -> URL? in
                 if let url = object as? URL { return url }
                 return (object as? NSURL)?.absoluteURL
             } ?? []
-        guard !urls.isEmpty else { return false }
-        let destinationPath = destination.standardizedFileURL.resolvingSymlinksInPath().path
-        let isSameDirectoryMove = urls.allSatisfy {
-            $0.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == destinationPath
-        }
-        let shouldCopy = NSApp.currentEvent?.modifierFlags.contains(.option) == true
-        guard shouldCopy || !isSameDirectoryMove else { return false }
-        onDropURLs?(urls, destination, shouldCopy)
+    }
+
+    private func canDrop(_ urls: [URL], into destination: URL, shouldCopy: Bool) -> Bool {
+        guard !isDroppingInsideDraggedDirectory(urls, destination: destination) else { return false }
+        guard shouldCopy || !isSameDirectoryMove(urls, destination: destination) else { return false }
         return true
+    }
+
+    private func isSameDirectoryMove(_ urls: [URL], destination: URL) -> Bool {
+        urls.allSatisfy {
+            FilePathComparison.isSamePath($0.deletingLastPathComponent(), destination)
+        }
+    }
+
+    private func isDroppingInsideDraggedDirectory(_ urls: [URL], destination: URL) -> Bool {
+        urls.contains { source in
+            guard isDirectory(source) else { return false }
+            return FilePathComparison.isSameOrDescendant(destination, ofDirectory: source)
+        }
+    }
+
+    private func isDirectory(_ url: URL) -> Bool {
+        var isDirectory = ObjCBool(false)
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
     private func dropDestination(forRow row: Int, operation: NSTableView.DropOperation) -> URL? {
