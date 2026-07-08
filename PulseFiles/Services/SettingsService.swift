@@ -11,12 +11,41 @@ final class SettingsService {
 
     private let defaults: UserDefaults
     private let syncsJSON: Bool
+    private let accessPolicyOverride: SandboxFileAccessPolicy?
+    private let grantService: FolderAccessGrantService
+    private let homeDirectoryProvider: () -> URL
+    private let documentsDirectoryProvider: () -> URL
+    private let downloadsDirectoryProvider: () -> URL
+    private let applicationSupportDirectoryProvider: () -> URL
     private var isSyncingJSON = false
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        accessPolicy: SandboxFileAccessPolicy? = nil,
+        homeDirectoryProvider: @escaping () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        documentsDirectoryProvider: @escaping () -> URL = {
+            FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents", isDirectory: true)
+        },
+        downloadsDirectoryProvider: @escaping () -> URL = {
+            FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+        },
+        applicationSupportDirectoryProvider: @escaping () -> URL = {
+            let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+            return baseURL.appendingPathComponent("PulseFiles", isDirectory: true)
+        }
+    ) {
         self.defaults = defaults
         self.syncsJSON = defaults === UserDefaults.standard
-        FolderAccessGrantService(defaults: defaults).resolveStoredBookmarks()
+        self.grantService = FolderAccessGrantService(defaults: defaults)
+        self.grantService.resolveStoredBookmarks()
+        self.accessPolicyOverride = accessPolicy
+        self.homeDirectoryProvider = homeDirectoryProvider
+        self.documentsDirectoryProvider = documentsDirectoryProvider
+        self.downloadsDirectoryProvider = downloadsDirectoryProvider
+        self.applicationSupportDirectoryProvider = applicationSupportDirectoryProvider
         if syncsJSON {
             importJSONIfChanged()
             writeSettingsJSONIfNeeded()
@@ -170,21 +199,57 @@ final class SettingsService {
         set { defaultTerminalVisible = experimentalTerminalEnabled && newValue }
     }
 
+    private var accessPolicy: SandboxFileAccessPolicy {
+        accessPolicyOverride ?? SandboxFileAccessPolicy(
+            isEnabled: experimentalSandboxEnabled,
+            rootURL: ExperimentalFlags.appSandboxRoot,
+            grantService: grantService
+        )
+    }
+
     private var defaultLeftDirectory: URL {
-        ExperimentalFlags.restrictFileAccessToAppSandboxRoot ? ExperimentalFlags.appSandboxRoot.appendingPathComponent("Left Pane", isDirectory: true) : FileManager.default.homeDirectoryForCurrentUser
+        if experimentalSandboxEnabled {
+            return accessPolicy.validatedDirectory(ExperimentalFlags.appSandboxRoot.appendingPathComponent("Left Pane", isDirectory: true))
+        }
+
+        return firstAccessibleDirectory(from: [
+            homeDirectoryProvider(),
+            documentsDirectoryProvider()
+        ])
     }
 
     private var defaultRightDirectory: URL {
-        ExperimentalFlags.restrictFileAccessToAppSandboxRoot ? ExperimentalFlags.appSandboxRoot.appendingPathComponent("Right Pane", isDirectory: true) : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
+        if experimentalSandboxEnabled {
+            return accessPolicy.validatedDirectory(ExperimentalFlags.appSandboxRoot.appendingPathComponent("Right Pane", isDirectory: true))
+        }
+
+        return firstAccessibleDirectory(from: [
+            downloadsDirectoryProvider(),
+            homeDirectoryProvider()
+        ])
     }
 
     private func directory(forKey key: String, fallback: URL) -> URL {
         let url = defaults.url(forKey: key) ?? fallback
-        return SandboxFileAccessPolicy.current.validatedDirectory(url, fallback: fallback)
+        return accessPolicy.validatedDirectory(url, fallback: fallback)
     }
 
     private func optionalDirectory(forKey key: String) -> URL? {
-        defaults.url(forKey: key).map { SandboxFileAccessPolicy.current.validatedDirectory($0) }
+        defaults.url(forKey: key).map { accessPolicy.validatedDirectory($0) }
+    }
+
+    private func firstAccessibleDirectory(from preferredDirectories: [URL]) -> URL {
+        for directory in preferredDirectories where accessPolicy.canAccess(directory) {
+            return directory
+        }
+
+        let applicationSupportDirectory = applicationSupportDirectoryProvider()
+        try? FileManager.default.createDirectory(at: applicationSupportDirectory, withIntermediateDirectories: true)
+        if accessPolicy.canAccess(applicationSupportDirectory) {
+            return applicationSupportDirectory
+        }
+
+        return accessPolicy.validatedDirectory(applicationSupportDirectory)
     }
 
     private func setOptionalDirectory(_ url: URL?, forKey key: String) {
