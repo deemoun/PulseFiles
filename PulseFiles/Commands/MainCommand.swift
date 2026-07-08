@@ -16,6 +16,7 @@ enum MainCommand: Equatable {
     case reveal
     case toggleHiddenFiles
     case sortByName
+    case sortByKind
     case sortBySize
     case sortByModified
     case sortAscending

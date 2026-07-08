@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 protocol FileSystemServicing {
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem]
@@ -29,6 +30,7 @@ final class FileSystemService: FileSystemServicing {
                 .creationDateKey,
                 .contentModificationDateKey,
                 .localizedTypeDescriptionKey,
+                .contentTypeKey,
                 .isPackageKey
             ]
             let urls = try self.fileManager.contentsOfDirectory(
@@ -62,6 +64,7 @@ final class FileSystemService: FileSystemServicing {
             .creationDateKey,
             .contentModificationDateKey,
             .localizedTypeDescriptionKey,
+            .contentTypeKey,
             .isPackageKey
         ])
         let attributes = try? fileManager.attributesOfItem(atPath: url.path)
@@ -83,6 +86,12 @@ final class FileSystemService: FileSystemServicing {
         }
 
         let filename = values.name ?? url.lastPathComponent
+        let typeDescription = Self.typeDescription(
+            for: url,
+            values: values,
+            fileType: type,
+            isDirectory: isDirectory
+        )
         let size = measuredSize(for: url, isDirectory: isDirectory, isSymbolicLink: isLink)
         return FileItem(
             url: url,
@@ -99,9 +108,41 @@ final class FileSystemService: FileSystemServicing {
             posixPermissions: permissions,
             owner: owner,
             group: group,
-            localizedTypeDescription: values.localizedTypeDescription ?? (isDirectory ? "Folder" : "File"),
+            typeDescription: typeDescription,
+            localizedTypeDescription: typeDescription,
             icon: .fileIcon(for: url)
         )
+    }
+
+    private static func typeDescription(
+        for url: URL,
+        values: URLResourceValues,
+        fileType: FileItemType,
+        isDirectory: Bool
+    ) -> String {
+        if let localizedTypeDescription = values.localizedTypeDescription, !localizedTypeDescription.isEmpty {
+            return localizedTypeDescription
+        }
+
+        if fileType == .symbolicLink {
+            return "Alias"
+        }
+        if fileType == .package {
+            return "Package"
+        }
+        if isDirectory {
+            return "Folder"
+        }
+
+        let typeIdentifier = values.contentType?.identifier
+            ?? UTType(filenameExtension: url.pathExtension)?.identifier
+        if let typeIdentifier,
+           let workspaceDescription = NSWorkspace.shared.localizedDescription(forType: typeIdentifier),
+           !workspaceDescription.isEmpty {
+            return workspaceDescription
+        }
+
+        return "File"
     }
 
     private func measuredSize(for url: URL, isDirectory: Bool, isSymbolicLink: Bool) -> Int64 {
@@ -133,6 +174,11 @@ final class FileSystemService: FileSystemServicing {
             switch descriptor.key {
             case .name:
                 ordered = lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+            case .kind:
+                let kindComparison = lhs.typeDescription.localizedStandardCompare(rhs.typeDescription)
+                ordered = kindComparison == .orderedSame
+                    ? lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+                    : kindComparison == .orderedAscending
             case .size:
                 ordered = lhs.size == rhs.size
                     ? lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending

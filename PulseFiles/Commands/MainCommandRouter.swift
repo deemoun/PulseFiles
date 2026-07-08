@@ -98,7 +98,7 @@ struct MainCommandRouter {
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
-        case .refresh, .toggleHiddenFiles, .sortByName, .sortBySize, .sortByModified, .sortAscending, .sortDescending, .back, .forward, .parent:
+        case .refresh, .toggleHiddenFiles, .sortByName, .sortByKind, .sortBySize, .sortByModified, .sortAscending, .sortDescending, .back, .forward, .parent:
             return .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
         default:
             return .enabled(command: command)

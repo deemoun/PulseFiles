@@ -52,6 +52,7 @@ final class TestFileSystem: FileSystemServicing {
             posixPermissions: nil,
             owner: nil,
             group: nil,
+            typeDescription: isDirectory ? "Folder" : "File",
             localizedTypeDescription: isDirectory ? "Folder" : "File",
             icon: NSImage()
         )

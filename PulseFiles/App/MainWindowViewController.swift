@@ -314,6 +314,8 @@ final class MainWindowViewController: NSViewController {
             targetPane().toggleHiddenFiles()
         case .sortByName:
             targetPane().setSort(.name)
+        case .sortByKind:
+            targetPane().setSort(.kind)
         case .sortBySize:
             targetPane().setSort(.size)
         case .sortByModified:
@@ -702,6 +704,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         menu.addItem(menuItem("Show Hidden Files".localized, action: #selector(menuToggleHiddenFiles(_:)), key: "", modifiers: []))
         menu.addItem(.separator())
         menu.addItem(menuItem("Sort by Name".localized, action: #selector(menuSortByName(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Kind".localized, action: #selector(menuSortByKind(_:)), key: "", modifiers: []))
         menu.addItem(menuItem("Sort by Size".localized, action: #selector(menuSortBySize(_:)), key: "", modifiers: []))
         menu.addItem(menuItem("Sort by Modified".localized, action: #selector(menuSortByModified(_:)), key: "", modifiers: []))
         menu.addItem(.separator())
@@ -1561,6 +1564,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuReveal(_ sender: Any?) { performCommand(.reveal) }
     @objc func menuToggleHiddenFiles(_ sender: Any?) { performCommand(.toggleHiddenFiles) }
     @objc func menuSortByName(_ sender: Any?) { performCommand(.sortByName) }
+    @objc func menuSortByKind(_ sender: Any?) { performCommand(.sortByKind) }
     @objc func menuSortBySize(_ sender: Any?) { performCommand(.sortBySize) }
     @objc func menuSortByModified(_ sender: Any?) { performCommand(.sortByModified) }
     @objc func menuSortAscending(_ sender: Any?) { performCommand(.sortAscending) }
@@ -1618,6 +1622,10 @@ extension MainWindowViewController: NSMenuItemValidation {
         let sort = targetPane().sortDescriptor
         if menuItem.action == #selector(menuSortByName(_:)) {
             menuItem.state = sort.key == .name ? .on : .off
+            return true
+        }
+        if menuItem.action == #selector(menuSortByKind(_:)) {
+            menuItem.state = sort.key == .kind ? .on : .off
             return true
         }
         if menuItem.action == #selector(menuSortBySize(_:)) {
