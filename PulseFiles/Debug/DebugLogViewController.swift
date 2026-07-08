@@ -30,8 +30,8 @@ final class DebugLogViewController: NSViewController {
     private var selectedLevel: DiagnosticLogLevel?
     private var selectedCategory: String?
 
-    init(logService: DiagnosticLogService = .shared) {
-        self.logService = logService
+    init(logService: DiagnosticLogService? = nil) {
+        self.logService = logService ?? .shared
         super.init(nibName: nil, bundle: nil)
         preferredContentSize = NSSize(width: 900, height: 520)
     }
@@ -175,7 +175,9 @@ final class DebugLogViewController: NSViewController {
     private func rebuildLevelFilter() {
         levelFilter.removeAllItems()
         levelFilter.addItem(withTitle: "All Levels".localized)
-        DiagnosticLogLevel.allCases.forEach { levelFilter.addItem(withTitle: level.displayName) }
+        DiagnosticLogLevel.allCases.forEach { level in
+            levelFilter.addItem(withTitle: level.displayName)
+        }
     }
 
     private func rebuildCategoryFilter() {
@@ -183,7 +185,9 @@ final class DebugLogViewController: NSViewController {
         categoryFilter.removeAllItems()
         categoryFilter.addItem(withTitle: "All Categories".localized)
         let categories = Set(allEntries.map(\.category)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-        categories.forEach { categoryFilter.addItem(withTitle: category) }
+        categories.forEach { category in
+            categoryFilter.addItem(withTitle: category)
+        }
         if let previousCategory, categories.contains(previousCategory) {
             selectedCategory = previousCategory
             categoryFilter.selectItem(withTitle: previousCategory)

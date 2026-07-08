@@ -24,7 +24,6 @@ final class DiagnosticLogService {
     static let shared = DiagnosticLogService()
     static let entriesDidChangeNotification = Notification.Name("DiagnosticLogServiceEntriesDidChange")
 
-    private static let defaultMaximumEntryCount = 750
     private static let maximumMessageLength = 2_000
     private static let redactedValue = "[redacted]"
     private static let sensitiveKeyFragments = [
@@ -45,7 +44,7 @@ final class DiagnosticLogService {
     private(set) var entries: [DiagnosticLogEntry] = []
 
     init(
-        maximumEntryCount: Int = defaultMaximumEntryCount,
+        maximumEntryCount: Int = 750,
         dateProvider: @escaping () -> Date = Date.init,
         idProvider: @escaping () -> UUID = UUID.init
     ) {
