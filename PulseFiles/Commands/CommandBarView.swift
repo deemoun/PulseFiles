@@ -27,8 +27,11 @@ final class CommandBarView: NSVisualEffectView {
         stack.setAccessibilityIdentifier(AccessibilityIdentifiers.CommandBar.list)
         stack.orientation = .horizontal
         stack.spacing = 8
-        stack.distribution = .fillEqually
+        stack.distribution = .gravityAreas
+        stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         operationStatusLabel.font = .systemFont(ofSize: 12, weight: .medium)
         operationStatusLabel.textColor = .secondaryLabelColor
@@ -115,14 +118,21 @@ final class CommandBarView: NSVisualEffectView {
         let actions: [CommandBarAction] = [.rename, .view, .edit, .copy, .move, isShowingShiftActions ? .newFile : .newFolder, .delete]
         for action in actions {
             let button = NSButton(title: "\(action.shortcut)  \(action.title)", target: self, action: #selector(runAction(_:)))
-            LiquidGlassStyle.applyButtonChrome(to: button)
+            if action.isDestructive {
+                LiquidGlassStyle.applyDestructiveButtonChrome(to: button)
+            } else {
+                LiquidGlassStyle.applyButtonChrome(to: button)
+            }
             button.font = .systemFont(ofSize: 12, weight: .medium)
             button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
             button.setAccessibilityIdentifier("\(AccessibilityIdentifiers.CommandBar.field).\(action.rawValue)")
-            button.lineBreakMode = .byTruncatingTail
-            button.toolTip = action.rawValue
+            button.lineBreakMode = .byClipping
+            button.toolTip = action.localizedTooltip
             button.setButtonType(.momentaryPushIn)
+            button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
             stack.addArrangedSubview(button)
+            stack.setVisibilityPriority(action.commandBarVisibilityPriority, for: button)
         }
     }
 
@@ -136,5 +146,32 @@ final class CommandBarView: NSVisualEffectView {
             let action = CommandBarAction(rawValue: value)
         else { return }
         onAction?(action)
+    }
+}
+
+
+extension CommandBarAction {
+    var isDestructive: Bool {
+        switch self {
+        case .delete:
+            return true
+        case .rename, .view, .edit, .copy, .move, .newFolder, .newFile, .cancelOperation:
+            return false
+        }
+    }
+
+    var localizedTooltip: String {
+        "\(title) (\(shortcut))"
+    }
+
+    var commandBarVisibilityPriority: NSStackView.VisibilityPriority {
+        switch self {
+        case .view, .copy, .move, .delete:
+            return .mustHold
+        case .rename, .edit, .newFolder, .newFile:
+            return .detachOnlyIfNecessary
+        case .cancelOperation:
+            return .mustHold
+        }
     }
 }
