@@ -78,6 +78,7 @@ final class PaneContentOverlayView: NSVisualEffectView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
     private let actionStack = NSStackView()
+    private var passesEmptyStateEventsThrough = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -130,6 +131,10 @@ final class PaneContentOverlayView: NSVisualEffectView {
         nil
     }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        passesEmptyStateEventsThrough ? nil : super.hitTest(point)
+    }
+
     func configure(paneID: PaneID, isLoading: Bool, visibleItems: [FileItem], errorMessage: String?, actions: [PaneStatusView.Action]) {
         setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.contentOverlay(for: paneID))
         titleLabel.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.contentOverlayTitle(for: paneID))
@@ -137,6 +142,7 @@ final class PaneContentOverlayView: NSVisualEffectView {
         configureActions(actions, paneID: paneID)
 
         if isLoading {
+            passesEmptyStateEventsThrough = false
             isHidden = false
             spinner.startAnimation(nil)
             spinner.isHidden = false
@@ -150,6 +156,7 @@ final class PaneContentOverlayView: NSVisualEffectView {
         spinner.isHidden = true
 
         if let errorMessage, !errorMessage.isEmpty {
+            passesEmptyStateEventsThrough = false
             isHidden = false
             titleLabel.stringValue = "Unable to read folder".localized
             detailLabel.stringValue = errorMessage
@@ -158,6 +165,7 @@ final class PaneContentOverlayView: NSVisualEffectView {
         }
 
         if visibleItems.isEmpty {
+            passesEmptyStateEventsThrough = true
             isHidden = false
             titleLabel.stringValue = "This folder is empty".localized
             detailLabel.stringValue = ""
@@ -165,6 +173,7 @@ final class PaneContentOverlayView: NSVisualEffectView {
             return
         }
 
+        passesEmptyStateEventsThrough = false
         isHidden = true
         titleLabel.stringValue = ""
         detailLabel.stringValue = ""
