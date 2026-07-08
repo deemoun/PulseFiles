@@ -49,6 +49,7 @@
 "Completed: %d" = "Completed: %d";
 "Compressed archives such as zip, tar, gz, rar, 7z, and xz." = "Compressed archives such as zip, tar, gz, rar, 7z, and xz.";
 "Configure PulseFiles defaults, startup folders, file operations, category colors, and debug safeguards." = "Configure PulseFiles defaults, startup folders, file operations, category colors, and debug safeguards.";
+"Configure PulseFiles defaults, startup folders, file operations, and category colors." = "Configure PulseFiles defaults, startup folders, file operations, and category colors.";
 "Confirm copy operations" = "Confirm copy operations";
 "Confirm delete operations" = "Confirm delete operations";
 "Confirm move operations" = "Confirm move operations";

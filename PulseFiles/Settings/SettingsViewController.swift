@@ -6,7 +6,9 @@ final class SettingsViewController: NSViewController {
         case folders
         case operations
         case colors
+#if DEBUG
         case debug
+#endif
 
         var title: String {
             switch self {
@@ -14,7 +16,9 @@ final class SettingsViewController: NSViewController {
             case .folders: return "Folders".localized
             case .operations: return "Operations".localized
             case .colors: return "Colors".localized
+#if DEBUG
             case .debug: return "Debug".localized
+#endif
             }
         }
 
@@ -24,7 +28,9 @@ final class SettingsViewController: NSViewController {
             case .folders: return "folder"
             case .operations: return "arrow.left.arrow.right"
             case .colors: return "paintpalette"
+#if DEBUG
             case .debug: return "ladybug"
+#endif
             }
         }
     }
@@ -42,7 +48,9 @@ final class SettingsViewController: NSViewController {
     private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations".localized, target: nil, action: nil)
     private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations".localized, target: nil, action: nil)
     private let permanentDeleteCheckbox = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash".localized, target: nil, action: nil)
+#if DEBUG
     private let experimentalSandboxCheckbox = NSButton(checkboxWithTitle: "Restrict browsing and file operations to the experimental sandbox".localized, target: nil, action: nil)
+#endif
     private let sidebarWidthSlider = NSSlider(value: 260, minValue: 220, maxValue: 340, target: nil, action: nil)
     private let sidebarWidthLabel = NSTextField(labelWithString: "260 pt")
     private let leftDirectoryField = NSTextField()
@@ -85,7 +93,12 @@ final class SettingsViewController: NSViewController {
         title.font = .preferredFont(forTextStyle: .largeTitle)
         title.setContentHuggingPriority(.required, for: .vertical)
 
-        let subtitle = NSTextField(wrappingLabelWithString: "Configure PulseFiles defaults, startup folders, file operations, category colors, and debug safeguards.".localized)
+#if DEBUG
+        let subtitleText = "Configure PulseFiles defaults, startup folders, file operations, category colors, and debug safeguards.".localized
+#else
+        let subtitleText = "Configure PulseFiles defaults, startup folders, file operations, and category colors.".localized
+#endif
+        let subtitle = NSTextField(wrappingLabelWithString: subtitleText)
         subtitle.textColor = .secondaryLabelColor
         subtitle.setContentHuggingPriority(.required, for: .vertical)
 
@@ -97,7 +110,11 @@ final class SettingsViewController: NSViewController {
         headerStack.spacing = 4
         headerStack.translatesAutoresizingMaskIntoConstraints = false
 
-        [liquidGlassCheckbox, sidebarCheckbox, terminalEnabledCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox, experimentalSandboxCheckbox].forEach {
+        var changeControls = [liquidGlassCheckbox, sidebarCheckbox, terminalEnabledCheckbox, terminalCheckbox, singlePaneCheckbox, hiddenFilesCheckbox, confirmCopyCheckbox, confirmMoveCheckbox, confirmDeleteCheckbox, permanentDeleteCheckbox]
+#if DEBUG
+        changeControls.append(experimentalSandboxCheckbox)
+#endif
+        changeControls.forEach {
             $0.target = self
             $0.action = #selector(controlChanged(_:))
         }
@@ -280,6 +297,7 @@ final class SettingsViewController: NSViewController {
             return [
                 fileColorPaletteView()
             ]
+#if DEBUG
         case .debug:
             return [
                 settingsSection(
@@ -290,6 +308,7 @@ final class SettingsViewController: NSViewController {
                     ]
                 )
             ]
+#endif
         }
     }
 
@@ -303,6 +322,7 @@ final class SettingsViewController: NSViewController {
         return label
     }
 
+#if DEBUG
     private func sandboxRestrictionStatusView() -> NSView {
         let rootPath = ExperimentalFlags.appSandboxRoot.path
         let title = settings.experimentalSandboxEnabled
@@ -345,6 +365,7 @@ final class SettingsViewController: NSViewController {
 
         return box
     }
+#endif
 
     private func sidebarWidthRow() -> NSStackView {
         let row = NSStackView(views: [NSTextField(labelWithString: "Sidebar width".localized), sidebarWidthSlider, sidebarWidthLabel])
@@ -491,7 +512,9 @@ final class SettingsViewController: NSViewController {
         confirmMoveCheckbox.state = settings.confirmMoveOperations ? .on : .off
         confirmDeleteCheckbox.state = settings.confirmDeleteOperations ? .on : .off
         permanentDeleteCheckbox.state = settings.permanentlyDeleteInsteadOfTrash ? .on : .off
+#if DEBUG
         experimentalSandboxCheckbox.state = settings.experimentalSandboxEnabled ? .on : .off
+#endif
         sidebarWidthSlider.doubleValue = settings.preferredSidebarWidth
         updateSidebarWidthLabel()
         updateDirectoryFields()
@@ -560,14 +583,18 @@ final class SettingsViewController: NSViewController {
         settings.confirmMoveOperations = confirmMoveCheckbox.state == .on
         settings.confirmDeleteOperations = confirmDeleteCheckbox.state == .on
         settings.permanentlyDeleteInsteadOfTrash = permanentDeleteCheckbox.state == .on
+#if DEBUG
         let previousSandboxState = settings.experimentalSandboxEnabled
         settings.experimentalSandboxEnabled = experimentalSandboxCheckbox.state == .on
+#endif
         settings.preferredSidebarWidth = sidebarWidthSlider.doubleValue
         updateSidebarWidthLabel()
+#if DEBUG
         if previousSandboxState != settings.experimentalSandboxEnabled {
             ExperimentalFlags.ensureAppSandboxRootExists()
             rebuildSettingsPage()
         }
+#endif
         onChange?()
     }
 
