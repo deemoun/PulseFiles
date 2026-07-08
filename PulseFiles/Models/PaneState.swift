@@ -11,6 +11,7 @@ enum PaneID: Equatable {
 
 enum FileSortKey: String, Codable {
     case name
+    case kind
     case size
     case modified
 }

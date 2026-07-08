@@ -80,6 +80,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
             posixPermissions: permissions,
             owner: owner,
             group: group,
+            typeDescription: localizedType,
             localizedTypeDescription: localizedType,
             icon: NSImage()
         )

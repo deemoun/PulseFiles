@@ -16,6 +16,7 @@ struct FileItem: Identifiable, Equatable {
     let posixPermissions: Int?
     let owner: String?
     let group: String?
+    let typeDescription: String
     let localizedTypeDescription: String
     let icon: NSImage
 

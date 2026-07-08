@@ -201,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(.separator())
         let sortSubmenu = NSMenu(title: "Sort By".localized)
         sortSubmenu.addItem(menuItem("Name".localized, action: #selector(MainWindowViewController.menuSortByName(_:)), key: "", modifiers: []))
+        sortSubmenu.addItem(menuItem("Kind".localized, action: #selector(MainWindowViewController.menuSortByKind(_:)), key: "", modifiers: []))
         sortSubmenu.addItem(menuItem("Size".localized, action: #selector(MainWindowViewController.menuSortBySize(_:)), key: "", modifiers: []))
         sortSubmenu.addItem(menuItem("Modified".localized, action: #selector(MainWindowViewController.menuSortByModified(_:)), key: "", modifiers: []))
         let sortItem = NSMenuItem(title: "Sort By".localized, action: nil, keyEquivalent: "")

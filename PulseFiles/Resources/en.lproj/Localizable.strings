@@ -175,11 +175,13 @@
 "Show terminal by default" = "Show terminal by default";
 "Sidebar" = "Sidebar";
 "Sidebar width" = "Sidebar width";
+"Kind" = "Kind";
 "Size" = "Size";
 "Skip" = "Skip";
 "Skipped: %d" = "Skipped: %d";
 "Sort By" = "Sort By";
 "Sort Direction" = "Sort Direction";
+"Sort by Kind" = "Sort by Kind";
 "Sort by Modified" = "Sort by Modified";
 "Sort by Name" = "Sort by Name";
 "Sort by Size" = "Sort by Size";

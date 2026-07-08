@@ -203,6 +203,7 @@ final class FilePaneViewController: NSViewController {
         tableView.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
 
         addColumn(identifier: "name", title: "Name", width: 360)
+        addColumn(identifier: "kind", title: "Kind", width: 140)
         addColumn(identifier: "size", title: "Size", width: 90)
         addColumn(identifier: "modified", title: "Modified", width: 170)
 
@@ -505,6 +506,8 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
         switch tableColumn.identifier.rawValue {
+        case "kind":
+            setSort(.kind)
         case "size":
             setSort(.size)
         case "modified":
@@ -654,6 +657,8 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             return item.displayName
         case "size":
             return Self.sizeDisplayString(for: item)
+        case "kind":
+            return item.typeDescription
         case "modified":
             return item.modificationDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
         default:
