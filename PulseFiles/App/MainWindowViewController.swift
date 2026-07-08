@@ -1721,10 +1721,6 @@ extension MainWindowViewController: NSMenuItemValidation {
         }
         if menuItem.action == #selector(menuMoveToTrash(_:)) {
             menuItem.title = settings.permanentlyDeleteInsteadOfTrash ? "Permanently Delete".localized : "Move to Trash".localized
-            return true
-        }
-        if menuItem.action == #selector(menuCancelOperation(_:)) {
-            return isFileOperationActive
         }
         let sort = targetPane().sortDescriptor
         if menuItem.action == #selector(menuSortByName(_:)) {
@@ -1752,7 +1748,83 @@ extension MainWindowViewController: NSMenuItemValidation {
             return true
         }
         menuItem.state = .off
+        guard let command = MainCommand(menuAction: menuItem.action) else { return true }
+        if case .disabled = MainCommandRouter().route(command, in: currentRoutingState()) {
+            return false
+        }
         return true
+    }
+
+    private func currentRoutingState() -> MainCommandRoutingState {
+        let leftSelectedURLs = leftPane.selectedItems.map(\.url)
+        let rightSelectedURLs = rightPane.selectedItems.map(\.url)
+        let leftFocusedURL = leftPane.focusedItem?.url
+        let rightFocusedURL = rightPane.focusedItem?.url
+        let activeSelectedURLs = activePaneID == .left ? leftSelectedURLs : rightSelectedURLs
+        let activeFocusedURL = activePaneID == .left ? leftFocusedURL : rightFocusedURL
+        let activeURLs = activeSelectedURLs + [activeFocusedURL].compactMap { $0 }
+        let sandboxAllowsSelectedURLs = activeURLs.allSatisfy { accessPolicy.canAccess($0) }
+
+        return MainCommandRoutingState(
+            activePaneID: activePaneID,
+            leftPane: MainCommandRoutingPane(
+                id: .left,
+                currentDirectory: leftPane.currentDirectory,
+                selectedURLs: leftSelectedURLs,
+                focusedURL: leftFocusedURL
+            ),
+            rightPane: MainCommandRoutingPane(
+                id: .right,
+                currentDirectory: rightPane.currentDirectory,
+                selectedURLs: rightSelectedURLs,
+                focusedURL: rightFocusedURL
+            ),
+            isFileOperationActive: isFileOperationActive,
+            sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs
+        )
+    }
+}
+
+private extension MainCommand {
+    init?(menuAction: Selector?) {
+        guard let menuAction else { return nil }
+        switch menuAction {
+        case #selector(MainWindowViewController.menuNewFile(_:)): self = .newFile
+        case #selector(MainWindowViewController.menuNewFolder(_:)): self = .newFolder
+        case #selector(MainWindowViewController.menuRename(_:)): self = .rename
+        case #selector(MainWindowViewController.menuOpenWith(_:)): self = .openWith
+        case #selector(MainWindowViewController.menuCopy(_:)): self = .copy
+        case #selector(MainWindowViewController.menuMove(_:)): self = .move
+        case #selector(MainWindowViewController.menuCopyToClipboard(_:)): self = .copyToClipboard
+        case #selector(MainWindowViewController.menuCutToClipboard(_:)): self = .cutToClipboard
+        case #selector(MainWindowViewController.menuPasteFromClipboard(_:)): self = .pasteFromClipboard
+        case #selector(MainWindowViewController.menuMoveToTrash(_:)): self = .trash
+        case #selector(MainWindowViewController.menuRefresh(_:)): self = .refresh
+        case #selector(MainWindowViewController.menuReveal(_:)): self = .reveal
+        case #selector(MainWindowViewController.menuToggleHiddenFiles(_:)): self = .toggleHiddenFiles
+        case #selector(MainWindowViewController.menuSortByName(_:)): self = .sortByName
+        case #selector(MainWindowViewController.menuSortByKind(_:)): self = .sortByKind
+        case #selector(MainWindowViewController.menuSortBySize(_:)): self = .sortBySize
+        case #selector(MainWindowViewController.menuSortByModified(_:)): self = .sortByModified
+        case #selector(MainWindowViewController.menuSortAscending(_:)): self = .sortAscending
+        case #selector(MainWindowViewController.menuSortDescending(_:)): self = .sortDescending
+        case #selector(MainWindowViewController.menuToggleTerminal(_:)): self = .toggleTerminal
+        case #selector(MainWindowViewController.menuToggleSidebar(_:)): self = .toggleSidebar
+        case #selector(MainWindowViewController.menuTogglePaneLayout(_:)): self = .togglePaneLayout
+        case #selector(MainWindowViewController.menuBack(_:)): self = .back
+        case #selector(MainWindowViewController.menuForward(_:)): self = .forward
+        case #selector(MainWindowViewController.menuParent(_:)): self = .parent
+        case #selector(MainWindowViewController.menuGoToFolder(_:)): self = .goToFolder
+        case #selector(MainWindowViewController.menuHome(_:)): self = .home
+        case #selector(MainWindowViewController.menuDownloads(_:)): self = .downloads
+        case #selector(MainWindowViewController.menuApplications(_:)): self = .applications
+        case #selector(MainWindowViewController.menuSwitchPane(_:)): self = .switchPane
+        case #selector(MainWindowViewController.menuFocusLeftPane(_:)): self = .focusLeftPane
+        case #selector(MainWindowViewController.menuFocusRightPane(_:)): self = .focusRightPane
+        case #selector(MainWindowViewController.menuCancelOperation(_:)): self = .cancelOperation
+        case #selector(MainWindowViewController.menuShowDebugLogs(_:)): self = .debugLogs
+        default: return nil
+        }
     }
 }
 
