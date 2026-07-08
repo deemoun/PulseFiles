@@ -83,6 +83,47 @@ final class SandboxFileAccessPolicyTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: fixture.allowedDirectory.appendingPathComponent(externalFile.lastPathComponent)), "external")
     }
 
+    func testSandboxEnabledAllowsOnlySandboxRootDescendants() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let descendant = fixture.root.appendingPathComponent("Nested/Allowed", isDirectory: true)
+        let outside = fixture.externalDirectory
+
+        XCTAssertTrue(fixture.policy.canAccess(fixture.root))
+        XCTAssertTrue(fixture.policy.canAccess(descendant))
+        XCTAssertFalse(fixture.policy.canAccess(outside))
+    }
+
+    func testSandboxDisabledDoesNotAutomaticallyAllowInaccessiblePaths() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let inaccessible = fixture.root
+            .deletingLastPathComponent()
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+        XCTAssertFalse(fixture.unrestrictedPolicy.canAccess(inaccessible))
+        XCTAssertThrowsError(try fixture.unrestrictedPolicy.validateAccess(to: inaccessible)) { error in
+            guard case SandboxAccessError.unauthorized(let rejectedURL) = error else {
+                return XCTFail("Expected unauthorized access error, got \(error)")
+            }
+            XCTAssertEqual(rejectedURL, inaccessible)
+        }
+    }
+
+    func testRejectedPathsPreserveAllowedFallbackDirectory() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let rejected = fixture.externalDirectory
+
+        XCTAssertEqual(fixture.policy.validatedDirectory(rejected, fallback: fixture.allowedDirectory), fixture.allowedDirectory)
+    }
+
+    func testAlreadyReadableTemporaryDirectoriesRemainAccessibleWhenSandboxIsDisabled() throws {
+        let temporaryDirectory = try TemporaryDirectoryFixture(named: "PulseFilesReadableAccessTests", testCase: self)
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot)
+
+        XCTAssertTrue(policy.canAccess(temporaryDirectory.root))
+        XCTAssertNoThrow(try policy.validateAccess(to: temporaryDirectory.root))
+        XCTAssertEqual(policy.validatedDirectory(temporaryDirectory.root), temporaryDirectory.root)
+    }
+
     func testFileOperationPreflightRejectsSourceURLThatFailsPolicyValidation() async throws {
         let fixture = try SandboxFixture(testCase: self)
         let outside = try fixture.externalFile("OutsideSource.txt", contents: "outside")

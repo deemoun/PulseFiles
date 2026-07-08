@@ -80,7 +80,7 @@ final class FilePaneViewModel {
     }
 
     func navigate(to url: URL) {
-        let validatedURL = accessPolicy.validatedDirectory(url)
+        let validatedURL = accessPolicy.validatedDirectory(url, fallback: state.currentDirectory)
         if validatedURL != url {
             DiagnosticLogger.log(.warning, category: "FilePane", "Rejected navigation outside sandbox: requested=\(DiagnosticLogger.sanitizedPath(url)); redirected=\(DiagnosticLogger.sanitizedPath(validatedURL))")
         }
@@ -108,7 +108,7 @@ final class FilePaneViewModel {
         guard let failedDirectory = loadFailure?.directory else { return }
         let parent = failedDirectory.deletingLastPathComponent()
         guard parent != failedDirectory else { return }
-        navigate(to: accessPolicy.validatedDirectory(parent))
+        navigate(to: accessPolicy.validatedDirectory(parent, fallback: state.currentDirectory))
     }
 
     func goBack() {
