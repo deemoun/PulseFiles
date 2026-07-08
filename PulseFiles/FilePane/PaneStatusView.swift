@@ -73,6 +73,121 @@ final class PaneStatusView: NSVisualEffectView {
     }
 }
 
+final class PaneContentOverlayView: NSVisualEffectView {
+    private let spinner = NSProgressIndicator()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let detailLabel = NSTextField(labelWithString: "")
+    private let actionStack = NSStackView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = .hudWindow
+        blendingMode = .withinWindow
+        state = .active
+        isHidden = true
+        wantsLayer = true
+        layer?.cornerRadius = 12
+
+        spinner.style = .spinning
+        spinner.controlSize = .regular
+        spinner.isDisplayedWhenStopped = false
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.textColor = LiquidGlassStyle.label
+        titleLabel.alignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        detailLabel.font = .systemFont(ofSize: 12)
+        detailLabel.textColor = LiquidGlassStyle.secondaryLabel
+        detailLabel.alignment = .center
+        detailLabel.lineBreakMode = .byWordWrapping
+        detailLabel.maximumNumberOfLines = 3
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        actionStack.orientation = .horizontal
+        actionStack.alignment = .centerY
+        actionStack.spacing = 8
+        actionStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [spinner, titleLabel, detailLabel, actionStack])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
+            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func configure(paneID: PaneID, isLoading: Bool, visibleItems: [FileItem], errorMessage: String?, actions: [PaneStatusView.Action]) {
+        setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.contentOverlay(for: paneID))
+        titleLabel.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.contentOverlayTitle(for: paneID))
+        spinner.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.loadingIndicator(for: paneID))
+        configureActions(actions, paneID: paneID)
+
+        if isLoading {
+            isHidden = false
+            spinner.startAnimation(nil)
+            spinner.isHidden = false
+            titleLabel.stringValue = "Loading...".localized
+            detailLabel.stringValue = ""
+            actionStack.isHidden = true
+            return
+        }
+
+        spinner.stopAnimation(nil)
+        spinner.isHidden = true
+
+        if let errorMessage, !errorMessage.isEmpty {
+            isHidden = false
+            titleLabel.stringValue = "Unable to read folder".localized
+            detailLabel.stringValue = errorMessage
+            actionStack.isHidden = actions.isEmpty
+            return
+        }
+
+        if visibleItems.isEmpty {
+            isHidden = false
+            titleLabel.stringValue = "This folder is empty".localized
+            detailLabel.stringValue = ""
+            actionStack.isHidden = true
+            return
+        }
+
+        isHidden = true
+        titleLabel.stringValue = ""
+        detailLabel.stringValue = ""
+        actionStack.isHidden = true
+    }
+
+    private func configureActions(_ actions: [PaneStatusView.Action], paneID: PaneID) {
+        actionStack.arrangedSubviews.forEach { view in
+            actionStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        actions.enumerated().forEach { index, action in
+            let button = ClosureButton(title: action.title, handler: action.handler)
+            button.bezelStyle = .rounded
+            button.controlSize = .regular
+            button.font = .systemFont(ofSize: 12)
+            button.setAccessibilityLabel(action.accessibilityLabel)
+            button.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.contentOverlayAction(for: paneID, index: index))
+            actionStack.addArrangedSubview(button)
+        }
+    }
+}
+
 private final class ClosureButton: NSButton {
     private let handler: () -> Void
 
