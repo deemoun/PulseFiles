@@ -49,6 +49,7 @@ final class FilePaneViewController: NSViewController {
     private let directoryIcon = NSImageView()
     private let hiddenButton = NSButton()
     private let scrollView = NSScrollView()
+    private let contentOverlay = PaneContentOverlayView()
     private let statusView = PaneStatusView()
     private let activeStripe = NSView()
     private var isReloadingData = false
@@ -257,7 +258,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func buildLayout() {
-        [header, scrollView, statusView, activeStripe].forEach {
+        [header, scrollView, contentOverlay, statusView, activeStripe].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview($0)
         }
@@ -292,6 +293,11 @@ final class FilePaneViewController: NSViewController {
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
             scrollView.bottomAnchor.constraint(equalTo: statusView.topAnchor),
+
+            contentOverlay.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            contentOverlay.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            contentOverlay.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            contentOverlay.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
 
             statusView.leadingAnchor.constraint(equalTo: activeStripe.trailingAnchor),
             statusView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -357,6 +363,7 @@ final class FilePaneViewController: NSViewController {
             selectDefaultRow()
         }
         configureStatusView()
+        configureContentOverlay()
         onSelectionChanged?(selectedItems)
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files".localized)
@@ -404,16 +411,27 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func configureStatusView() {
+        let actions = recoveryActions()
         statusView.configure(
             items: viewModel.visibleItems,
             selectedItems: selectedItems,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
-            actions: statusActions()
+            actions: actions
         )
     }
 
-    private func statusActions() -> [PaneStatusView.Action] {
+    private func configureContentOverlay() {
+        contentOverlay.configure(
+            paneID: paneID,
+            isLoading: viewModel.isLoading,
+            visibleItems: viewModel.visibleItems,
+            errorMessage: viewModel.errorMessage,
+            actions: recoveryActions()
+        )
+    }
+
+    private func recoveryActions() -> [PaneStatusView.Action] {
         guard let loadFailure = viewModel.loadFailure, !viewModel.isLoading else { return [] }
         if loadFailure.isOutsideSandbox {
             return [
@@ -540,6 +558,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         reloadRowsForSelectionColorChange()
         configureStatusView()
+        configureContentOverlay()
         onSelectionChanged?(selectedItems)
         if !isReloadingData {
             onActivate?()

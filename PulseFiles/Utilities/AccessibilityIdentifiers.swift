@@ -10,6 +10,12 @@ enum AccessibilityIdentifiers {
         static let rightTable = "pulsefiles.pane.right.table"
         static let leftBreadcrumb = "pulsefiles.pane.left.breadcrumb"
         static let rightBreadcrumb = "pulsefiles.pane.right.breadcrumb"
+        static let leftContentOverlay = "pulsefiles.pane.left.contentOverlay"
+        static let rightContentOverlay = "pulsefiles.pane.right.contentOverlay"
+        static let leftContentOverlayTitle = "pulsefiles.pane.left.contentOverlay.title"
+        static let rightContentOverlayTitle = "pulsefiles.pane.right.contentOverlay.title"
+        static let leftLoadingIndicator = "pulsefiles.pane.left.contentOverlay.loadingIndicator"
+        static let rightLoadingIndicator = "pulsefiles.pane.right.contentOverlay.loadingIndicator"
 
         static func container(for paneID: PaneID) -> String {
             paneID == .left ? left : right
@@ -25,6 +31,22 @@ enum AccessibilityIdentifiers {
 
         static func breadcrumb(for paneID: PaneID) -> String {
             paneID == .left ? leftBreadcrumb : rightBreadcrumb
+        }
+
+        static func contentOverlay(for paneID: PaneID) -> String {
+            paneID == .left ? leftContentOverlay : rightContentOverlay
+        }
+
+        static func contentOverlayTitle(for paneID: PaneID) -> String {
+            paneID == .left ? leftContentOverlayTitle : rightContentOverlayTitle
+        }
+
+        static func loadingIndicator(for paneID: PaneID) -> String {
+            paneID == .left ? leftLoadingIndicator : rightLoadingIndicator
+        }
+
+        static func contentOverlayAction(for paneID: PaneID, index: Int) -> String {
+            "\(contentOverlay(for: paneID)).action.\(index)"
         }
     }
 
