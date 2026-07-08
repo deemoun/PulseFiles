@@ -150,6 +150,8 @@ protocol FileOperationServicing {
     func copy(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func move(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func createFolder(named rawName: String, in directory: URL) throws -> URL
+    func createFile(named rawName: String, in directory: URL) throws -> URL
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
 }
@@ -161,6 +163,7 @@ protocol FileOperationFileManaging {
     func moveItem(at srcURL: URL, to dstURL: URL) throws
     func removeItem(at URL: URL) throws
     func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws
+    func createEmptyFile(at url: URL) throws
     func trashItem(at url: URL, resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws
     func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: FileManager.DirectoryEnumerationOptions) throws -> [URL]
 }
@@ -168,6 +171,10 @@ protocol FileOperationFileManaging {
 extension FileManager: FileOperationFileManaging {
     func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
         try createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: nil)
+    }
+
+    func createEmptyFile(at url: URL) throws {
+        try Data().write(to: url, options: .withoutOverwriting)
     }
 }
 
@@ -276,6 +283,30 @@ final class FileOperationService: FileOperationServicing {
             let result = FileOperationResult(completedItems: [], skippedItems: [], failedItems: [FileOperationItemFailure(url: source, error: error)], wasCancelled: false)
             logCompletion(operation: "rename", result: result)
             return result
+        }
+    }
+
+    func createFolder(named rawName: String, in directory: URL) throws -> URL {
+        let destination = try preflightCreation(rawName: rawName, in: directory, isDirectory: true)
+        DiagnosticLogger.log(.info, category: "FileOperation", "Create folder operation starting: destination=\(DiagnosticLogger.sanitizedPath(destination))")
+        do {
+            try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
+            return destination
+        } catch {
+            DiagnosticLogger.log(.error, category: "FileOperation", "Create folder operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    func createFile(named rawName: String, in directory: URL) throws -> URL {
+        let destination = try preflightCreation(rawName: rawName, in: directory, isDirectory: false)
+        DiagnosticLogger.log(.info, category: "FileOperation", "Create file operation starting: destination=\(DiagnosticLogger.sanitizedPath(destination))")
+        do {
+            try fileManager.createEmptyFile(at: destination)
+            return destination
+        } catch {
+            DiagnosticLogger.log(.error, category: "FileOperation", "Create file operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
+            throw error
         }
     }
 
@@ -719,6 +750,18 @@ final class FileOperationService: FileOperationServicing {
         }
 
         return plans
+    }
+
+    private func preflightCreation(rawName: String, in directory: URL, isDirectory: Bool) throws -> URL {
+        try validateExistingDirectory(directory)
+        try accessPolicy.validateAccess(to: directory)
+        let name = try FileNameValidator.validate(rawName, in: directory)
+        let destination = directory.appendingPathComponent(name, isDirectory: isDirectory)
+        try accessPolicy.validateAccess(to: destination)
+        guard !fileManager.fileExists(atPath: destination.path) else {
+            throw FileOperationError.destinationExists(destination)
+        }
+        return destination
     }
 
     private func preflightTransferRequest(_ request: FileOperationRequest) throws {
