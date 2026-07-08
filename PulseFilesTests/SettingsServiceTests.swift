@@ -19,18 +19,19 @@ final class SettingsServiceTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testDirectorySettingsDefaultAndRoundTrip() {
+    func testDirectorySettingsDefaultAndRoundTrip() throws {
         XCTAssertEqual(settings.lastLeftDirectory, FileManager.default.homeDirectoryForCurrentUser)
-        XCTAssertEqual(settings.lastRightDirectory, FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads"))
+        XCTAssertEqual(settings.lastRightDirectory, FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true))
         XCTAssertNil(settings.startupLeftDirectory)
         XCTAssertNil(settings.startupRightDirectory)
         XCTAssertEqual(settings.launchLeftDirectory, settings.lastLeftDirectory)
         XCTAssertEqual(settings.launchRightDirectory, settings.lastRightDirectory)
 
-        let lastLeft = ExperimentalFlags.appSandboxRoot.appendingPathComponent("Projects", isDirectory: true)
-        let lastRight = ExperimentalFlags.appSandboxRoot.appendingPathComponent("Downloads", isDirectory: true)
-        let startupLeft = ExperimentalFlags.appSandboxRoot.appendingPathComponent("Startup Left", isDirectory: true)
-        let startupRight = ExperimentalFlags.appSandboxRoot.appendingPathComponent("Startup Right", isDirectory: true)
+        let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceDirectoryTests", testCase: self)
+        let lastLeft = try temporaryDirectory.folder("Projects")
+        let lastRight = try temporaryDirectory.folder("Downloads")
+        let startupLeft = try temporaryDirectory.folder("Startup Left")
+        let startupRight = try temporaryDirectory.folder("Startup Right")
 
         settings.lastLeftDirectory = lastLeft
         settings.lastRightDirectory = lastRight
@@ -49,6 +50,61 @@ final class SettingsServiceTests: XCTestCase {
         reloaded.startupRightDirectory = nil
         XCTAssertNil(SettingsService(defaults: fixture.defaults).startupLeftDirectory)
         XCTAssertNil(SettingsService(defaults: fixture.defaults).startupRightDirectory)
+    }
+
+
+    func testNormalDefaultsFallBackToHomeWhenPreferredDirectoryIsNotAccessible() throws {
+        let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceHomeFallbackTests", testCase: self)
+        let accessibleHome = try temporaryDirectory.folder("Home")
+        let inaccessibleDocuments = temporaryDirectory.path("MissingDocuments", isDirectory: true)
+        let inaccessibleDownloads = temporaryDirectory.path("MissingDownloads", isDirectory: true)
+        let appSupport = try temporaryDirectory.folder("Application Support/PulseFiles")
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot)
+        let fallbackSettings = SettingsService(
+            defaults: fixture.defaults,
+            accessPolicy: policy,
+            homeDirectoryProvider: { accessibleHome },
+            documentsDirectoryProvider: { inaccessibleDocuments },
+            downloadsDirectoryProvider: { inaccessibleDownloads },
+            applicationSupportDirectoryProvider: { appSupport }
+        )
+
+        XCTAssertEqual(fallbackSettings.lastLeftDirectory, accessibleHome)
+        XCTAssertEqual(fallbackSettings.lastRightDirectory, accessibleHome)
+    }
+
+    func testNormalDefaultsFallBackToApplicationSupportWhenPreferredAndHomeAreNotAccessible() throws {
+        let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceApplicationSupportFallbackTests", testCase: self)
+        let inaccessibleHome = temporaryDirectory.path("MissingHome", isDirectory: true)
+        let inaccessibleDocuments = temporaryDirectory.path("MissingDocuments", isDirectory: true)
+        let inaccessibleDownloads = temporaryDirectory.path("MissingDownloads", isDirectory: true)
+        let appSupport = temporaryDirectory.path("Application Support/PulseFiles", isDirectory: true)
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot)
+        let fallbackSettings = SettingsService(
+            defaults: fixture.defaults,
+            accessPolicy: policy,
+            homeDirectoryProvider: { inaccessibleHome },
+            documentsDirectoryProvider: { inaccessibleDocuments },
+            downloadsDirectoryProvider: { inaccessibleDownloads },
+            applicationSupportDirectoryProvider: { appSupport }
+        )
+
+        XCTAssertEqual(fallbackSettings.lastLeftDirectory, appSupport)
+        XCTAssertEqual(fallbackSettings.lastRightDirectory, appSupport)
+    }
+
+    func testExperimentalSandboxDefaultsUseSandboxPaneDirectoriesOnlyWhenEnabled() {
+        settings.experimentalSandboxEnabled = true
+
+        let sandboxedSettings = SettingsService(defaults: fixture.defaults)
+
+        #if DEBUG
+        XCTAssertEqual(sandboxedSettings.lastLeftDirectory, ExperimentalFlags.appSandboxRoot.appendingPathComponent("Left Pane", isDirectory: true))
+        XCTAssertEqual(sandboxedSettings.lastRightDirectory, ExperimentalFlags.appSandboxRoot.appendingPathComponent("Right Pane", isDirectory: true))
+        #else
+        XCTAssertNotEqual(sandboxedSettings.lastLeftDirectory, ExperimentalFlags.appSandboxRoot.appendingPathComponent("Left Pane", isDirectory: true))
+        XCTAssertNotEqual(sandboxedSettings.lastRightDirectory, ExperimentalFlags.appSandboxRoot.appendingPathComponent("Right Pane", isDirectory: true))
+        #endif
     }
 
     func testSidebarVisibilityDefaultAndRoundTrip() {
