@@ -171,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(menuItem("New File".localized, action: #selector(MainWindowViewController.menuNewFile(_:)), key: "n", modifiers: [.command, .shift]))
         submenu.addItem(menuItem("New Folder".localized, action: #selector(MainWindowViewController.menuNewFolder(_:)), key: "n", modifiers: [.command]))
         submenu.addItem(menuItem("Rename".localized, action: #selector(MainWindowViewController.menuRename(_:)), key: "\r", modifiers: []))
+        submenu.addItem(menuItem("Open With…".localized, action: #selector(MainWindowViewController.menuOpenWith(_:)), key: "", modifiers: []))
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Move to Trash".localized, action: #selector(MainWindowViewController.menuMoveToTrash(_:)), key: "\u{8}", modifiers: [.command]))
         item.submenu = submenu
