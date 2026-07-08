@@ -63,6 +63,9 @@ final class MainWindowViewController: NSViewController {
     private var isFileOperationActive = false {
         didSet { setConflictingFileActionsEnabled(!isFileOperationActive) }
     }
+    private var clipboardFeedbackTimer: Timer?
+    private var clipboardChangeMonitor: Timer?
+    private var trackedClipboardChangeCount: Int?
 
     private var activePaneID: PaneID = .left {
         didSet {
@@ -100,6 +103,8 @@ final class MainWindowViewController: NSViewController {
         if let flagsChangedEventMonitor {
             NSEvent.removeMonitor(flagsChangedEventMonitor)
         }
+        clipboardFeedbackTimer?.invalidate()
+        clipboardChangeMonitor?.invalidate()
     }
 
     private func buildLayout() {
@@ -305,6 +310,7 @@ final class MainWindowViewController: NSViewController {
         case .trash:
             confirmDeleteSelectedItems()
         case .refresh:
+            clearClipboardFeedback()
             targetPane().loadDirectory()
         case .reveal:
             if let item = targetPane().focusedItem {
@@ -1236,6 +1242,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 try accessPolicy.validateAccess(to: url)
             }
             fileClipboard.write(urls: sources, operation: operation)
+            showClipboardFeedback(for: operation, itemCount: sources.count)
+            updateCutItemMarkers(operation: operation, urls: sources, sourcePane: targetPane())
+            beginClipboardChangeMonitoring()
         } catch {
             showError(message: "Could Not Use Clipboard".localized, detail: error.localizedDescription)
         }
@@ -1243,6 +1252,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func pasteClipboardItems() {
         guard let payload = fileClipboard.read(), !payload.urls.isEmpty else {
+            clearClipboardFeedback()
             showError(message: "Clipboard Is Empty".localized, detail: "Copy or cut one or more files before pasting.".localized)
             return
         }
@@ -1260,6 +1270,48 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             case .move:
                 return try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
             }
+        }
+    }
+
+    private func showClipboardFeedback(for operation: FileClipboard.Operation, itemCount: Int) {
+        let verb = operation == .copy ? "Copied".localized : "Cut".localized
+        let itemLabel = itemCount == 1 ? "item".localized : "items".localized
+        commandBar.setTransientStatus("%@ %d %@".localized(with: verb, itemCount, itemLabel))
+        clipboardFeedbackTimer?.invalidate()
+        clipboardFeedbackTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in
+            self?.commandBar.clearOperationStatus()
+            self?.clipboardFeedbackTimer = nil
+        }
+    }
+
+    private func updateCutItemMarkers(operation: FileClipboard.Operation, urls: [URL], sourcePane: FilePaneViewController) {
+        leftPane.setDimmedFileURLs([])
+        rightPane.setDimmedFileURLs([])
+        guard operation == .move else { return }
+        sourcePane.setDimmedFileURLs(urls)
+    }
+
+    private func beginClipboardChangeMonitoring() {
+        trackedClipboardChangeCount = fileClipboard.changeCount
+        clipboardChangeMonitor?.invalidate()
+        clipboardChangeMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, let trackedClipboardChangeCount = self.trackedClipboardChangeCount else { return }
+            if self.fileClipboard.changeCount != trackedClipboardChangeCount {
+                self.clearClipboardFeedback()
+            }
+        }
+    }
+
+    private func clearClipboardFeedback() {
+        clipboardFeedbackTimer?.invalidate()
+        clipboardFeedbackTimer = nil
+        clipboardChangeMonitor?.invalidate()
+        clipboardChangeMonitor = nil
+        trackedClipboardChangeCount = nil
+        leftPane.setDimmedFileURLs([])
+        rightPane.setDimmedFileURLs([])
+        if !isFileOperationActive {
+            commandBar.clearOperationStatus()
         }
     }
 
@@ -1392,6 +1444,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 let result = try await operation { [weak self] progress in
                     self?.updateFileOperationProgress(progress, operationName: operationName)
                 }
+                self.clearClipboardFeedback()
                 self.refreshBothPanes()
                 self.showOperationResult(result, operationName: operationName)
             } catch {

@@ -27,6 +27,7 @@ final class FilePaneViewController: NSViewController {
     private let activeStripe = NSView()
     private var isReloadingData = false
     private var isPaneActive = false
+    private var dimmedFileURLs = Set<String>()
     private var previousSelectedRowIndexes = IndexSet()
     private var pendingSelectionURL: URL?
 
@@ -165,6 +166,11 @@ final class FilePaneViewController: NSViewController {
 
     func setSearchQuery(_ query: String) {
         viewModel.setSearchQuery(query)
+    }
+
+    func setDimmedFileURLs(_ urls: [URL]) {
+        dimmedFileURLs = Set(urls.map(normalizedPath))
+        tableView.reloadData()
     }
 
     private func buildHeader() {
@@ -345,7 +351,15 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func isSameFileURL(_ lhs: URL, _ rhs: URL) -> Bool {
-        lhs.standardizedFileURL.resolvingSymlinksInPath().path == rhs.standardizedFileURL.resolvingSymlinksInPath().path
+        normalizedPath(lhs) == normalizedPath(rhs)
+    }
+
+    private func normalizedPath(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private func isDimmed(_ item: FileItem) -> Bool {
+        dimmedFileURLs.contains(normalizedPath(item.url))
     }
 
     private func restorePreviousSelectionIfPossible() {
@@ -453,6 +467,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         }
         guard let item = item(forRow: row) else { return nil }
         let cell = NSTableCellView()
+        cell.alphaValue = isDimmed(item) ? 0.45 : 1
         let text = NSTextField(labelWithString: string(for: item, column: identifier))
         text.lineBreakMode = .byTruncatingMiddle
         if identifier == "name" {

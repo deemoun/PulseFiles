@@ -15,6 +15,8 @@ final class FileClipboard {
 
     private let pasteboard: NSPasteboard
 
+    var changeCount: Int { pasteboard.changeCount }
+
     init(pasteboard: NSPasteboard = .general) {
         self.pasteboard = pasteboard
     }

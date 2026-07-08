@@ -90,6 +90,14 @@ final class CommandBarView: NSVisualEffectView {
         cancelOperationButton.isEnabled = !status.isEmpty
     }
 
+    func setTransientStatus(_ status: String) {
+        operationStatusLabel.stringValue = status
+        operationStatusLabel.toolTip = status
+        operationStatusLabel.isHidden = status.isEmpty
+        cancelOperationButton.isHidden = true
+        cancelOperationButton.isEnabled = false
+    }
+
     func clearOperationStatus() {
         operationStatusLabel.stringValue = ""
         operationStatusLabel.toolTip = nil

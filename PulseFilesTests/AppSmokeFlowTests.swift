@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import PulseFiles
@@ -62,5 +63,19 @@ final class AppSmokeFlowTests: XCTestCase {
         app.requestDestructiveCommand(.trash)
             .expectPendingDestructiveConfirmation(.trash)
             .expectDestructiveMutationCount(0)
+    }
+
+    func testFileClipboardRoundTripPreservesOperationAndURLs() throws {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("PulseFilesTests.FileClipboard.\(UUID().uuidString)"))
+        let clipboard = FileClipboard(pasteboard: pasteboard)
+        let urls = [
+            URL(fileURLWithPath: "/tmp/PulseFiles/alpha.txt"),
+            URL(fileURLWithPath: "/tmp/PulseFiles/beta.txt")
+        ]
+
+        clipboard.write(urls: urls, operation: .move)
+
+        XCTAssertEqual(clipboard.read(), FileClipboard.Payload(urls: urls, operation: .move))
+        XCTAssertGreaterThan(clipboard.changeCount, 0)
     }
 }
