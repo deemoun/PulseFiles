@@ -134,12 +134,10 @@ final class FileSystemService: FileSystemServicing {
             return "Folder"
         }
 
-        let typeIdentifier = values.contentType?.identifier
-            ?? UTType(filenameExtension: url.pathExtension)?.identifier
-        if let typeIdentifier,
-           let workspaceDescription = NSWorkspace.shared.localizedDescription(forType: typeIdentifier),
-           !workspaceDescription.isEmpty {
-            return workspaceDescription
+        if let localizedDescription = values.contentType?.localizedDescription
+            ?? UTType(filenameExtension: url.pathExtension)?.localizedDescription,
+            !localizedDescription.isEmpty {
+            return localizedDescription
         }
 
         return "File"
