@@ -16,6 +16,7 @@ final class SettingsService {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.syncsJSON = defaults === UserDefaults.standard
+        FolderAccessGrantService(defaults: defaults).resolveStoredBookmarks()
         if syncsJSON {
             importJSONIfChanged()
             writeSettingsJSONIfNeeded()
@@ -134,6 +135,14 @@ final class SettingsService {
     func resetFileColorScheme() {
         defaults.removeObject(forKey: "fileColorScheme")
         writeSettingsJSONIfNeeded()
+    }
+
+    var folderAccessGrants: [FolderAccessGrant] {
+        get { FolderAccessGrantService(defaults: defaults).grants }
+        set {
+            FolderAccessGrantService(defaults: defaults).grants = newValue
+            writeSettingsJSONIfNeeded()
+        }
     }
 
     var defaultSortDescriptor: FileSortDescriptor {
