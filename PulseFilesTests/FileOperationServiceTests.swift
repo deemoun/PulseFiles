@@ -2,6 +2,71 @@ import XCTest
 @testable import PulseFiles
 
 final class FileOperationServiceTests: XCTestCase {
+    func testDropTransferPolicyDefaultsInternalSameVolumeDragToMove() throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let policy = DropTransferPolicy(volumeIdentifierProvider: { url in
+            url.path.hasPrefix(fixture.root.path) ? "sandbox-volume" : nil
+        })
+
+        let operation = policy.resolvedOperation(
+            for: [source],
+            destinationDirectory: fixture.right,
+            isInternalAppDrag: true,
+            optionForcesCopy: false
+        )
+
+        XCTAssertEqual(operation, .move)
+    }
+
+    func testDropTransferPolicyDefaultsExternalDragToCopy() throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let policy = DropTransferPolicy(volumeIdentifierProvider: { _ in "same-volume" })
+
+        let operation = policy.resolvedOperation(
+            for: [source],
+            destinationDirectory: fixture.right,
+            isInternalAppDrag: false,
+            optionForcesCopy: false
+        )
+
+        XCTAssertEqual(operation, .copy)
+    }
+
+    func testDropTransferPolicyDefaultsCrossVolumeDragToCopy() throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let policy = DropTransferPolicy(volumeIdentifierProvider: { url in
+            url.path.hasPrefix(fixture.left.path) ? "left-volume" : "right-volume"
+        })
+
+        let operation = policy.resolvedOperation(
+            for: [source],
+            destinationDirectory: fixture.right,
+            isInternalAppDrag: true,
+            optionForcesCopy: false
+        )
+
+        XCTAssertEqual(operation, .copy)
+    }
+
+    func testDropTransferPolicyOptionForcesCopyForInternalSameVolumeDrag() throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let policy = DropTransferPolicy(volumeIdentifierProvider: { _ in "same-volume" })
+
+        let operation = policy.resolvedOperation(
+            for: [source],
+            destinationDirectory: fixture.right,
+            isInternalAppDrag: true,
+            optionForcesCopy: true
+        )
+
+        XCTAssertEqual(operation, .copy)
+    }
+
+
     func testCopyWithoutConflictCreatesDestinationAndKeepsSource() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")

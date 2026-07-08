@@ -1,5 +1,31 @@
 import AppKit
 
+struct DropTransferPolicy {
+    enum Operation {
+        case copy
+        case move
+    }
+
+    typealias VolumeIdentifierProvider = (URL) -> String?
+
+    var volumeIdentifierProvider: VolumeIdentifierProvider = { url in
+        (try? url.resourceValues(forKeys: [.volumeURLKey]).volumeURL)?.standardizedFileURL.path
+    }
+
+    func resolvedOperation(for sources: [URL], destinationDirectory: URL, isInternalAppDrag: Bool, optionForcesCopy: Bool) -> Operation {
+        guard !optionForcesCopy, isInternalAppDrag, !sources.isEmpty else { return .copy }
+        guard sourcesShareVolume(with: destinationDirectory, sources: sources) else { return .copy }
+        return .move
+    }
+
+    func sourcesShareVolume(with destinationDirectory: URL, sources: [URL]) -> Bool {
+        guard let destinationVolume = volumeIdentifierProvider(destinationDirectory) else { return false }
+        return sources.allSatisfy { source in
+            volumeIdentifierProvider(source) == destinationVolume
+        }
+    }
+}
+
 final class FilePaneViewController: NSViewController {
     let paneID: PaneID
     let viewModel: FilePaneViewModel
@@ -30,6 +56,7 @@ final class FilePaneViewController: NSViewController {
     private var dimmedFileURLs = Set<String>()
     private var previousSelectedRowIndexes = IndexSet()
     private var pendingSelectionURL: URL?
+    private let dropTransferPolicy = DropTransferPolicy()
 
     init(paneID: PaneID, viewModel: FilePaneViewModel) {
         self.paneID = paneID
@@ -196,7 +223,7 @@ final class FilePaneViewController: NSViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.actionDelegate = self
-        tableView.registerForDraggedTypes([.fileURL])
+        tableView.registerForDraggedTypes([.fileURL, .pulseFilesInternalDrag])
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.backgroundColor = .clear
         tableView.allowsMultipleSelection = true
@@ -565,7 +592,10 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard let item = item(forRow: row) else { return nil }
-        return item.url as NSURL
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(item.url.absoluteString, forType: .fileURL)
+        pasteboardItem.setString("PulseFiles", forType: .pulseFilesInternalDrag)
+        return pasteboardItem
     }
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
@@ -576,18 +606,18 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return [] }
         let urls = draggedFileURLs(from: info.draggingPasteboard)
         guard !urls.isEmpty else { return [] }
-        let shouldCopy = NSApp.currentEvent?.modifierFlags.contains(.option) == true
-        guard canDrop(urls, into: destination, shouldCopy: shouldCopy) else { return [] }
-        return shouldCopy ? .copy : .move
+        let operation = resolvedDropOperation(for: urls, destination: destination, pasteboard: info.draggingPasteboard)
+        guard canDrop(urls, into: destination, operation: operation) else { return [] }
+        return operation == .copy ? .copy : .move
     }
 
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return false }
         let urls = draggedFileURLs(from: info.draggingPasteboard)
         guard !urls.isEmpty else { return false }
-        let shouldCopy = NSApp.currentEvent?.modifierFlags.contains(.option) == true
-        guard canDrop(urls, into: destination, shouldCopy: shouldCopy) else { return false }
-        onDropURLs?(urls, destination, shouldCopy)
+        let operation = resolvedDropOperation(for: urls, destination: destination, pasteboard: info.draggingPasteboard)
+        guard canDrop(urls, into: destination, operation: operation) else { return false }
+        onDropURLs?(urls, destination, operation == .copy)
         return true
     }
 
@@ -599,9 +629,18 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             } ?? []
     }
 
-    private func canDrop(_ urls: [URL], into destination: URL, shouldCopy: Bool) -> Bool {
+    private func resolvedDropOperation(for urls: [URL], destination: URL, pasteboard: NSPasteboard) -> DropTransferPolicy.Operation {
+        dropTransferPolicy.resolvedOperation(
+            for: urls,
+            destinationDirectory: destination,
+            isInternalAppDrag: pasteboard.string(forType: .pulseFilesInternalDrag) != nil,
+            optionForcesCopy: NSApp.currentEvent?.modifierFlags.contains(.option) == true
+        )
+    }
+
+    private func canDrop(_ urls: [URL], into destination: URL, operation: DropTransferPolicy.Operation) -> Bool {
         guard !isDroppingInsideDraggedDirectory(urls, destination: destination) else { return false }
-        guard shouldCopy || !isSameDirectoryMove(urls, destination: destination) else { return false }
+        guard operation == .copy || !isSameDirectoryMove(urls, destination: destination) else { return false }
         return true
     }
 
@@ -849,4 +888,8 @@ private final class PaneContainerView: NSView {
         onMouseDown?()
         super.mouseDown(with: event)
     }
+}
+
+extension NSPasteboard.PasteboardType {
+    static let pulseFilesInternalDrag = NSPasteboard.PasteboardType("com.pulsefiles.internal-drag")
 }

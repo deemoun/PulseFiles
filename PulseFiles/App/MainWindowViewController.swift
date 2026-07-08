@@ -1317,6 +1317,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func transferDroppedItems(_ urls: [URL], to destinationDirectory: URL, copy: Bool) {
         guard !urls.isEmpty else { return }
+        DiagnosticLogger.log(.info, category: "MainWindow", "Resolved dropped-item transfer: operation=\(copy ? "copy" : "move"); itemCount=\(urls.count); destination=\(DiagnosticLogger.sanitizedPath(destinationDirectory))")
         guard !isFileOperationActive else {
             showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
@@ -1406,7 +1407,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func confirmationSummary(operationName: String, urls: [URL], destinationDirectory: URL?) -> String {
         let itemLabel = urls.count == 1 ? "1 item".localized : "%d items".localized(with: urls.count)
-        var lines = ["%@ %@:".localized(with: operationName, itemLabel)]
+        var lines = [
+            "Operation: %@".localized(with: operationName),
+            "%@ %@:".localized(with: operationName, itemLabel)
+        ]
         let visibleNames = urls.prefix(8).map { "- \($0.lastPathComponent)" }
         lines.append(contentsOf: visibleNames)
         if urls.count > visibleNames.count {
