@@ -4,19 +4,27 @@ enum ExperimentalFlags {
     static let restrictFileAccessUserDefaultsKey = "ExperimentalFlags.restrictFileAccessToAppSandboxRoot"
 
     static var restrictFileAccessToAppSandboxRoot: Bool {
-        let arguments = ProcessInfo.processInfo.arguments
+        isSandboxRestrictionEnabled()
+    }
+
+    static func isSandboxRestrictionEnabled(
+        defaults: UserDefaults = .standard,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Bool {
         if arguments.contains("--pulsefiles-disable-experimental-sandbox") {
             return false
         }
+
+        #if DEBUG
         if arguments.contains("--pulsefiles-enable-experimental-sandbox") {
             return true
         }
-
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: restrictFileAccessUserDefaultsKey) != nil else {
-            return true
+        if defaults.object(forKey: restrictFileAccessUserDefaultsKey) != nil {
+            return defaults.bool(forKey: restrictFileAccessUserDefaultsKey)
         }
-        return defaults.bool(forKey: restrictFileAccessUserDefaultsKey)
+        #endif
+
+        return false
     }
 
     static var sandboxRestrictionExplanation: String { "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable.".localized }
@@ -51,7 +59,8 @@ enum ExperimentalFlags {
             PulseFiles experimental sandbox
 
             File browsing is currently restricted to this app-owned test folder.
-            Launch with --pulsefiles-disable-experimental-sandbox or set UserDefaults key ExperimentalFlags.restrictFileAccessToAppSandboxRoot to false when you are ready to test real folders.
+            In debug builds, launch with --pulsefiles-enable-experimental-sandbox or set UserDefaults key ExperimentalFlags.restrictFileAccessToAppSandboxRoot to true to test sandboxed browsing.
+            Launch with --pulsefiles-disable-experimental-sandbox to force unrestricted browsing.
             """
             try? text.write(to: readme, atomically: true, encoding: .utf8)
         }

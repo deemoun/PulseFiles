@@ -20,8 +20,8 @@ final class SettingsServiceTests: XCTestCase {
     }
 
     func testDirectorySettingsDefaultAndRoundTrip() {
-        XCTAssertEqual(settings.lastLeftDirectory, ExperimentalFlags.appSandboxRoot.appendingPathComponent("Left Pane", isDirectory: true))
-        XCTAssertEqual(settings.lastRightDirectory, ExperimentalFlags.appSandboxRoot.appendingPathComponent("Right Pane", isDirectory: true))
+        XCTAssertEqual(settings.lastLeftDirectory, FileManager.default.homeDirectoryForCurrentUser)
+        XCTAssertEqual(settings.lastRightDirectory, FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads"))
         XCTAssertNil(settings.startupLeftDirectory)
         XCTAssertNil(settings.startupRightDirectory)
         XCTAssertEqual(settings.launchLeftDirectory, settings.lastLeftDirectory)
@@ -130,13 +130,24 @@ final class SettingsServiceTests: XCTestCase {
     }
 
     func testExperimentalSandboxPreferenceDefaultAndRoundTrip() {
-        XCTAssertTrue(settings.experimentalSandboxEnabled)
+        XCTAssertFalse(settings.experimentalSandboxEnabled)
 
         settings.experimentalSandboxEnabled = false
         XCTAssertFalse(SettingsService(defaults: fixture.defaults).experimentalSandboxEnabled)
 
         settings.experimentalSandboxEnabled = true
+        #if DEBUG
         XCTAssertTrue(SettingsService(defaults: fixture.defaults).experimentalSandboxEnabled)
+        #else
+        XCTAssertFalse(SettingsService(defaults: fixture.defaults).experimentalSandboxEnabled)
+        #endif
+    }
+
+    func testExperimentalSandboxFlagUsesSharedDefaultingLogic() {
+        XCTAssertEqual(
+            settings.experimentalSandboxEnabled,
+            ExperimentalFlags.isSandboxRestrictionEnabled(defaults: fixture.defaults)
+        )
     }
 
     func testFileColorSchemeDefaultAndRoundTrip() {
