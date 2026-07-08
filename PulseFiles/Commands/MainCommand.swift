@@ -2,6 +2,7 @@ import Foundation
 
 enum MainCommand: Equatable {
     case open
+    case openWith
     case quickLook
     case newFile
     case newFolder

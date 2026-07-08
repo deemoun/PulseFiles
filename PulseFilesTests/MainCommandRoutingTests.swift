@@ -10,6 +10,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let state = makeState(activePaneID: .left, leftSelection: [selected])
 
         XCTAssertEqual(router.route(.open, in: state), .activePane(command: .open, pane: .left, urls: [selected]))
+        XCTAssertEqual(router.route(.openWith, in: state), .activePane(command: .openWith, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.rename, in: state), .activePane(command: .rename, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.trash, in: state), .activePane(command: .trash, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.reveal, in: state), .activePane(command: .reveal, pane: .left, urls: [selected]))
@@ -41,7 +42,7 @@ final class MainCommandRoutingTests: XCTestCase {
     func testSelectionCommandsAreDisabledWhenNoSelectionExists() {
         let state = makeState(activePaneID: .left)
 
-        for command in [MainCommand.open, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
+        for command in [MainCommand.open, .openWith, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noSelection))
         }
         XCTAssertEqual(router.route(.quickLook, in: state), .disabled(command: .quickLook, reason: .noFocusedItem))
@@ -51,7 +52,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let selected = URL(fileURLWithPath: "/outside-sandbox/secret.txt")
         let state = makeState(activePaneID: .left, leftSelection: [selected], sandboxAllowsSelectedURLs: false)
 
-        for command in [MainCommand.open, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
+        for command in [MainCommand.open, .openWith, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .sandboxRejectedSelection))
         }
     }
@@ -164,6 +165,15 @@ final class MainMenuConstructionTests: XCTestCase {
         let menu = AppDelegate(launchArguments: ["PulseFiles"], userDefaults: defaults).buildMainMenu()
 
         XCTAssertTrue(menu.containsItem(titled: "Debug Logs…"))
+    }
+
+    func testOpenWithMenuItemIsAvailableFromFileMenu() {
+        let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.openWith")!
+        defaults.removePersistentDomain(forName: "MainMenuConstructionTests.openWith")
+
+        let menu = AppDelegate(launchArguments: ["PulseFiles"], userDefaults: defaults).buildMainMenu()
+
+        XCTAssertTrue(menu.containsItem(titled: "Open With…"))
     }
 
     func testEditSettingsJSONMenuItemIsHiddenByDefault() {

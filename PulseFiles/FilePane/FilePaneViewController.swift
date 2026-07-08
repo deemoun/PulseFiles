@@ -784,6 +784,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         if let rowItem = item(forRow: row) {
             menu.addItem(contextMenuItem("Open", action: #selector(contextOpen)))
             if !rowItem.isDirectory {
+                menu.addItem(contextMenuItem("Open With…".localized, action: #selector(contextOpenWith)))
                 menu.addItem(openWithMenu(for: rowItem.url))
             }
             menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
@@ -844,6 +845,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
 
     @objc private func contextOpenParent() { onCommand?(.parent) }
     @objc private func contextOpen() { onCommand?(.open) }
+    @objc private func contextOpenWith() { onCommand?(.openWith) }
     @objc private func contextRename() { onCommand?(.rename) }
     @objc private func contextCopy() { onCommand?(.copy) }
     @objc private func contextMove() { onCommand?(.move) }

@@ -1,5 +1,6 @@
 import AppKit
 import Quartz
+import UniformTypeIdentifiers
 
 final class MainWindowViewController: NSViewController {
     private enum SidebarMetrics {
@@ -289,6 +290,8 @@ final class MainWindowViewController: NSViewController {
         switch command {
         case .open:
             targetPane().openFocusedItem()
+        case .openWith:
+            presentOpenWithApplicationPicker()
         case .quickLook:
             showQuickLookForFocusedItem()
         case .newFile:
@@ -996,6 +999,49 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
+    private func presentOpenWithApplicationPicker() {
+        let selectedFiles = targetPane().selectedItems.filter { !$0.isDirectory }
+        guard !selectedFiles.isEmpty else {
+            showError(message: "Nothing Selected".localized, detail: "Select one or more files to open with another application.".localized)
+            return
+        }
+
+        do {
+            for item in selectedFiles {
+                try accessPolicy.validateAccess(to: item.url)
+                guard FileManager.default.fileExists(atPath: item.url.path) else {
+                    throw FileOperationError.sourceMissing(item.url)
+                }
+            }
+        } catch {
+            showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = "Open With…".localized
+        panel.prompt = "Open".localized
+        panel.message = selectedFiles.count == 1
+            ? "Choose an application to open %@.".localized(with: selectedFiles[0].url.lastPathComponent)
+            : "Choose an application to open the selected files.".localized
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.applicationBundle]
+
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
+            guard response == .OK, let applicationURL = panel?.url else { return }
+            selectedFiles.forEach { self?.openFile($0.url, with: applicationURL) }
+        }
+
+        if let window = view.window {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            completion(panel.runModal())
+        }
+    }
+
     private func openFile(_ fileURL: URL, with applicationURL: URL?) {
         do {
             try accessPolicy.validateAccess(to: fileURL)
@@ -1004,6 +1050,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             }
 
             if let applicationURL {
+                guard FileManager.default.fileExists(atPath: applicationURL.path) else {
+                    throw FileOperationError.sourceMissing(applicationURL)
+                }
                 let configuration = NSWorkspace.OpenConfiguration()
                 NSWorkspace.shared.open([fileURL], withApplicationAt: applicationURL, configuration: configuration) { [weak self] _, error in
                     if let error {
@@ -1611,6 +1660,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
+    @objc func menuOpenWith(_ sender: Any?) { performCommand(.openWith) }
     @objc func menuCopy(_ sender: Any?) { performCommand(.copy) }
     @objc func menuMove(_ sender: Any?) { performCommand(.move) }
     @objc func menuCopyToClipboard(_ sender: Any?) { performCommand(.copyToClipboard) }
