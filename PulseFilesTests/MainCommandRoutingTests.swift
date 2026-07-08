@@ -42,10 +42,12 @@ final class MainCommandRoutingTests: XCTestCase {
     func testSelectionCommandsAreDisabledWhenNoSelectionExists() {
         let state = makeState(activePaneID: .left)
 
-        for command in [MainCommand.open, .openWith, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
+        for command in [MainCommand.openWith, .trash, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noSelection))
         }
-        XCTAssertEqual(router.route(.quickLook, in: state), .disabled(command: .quickLook, reason: .noFocusedItem))
+        for command in [MainCommand.open, .rename, .reveal, .quickLook] {
+            XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noFocusedItem))
+        }
     }
 
     func testSelectionCommandsAreDisabledWhenSandboxRejectsSelectedURL() {
@@ -55,6 +57,25 @@ final class MainCommandRoutingTests: XCTestCase {
         for command in [MainCommand.open, .openWith, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .sandboxRejectedSelection))
         }
+    }
+
+    func testFocusedItemCommandsRouteWithFocusedItemWithoutSelection() {
+        let focused = URL(fileURLWithPath: "/sandbox/left/focused.txt")
+        let state = makeState(activePaneID: .left, leftFocusedURL: focused)
+
+        for command in [MainCommand.open, .rename, .reveal] {
+            XCTAssertEqual(router.route(command, in: state), .activePane(command: command, pane: .left, urls: [focused]))
+        }
+    }
+
+    func testFocusedItemCommandsAreDisabledWhenSelectionExistsButNoItemIsFocused() {
+        let selected = URL(fileURLWithPath: "/sandbox/left/selected.txt")
+        let state = makeState(activePaneID: .left, leftSelection: [selected], leftFocusedURL: .none)
+
+        for command in [MainCommand.open, .rename, .reveal] {
+            XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noFocusedItem))
+        }
+        XCTAssertEqual(router.route(.copy, in: state), .crossPane(command: .copy, sourcePane: .left, destinationPane: .right, sourceURLs: [selected], destinationDirectory: URL(fileURLWithPath: "/sandbox/right", isDirectory: true)))
     }
 
     func testSearchFieldFocusDoesNotStealStandardTextShortcuts() {
@@ -119,21 +140,27 @@ final class MainCommandRoutingTests: XCTestCase {
         let selected = URL(fileURLWithPath: "/sandbox/left/file.txt")
         let state = makeState(activePaneID: .left, leftSelection: [selected], isFileOperationActive: true)
 
+        XCTAssertEqual(router.route(.newFile, in: state), .disabled(command: .newFile, reason: .fileOperationInProgress))
+        XCTAssertEqual(router.route(.newFolder, in: state), .disabled(command: .newFolder, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.rename, in: state), .disabled(command: .rename, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.copy, in: state), .disabled(command: .copy, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.move, in: state), .disabled(command: .move, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.cutToClipboard, in: state), .disabled(command: .cutToClipboard, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.pasteFromClipboard, in: state), .disabled(command: .pasteFromClipboard, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.trash, in: state), .disabled(command: .trash, reason: .fileOperationInProgress))
+        XCTAssertEqual(router.route(.cancelOperation, in: state), .enabled(command: .cancelOperation))
         XCTAssertEqual(router.route(.refresh, in: state), .activePane(command: .refresh, pane: .left, urls: [selected]))
+        XCTAssertEqual(router.route(.toggleSidebar, in: state), .enabled(command: .toggleSidebar))
+        XCTAssertEqual(router.route(.toggleTerminal, in: state), .enabled(command: .toggleTerminal))
+        XCTAssertEqual(router.route(.goToFolder, in: state), .enabled(command: .goToFolder))
     }
 
     private func makeState(
         activePaneID: PaneID,
         leftSelection: [URL] = [],
         rightSelection: [URL] = [],
-        leftFocusedURL: URL? = nil,
-        rightFocusedURL: URL? = nil,
+        leftFocusedURL: URL?? = nil,
+        rightFocusedURL: URL?? = nil,
         isFileOperationActive: Bool = false,
         sandboxAllowsSelectedURLs: Bool = true
     ) -> MainCommandRoutingState {
