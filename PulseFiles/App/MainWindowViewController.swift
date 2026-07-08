@@ -1384,7 +1384,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 self.refreshBothPanes()
                 self.showOperationResult(result, operationName: operationName)
             } catch {
-                self.showError(message: "Could Not %@ Items".localized(with: operationName), detail: error.localizedDescription)
+                let localizedError = error as? LocalizedError
+                let detail = localizedError?.failureReason ?? error.localizedDescription
+                self.showError(message: "Could Not %@ Items".localized(with: operationName), detail: detail)
             }
         }
     }
