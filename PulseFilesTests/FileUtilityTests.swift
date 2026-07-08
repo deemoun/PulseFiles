@@ -122,4 +122,44 @@ final class FilePathComparisonTests: XCTestCase {
         XCTAssertTrue(FilePathComparison.isSameOrDescendant(child, ofDirectory: source))
         XCTAssertFalse(FilePathComparison.isSameOrDescendant(siblingWithSharedPrefix, ofDirectory: source))
     }
+
+    func testFindsSelectedDirectoryContainingTransferDestination() throws {
+        let root = try makeTemporaryDirectory()
+        let source = root.appendingPathComponent("Selected", isDirectory: true)
+        let child = source.appendingPathComponent("Child", isDirectory: true)
+        let file = root.appendingPathComponent("Selected.txt")
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        try Data().write(to: file)
+
+        XCTAssertEqual(
+            FilePathComparison.firstDirectoryContaining(source, among: [source, file]),
+            source
+        )
+        XCTAssertEqual(
+            FilePathComparison.firstDirectoryContaining(child, among: [source, file]),
+            source
+        )
+    }
+
+    func testDoesNotTreatFilesOrSiblingPrefixAsContainingTransferDestination() throws {
+        let root = try makeTemporaryDirectory()
+        let source = root.appendingPathComponent("Selected", isDirectory: true)
+        let sibling = root.appendingPathComponent("Selected Backup", isDirectory: true)
+        let similarlyNamedFile = root.appendingPathComponent("Selected.txt")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sibling, withIntermediateDirectories: true)
+        try Data().write(to: similarlyNamedFile)
+
+        XCTAssertNil(FilePathComparison.firstDirectoryContaining(sibling, among: [source]))
+        XCTAssertNil(FilePathComparison.firstDirectoryContaining(sibling, among: [similarlyNamedFile]))
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        return directory
+    }
 }

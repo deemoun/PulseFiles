@@ -1196,6 +1196,14 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         shouldConfirm: Bool,
         operation: @escaping (FileOperationRequest, @escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult
     ) {
+        guard FilePathComparison.firstDirectoryContaining(destinationDirectory, among: sources) == nil else {
+            showError(
+                message: "Cannot Complete \(kind)".localized,
+                detail: "Cannot copy or move an item into itself or one of its subfolders.".localized
+            )
+            return
+        }
+
         let request = FileOperationRequest(sources: sources, destinationDirectory: destinationDirectory)
         let start: () -> Void = { [weak self] in
             self?.startFileOperation(named: kind) { [weak self] progressHandler in

@@ -14,4 +14,21 @@ enum FilePathComparison {
         let directoryPath = normalizedPath(directory)
         return candidatePath == directoryPath || candidatePath.hasPrefix(directoryPath + "/")
     }
+
+    static func firstDirectoryContaining(
+        _ candidate: URL,
+        among sources: [URL],
+        fileManager: FileManager = .default
+    ) -> URL? {
+        for source in sources {
+            var isDirectory = ObjCBool(false)
+            guard fileManager.fileExists(atPath: source.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                continue
+            }
+            if isSameOrDescendant(candidate, ofDirectory: source) {
+                return source
+            }
+        }
+        return nil
+    }
 }
