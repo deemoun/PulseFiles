@@ -556,6 +556,94 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "old")
     }
 
+    func testCreateFolderCreatesDirectoryInSandbox() throws {
+        let fixture = try makeFixture()
+
+        let created = try fixture.service.createFolder(named: "New Folder", in: fixture.left)
+
+        var isDirectory = ObjCBool(false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        XCTAssertEqual(created, fixture.left.appendingPathComponent("New Folder", isDirectory: true))
+    }
+
+    func testCreateFileCreatesEmptyFileInSandbox() throws {
+        let fixture = try makeFixture()
+
+        let created = try fixture.service.createFile(named: "Notes.txt", in: fixture.left)
+
+        var isDirectory = ObjCBool(true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.path, isDirectory: &isDirectory))
+        XCTAssertFalse(isDirectory.boolValue)
+        XCTAssertEqual(try Data(contentsOf: created), Data())
+    }
+
+    func testCreateFolderRejectsDuplicateName() throws {
+        let fixture = try makeFixture()
+        try FileManager.default.createDirectory(at: fixture.left.appendingPathComponent("Existing"), withIntermediateDirectories: false)
+
+        do {
+            _ = try fixture.service.createFolder(named: "Existing", in: fixture.left)
+            XCTFail("Expected duplicate creation rejection")
+        } catch FileNameValidator.ValidationError.duplicateName {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testCreateFileRejectsDuplicateName() throws {
+        let fixture = try makeFixture()
+        let existing = fixture.left.appendingPathComponent("Existing.txt")
+        try "existing".write(to: existing, atomically: true, encoding: .utf8)
+
+        do {
+            _ = try fixture.service.createFile(named: "Existing.txt", in: fixture.left)
+            XCTFail("Expected duplicate creation rejection")
+        } catch FileNameValidator.ValidationError.duplicateName {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testCreateFileRejectsInvalidName() throws {
+        let fixture = try makeFixture()
+
+        do {
+            _ = try fixture.service.createFile(named: "../Bad.txt", in: fixture.left)
+            XCTFail("Expected invalid name rejection")
+        } catch FileNameValidator.ValidationError.containsSlash {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testCreateFolderRejectsMissingDestinationDirectory() throws {
+        let fixture = try makeFixture()
+        let missingDirectory = fixture.left.appendingPathComponent("Missing")
+
+        do {
+            _ = try fixture.service.createFolder(named: "New Folder", in: missingDirectory)
+            XCTFail("Expected missing destination directory rejection")
+        } catch FileOperationError.destinationDirectoryMissing(let url) {
+            XCTAssertEqual(url, missingDirectory)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testCreateFileRejectsOutsideSandbox() throws {
+        let fixture = try makeFixture()
+        let outsideDirectory = try makeTemporaryDirectory()
+
+        do {
+            _ = try fixture.service.createFile(named: "Outside.txt", in: outsideDirectory)
+            XCTFail("Expected sandbox rejection")
+        } catch SandboxAccessError.outsideExperimentalSandbox {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testRenameRejectsDuplicateName() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Old.txt")
@@ -700,6 +788,10 @@ private final class FailingFileManager: FileOperationFileManaging {
 
     func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: createIntermediates)
+    }
+
+    func createEmptyFile(at url: URL) throws {
+        try Data().write(to: url, options: .withoutOverwriting)
     }
 
     func trashItem(at url: URL, resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws {

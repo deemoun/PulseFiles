@@ -973,10 +973,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func createFolder(named rawName: String) {
         do {
-            let name = try FileNameValidator.validate(rawName, in: targetPane().currentDirectory)
-            let destination = targetPane().currentDirectory.appendingPathComponent(name, isDirectory: true)
-            try accessPolicy.validateAccess(to: destination)
-            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+            let destination = try fileOperations.createFolder(named: rawName, in: targetPane().currentDirectory)
             targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
             showError(message: "Invalid Folder Name".localized, detail: error.localizedDescription)
@@ -987,10 +984,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func createFile(named rawName: String) {
         do {
-            let name = try FileNameValidator.validate(rawName, in: targetPane().currentDirectory)
-            let destination = targetPane().currentDirectory.appendingPathComponent(name)
-            try accessPolicy.validateAccess(to: destination)
-            try Data().write(to: destination, options: .withoutOverwriting)
+            let destination = try fileOperations.createFile(named: rawName, in: targetPane().currentDirectory)
             targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
             showError(message: "Invalid File Name".localized, detail: error.localizedDescription)
