@@ -17,9 +17,10 @@ final class FileSystemService: FileSystemServicing {
 
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem] {
         try accessPolicy.validateAccess(to: url)
-        return try await Task.detached(priority: .userInitiated) {
-            try self.accessPolicy.validateAccess(to: url)
-            let keys: Set<URLResourceKey> = [
+        return try await accessPolicy.withAccess(to: [url]) {
+            try await Task.detached(priority: .userInitiated) {
+                try self.accessPolicy.validateAccess(to: url)
+                let keys: Set<URLResourceKey> = [
                 .nameKey,
                 .localizedNameKey,
                 .isDirectoryKey,
@@ -48,8 +49,9 @@ final class FileSystemService: FileSystemServicing {
                 }
             }
 
-            return Self.sorted(items, descriptor: sort)
-        }.value
+                return Self.sorted(items, descriptor: sort)
+            }.value
+        }
     }
 
     private func fileItem(for url: URL) throws -> FileItem {

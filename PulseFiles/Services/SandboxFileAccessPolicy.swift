@@ -28,15 +28,17 @@ enum SandboxAccessError: LocalizedError, Equatable {
 
 struct SandboxFileAccessPolicy {
     private let isEnabledOverride: Bool?
+    private let grantService: FolderAccessGrantService
     let rootURL: URL
 
     static let current = SandboxFileAccessPolicy(
         rootURL: ExperimentalFlags.appSandboxRoot
     )
 
-    init(isEnabled: Bool? = nil, rootURL: URL) {
+    init(isEnabled: Bool? = nil, rootURL: URL, grantService: FolderAccessGrantService = .shared) {
         self.isEnabledOverride = isEnabled
         self.rootURL = rootURL
+        self.grantService = grantService
     }
 
     var isEnabled: Bool {
@@ -50,8 +52,8 @@ struct SandboxFileAccessPolicy {
             allowed = isInsideExperimentalSandbox(url)
             reason = allowed ? "inside sandbox root" : "outside sandbox root"
         } else {
-            allowed = hasProcessAccess(to: url)
-            reason = allowed ? "directly readable or security-scoped" : "not readable or not authorized"
+            allowed = hasProcessAccess(to: url) || grantService.hasGrant(containing: url)
+            reason = allowed ? "directly readable, security-scoped, or granted" : "not readable or not authorized"
         }
         logDecision(allowed ? .debug : .warning, allowed: allowed, url: url, reason: reason)
         return allowed
@@ -105,7 +107,12 @@ struct SandboxFileAccessPolicy {
                 completion(false)
                 return
             }
-            completion(hasProcessAccess(to: selectedURL))
+            do {
+                _ = try grantService.grantAccess(to: selectedURL)
+                completion(true)
+            } catch {
+                completion(false)
+            }
         }
 
         if let window {
@@ -115,6 +122,15 @@ struct SandboxFileAccessPolicy {
         }
     }
     #endif
+
+
+    func withAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
+        try grantService.withSecurityScopedAccess(to: urls, body)
+    }
+
+    func withAccess<T>(to urls: [URL], _ body: () async throws -> T) async rethrows -> T {
+        try await grantService.withSecurityScopedAccess(to: urls, body)
+    }
 
     private func isInsideExperimentalSandbox(_ url: URL) -> Bool {
         let rootPath = normalizedPath(rootURL)

@@ -226,9 +226,11 @@ final class FileOperationService: FileOperationServicing {
             DiagnosticLogger.log(.info, category: "FileOperation", "Copy operation cancelled during conflict resolution: skippedCount=\(plans.filter { $0.conflictResolution == .skip }.count)")
             return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
         }
-        let result = await performTransfer(plans, kind: .copy, progressHandler: progressHandler)
-        logCompletion(operation: "copy", result: result)
-        return result
+        return try await accessPolicy.withAccess(to: request.sources + [request.destinationDirectory]) {
+            let result = await performTransfer(plans, kind: .copy, progressHandler: progressHandler)
+            logCompletion(operation: "copy", result: result)
+            return result
+        }
     }
 
     func move(
@@ -248,9 +250,11 @@ final class FileOperationService: FileOperationServicing {
             DiagnosticLogger.log(.info, category: "FileOperation", "Move operation cancelled during conflict resolution: skippedCount=\(plans.filter { $0.conflictResolution == .skip }.count)")
             return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
         }
-        let result = await performTransfer(plans, kind: .move, progressHandler: progressHandler)
-        logCompletion(operation: "move", result: result)
-        return result
+        return try await accessPolicy.withAccess(to: request.sources + [request.destinationDirectory]) {
+            let result = await performTransfer(plans, kind: .move, progressHandler: progressHandler)
+            logCompletion(operation: "move", result: result)
+            return result
+        }
     }
 
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
@@ -273,7 +277,9 @@ final class FileOperationService: FileOperationServicing {
         await progressHandler?(FileOperationProgress(currentItemName: source.lastPathComponent, completedCount: 0, totalCount: 1))
 
         do {
-            try fileManager.moveItem(at: source, to: destination)
+            try accessPolicy.withAccess(to: [source, parentDirectory]) {
+                try fileManager.moveItem(at: source, to: destination)
+            }
             await progressHandler?(FileOperationProgress(currentItemName: destination.lastPathComponent, completedCount: 1, totalCount: 1))
             let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false)
             logCompletion(operation: "rename", result: result)
@@ -290,7 +296,9 @@ final class FileOperationService: FileOperationServicing {
         let destination = try preflightCreation(rawName: rawName, in: directory, isDirectory: true)
         DiagnosticLogger.log(.info, category: "FileOperation", "Create folder operation starting: destination=\(DiagnosticLogger.sanitizedPath(destination))")
         do {
-            try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
+            try accessPolicy.withAccess(to: [directory]) {
+                try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
+            }
             return destination
         } catch {
             DiagnosticLogger.log(.error, category: "FileOperation", "Create folder operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
@@ -302,7 +310,9 @@ final class FileOperationService: FileOperationServicing {
         let destination = try preflightCreation(rawName: rawName, in: directory, isDirectory: false)
         DiagnosticLogger.log(.info, category: "FileOperation", "Create file operation starting: destination=\(DiagnosticLogger.sanitizedPath(destination))")
         do {
-            try fileManager.createEmptyFile(at: destination)
+            try accessPolicy.withAccess(to: [directory]) {
+                try fileManager.createEmptyFile(at: destination)
+            }
             return destination
         } catch {
             DiagnosticLogger.log(.error, category: "FileOperation", "Create file operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
@@ -313,13 +323,15 @@ final class FileOperationService: FileOperationServicing {
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Trash operation starting: itemCount=\(urls.count)")
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "trash", error: error); throw error }
-        let result = await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
-            #if os(macOS)
-            var resultingURL: NSURL?
-            try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
-            #else
-            throw CocoaError(.featureUnsupported)
-            #endif
+        let result = try await accessPolicy.withAccess(to: urls) {
+            await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
+                #if os(macOS)
+                var resultingURL: NSURL?
+                try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
+                #else
+                throw CocoaError(.featureUnsupported)
+                #endif
+            }
         }
         logCompletion(operation: "trash", result: result)
         return result
@@ -328,8 +340,10 @@ final class FileOperationService: FileOperationServicing {
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Delete operation starting: itemCount=\(urls.count)")
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "delete", error: error); throw error }
-        let result = await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
-            try fileManager.removeItem(at: url)
+        let result = try await accessPolicy.withAccess(to: urls) {
+            await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
+                try fileManager.removeItem(at: url)
+            }
         }
         logCompletion(operation: "delete", result: result)
         return result
