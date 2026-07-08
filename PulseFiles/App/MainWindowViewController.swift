@@ -1547,9 +1547,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func setConflictingFileActionsEnabled(_ isEnabled: Bool) {
-        commandBar.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton }.forEach { button in
-            guard let rawValue = button.identifier?.rawValue, let action = CommandBarAction(rawValue: rawValue) else { return }
-            button.isEnabled = !MainCommand(commandBarAction: action).conflictsWithFileOperation || isEnabled
+        commandBar.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSControl }.forEach { control in
+            guard let rawValue = control.identifier?.rawValue, let action = CommandBarAction(rawValue: rawValue) else { return }
+            control.isEnabled = !MainCommand(commandBarAction: action).conflictsWithFileOperation || isEnabled
         }
     }
 

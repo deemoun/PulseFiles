@@ -26,7 +26,7 @@ final class CommandBarView: NSVisualEffectView {
     private func build() {
         stack.setAccessibilityIdentifier(AccessibilityIdentifiers.CommandBar.list)
         stack.orientation = .horizontal
-        stack.spacing = 8
+        stack.spacing = 10
         stack.distribution = .gravityAreas
         stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -117,18 +117,9 @@ final class CommandBarView: NSVisualEffectView {
 
         let actions: [CommandBarAction] = [.rename, .view, .edit, .copy, .move, isShowingShiftActions ? .newFile : .newFolder, .delete]
         for action in actions {
-            let button = NSButton(title: "\(action.shortcut)  \(action.title)", target: self, action: #selector(runAction(_:)))
-            if action.isDestructive {
-                LiquidGlassStyle.applyDestructiveButtonChrome(to: button)
-            } else {
-                LiquidGlassStyle.applyButtonChrome(to: button)
-            }
-            button.font = .systemFont(ofSize: 12, weight: .medium)
-            button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
-            button.setAccessibilityIdentifier("\(AccessibilityIdentifiers.CommandBar.field).\(action.rawValue)")
-            button.lineBreakMode = .byClipping
-            button.toolTip = action.localizedTooltip
-            button.setButtonType(.momentaryPushIn)
+            let button = CommandBarActionButton(commandAction: action)
+            button.target = self
+            button.action = #selector(runAction(_:))
             button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
             button.setContentCompressionResistancePriority(.required, for: .horizontal)
             stack.addArrangedSubview(button)
@@ -146,6 +137,136 @@ final class CommandBarView: NSVisualEffectView {
             let action = CommandBarAction(rawValue: value)
         else { return }
         onAction?(action)
+    }
+}
+
+private final class CommandBarActionButton: NSControl {
+    private let commandAction: CommandBarAction
+    private let keyLabel = NSTextField(labelWithString: "")
+    private let titleLabel = NSTextField(labelWithString: "")
+    private var trackingArea: NSTrackingArea?
+    private var isHovering = false { didSet { updateChrome() } }
+    private var isPressing = false { didSet { updateChrome() } }
+
+    init(commandAction: CommandBarAction) {
+        self.commandAction = commandAction
+        super.init(frame: .zero)
+        setup()
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let titleWidth = titleLabel.intrinsicContentSize.width
+        let keyWidth = keyLabel.intrinsicContentSize.width
+        return NSSize(width: ceil(titleWidth + keyWidth + 28), height: 28)
+    }
+
+    override var isEnabled: Bool {
+        didSet {
+            alphaValue = isEnabled ? 1 : 0.45
+            updateChrome()
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let options: NSTrackingArea.Options = [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect]
+        let area = NSTrackingArea(rect: bounds, options: options, owner: self)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        isPressing = false
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        isPressing = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isEnabled else { return }
+        let shouldSend = isPressing && bounds.contains(convert(event.locationInWindow, from: nil))
+        isPressing = false
+        if shouldSend {
+            sendAction(action, to: target)
+        }
+    }
+
+    private func setup() {
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.cornerCurve = .continuous
+        translatesAutoresizingMaskIntoConstraints = false
+        identifier = NSUserInterfaceItemIdentifier(commandAction.rawValue)
+        setAccessibilityIdentifier("\(AccessibilityIdentifiers.CommandBar.field).\(commandAction.rawValue)")
+        toolTip = commandAction.localizedTooltip
+
+        keyLabel.stringValue = commandAction.shortcut
+        keyLabel.font = .monospacedSystemFont(ofSize: 10.5, weight: .semibold)
+        keyLabel.alignment = .center
+        keyLabel.lineBreakMode = .byClipping
+        keyLabel.translatesAutoresizingMaskIntoConstraints = false
+        keyLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        titleLabel.stringValue = commandAction.title
+        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.lineBreakMode = .byClipping
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        addSubview(keyLabel)
+        addSubview(titleLabel)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 28),
+            keyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            keyLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            keyLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 22),
+            titleLabel.leadingAnchor.constraint(equalTo: keyLabel.trailingAnchor, constant: 6),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        updateChrome()
+    }
+
+    private func updateChrome() {
+        let destructive = commandAction.isDestructive
+        let baseAlpha: CGFloat = LiquidGlassStyle.isEnabled ? 0.068 : 0.075
+        let hoverBoost: CGFloat = isHovering ? 0.045 : 0
+        let pressBoost: CGFloat = isPressing ? 0.06 : 0
+        let fillAlpha = baseAlpha + hoverBoost + pressBoost
+        let strokeAlpha = LiquidGlassStyle.isEnabled ? 0.14 : 0.11
+        let textColor = destructive ? NSColor.systemRed : LiquidGlassStyle.label
+        let keyFill = destructive
+            ? NSColor.systemRed.withAlphaComponent(LiquidGlassStyle.isEnabled ? 0.13 : 0.10)
+            : NSColor(calibratedWhite: 1, alpha: LiquidGlassStyle.isEnabled ? 0.10 : 0.08)
+
+        layer?.backgroundColor = destructive
+            ? NSColor.systemRed.withAlphaComponent(fillAlpha).cgColor
+            : NSColor(calibratedRed: 0.70, green: 0.84, blue: 1.0, alpha: fillAlpha).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = destructive
+            ? NSColor.systemRed.withAlphaComponent(LiquidGlassStyle.isEnabled ? 0.28 : 0.22).cgColor
+            : NSColor(calibratedRed: 0.70, green: 0.84, blue: 1.0, alpha: strokeAlpha).cgColor
+
+        keyLabel.textColor = destructive ? NSColor.systemRed : LiquidGlassStyle.secondaryLabel
+        keyLabel.wantsLayer = true
+        keyLabel.layer?.cornerRadius = 4
+        keyLabel.layer?.cornerCurve = .continuous
+        keyLabel.layer?.backgroundColor = keyFill.cgColor
+        titleLabel.textColor = textColor
     }
 }
 
