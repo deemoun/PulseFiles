@@ -51,6 +51,8 @@ final class SettingsViewController: NSViewController {
     private let categoryControl = NSSegmentedControl()
     private let scrollView = NSScrollView()
     private var selectedCategory: Category = .general
+    private let accessPolicy = SandboxFileAccessPolicy.current
+    private let accessGrantService = FolderAccessGrantService.shared
 
     init(settings: SettingsService = SettingsService()) {
         self.settings = settings
@@ -580,13 +582,44 @@ final class SettingsViewController: NSViewController {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Choose".localized
-        if let window = view.window {
-            panel.beginSheetModal(for: window) { response in
-                guard response == .OK, let url = panel.url else { return }
-                completion(url)
+        let handleSelection: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
+            guard let self, response == .OK, let url = panel?.url else { return }
+            do {
+                let accessibleURL = try self.grantedDirectoryURL(for: url)
+                completion(accessibleURL)
+            } catch {
+                self.showDirectoryAccessDeniedAlert()
             }
-        } else if panel.runModal() == .OK, let url = panel.url {
-            completion(url)
+        }
+
+        if let window = view.window {
+            panel.beginSheetModal(for: window, completionHandler: handleSelection)
+        } else {
+            handleSelection(panel.runModal())
+        }
+    }
+
+    private func grantedDirectoryURL(for url: URL) throws -> URL {
+        if accessPolicy.isEnabled {
+            try accessPolicy.validateAccess(to: url)
+            return url
+        }
+
+        let grant = try accessGrantService.grantAccess(to: url)
+        try accessPolicy.validateAccess(to: grant.url)
+        return grant.url
+    }
+
+    private func showDirectoryAccessDeniedAlert() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Folder Access Needed".localized
+        alert.informativeText = "PulseFiles does not currently have permission to access this folder. Choose another folder or grant access in macOS privacy settings.".localized
+        alert.addButton(withTitle: "OK".localized)
+        if let window = view.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
         }
     }
 }

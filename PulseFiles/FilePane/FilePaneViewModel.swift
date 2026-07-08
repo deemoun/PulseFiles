@@ -58,6 +58,7 @@ final class FilePaneViewModel {
     }
 
     var currentDirectory: URL { state.currentDirectory }
+    var isAccessRestrictedToExperimentalSandbox: Bool { accessPolicy.isEnabled }
     var sortDescriptor: FileSortDescriptor { state.sort }
     var showsHiddenFiles: Bool { state.showsHiddenFiles }
     var visibleItems: [FileItem] {
@@ -68,6 +69,10 @@ final class FilePaneViewModel {
                 || item.filename.localizedCaseInsensitiveContains(query)
                 || item.fileExtension.localizedCaseInsensitiveContains(query)
         }
+    }
+
+    func validateAccess(to url: URL) throws {
+        try accessPolicy.validateAccess(to: url)
     }
 
     func loadCurrentDirectory(onLoaded: (() -> Void)? = nil) {
