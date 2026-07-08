@@ -184,6 +184,59 @@ final class MainCommandRoutingTests: XCTestCase {
     }
 }
 
+final class MainCommandDestinationResolverTests: XCTestCase {
+    private let sandboxRoot = URL(fileURLWithPath: "/tmp/PulseFilesSandbox", isDirectory: true)
+
+    func testReleaseDestinationsUseSystemLocationsEvenWhenSandboxPreferenceIsRestricted() {
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .home, sandboxRestricted: true, sandboxRoot: sandboxRoot, isDebugBuild: false),
+            FileManager.default.homeDirectoryForCurrentUser
+        )
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .downloads, sandboxRestricted: true, sandboxRoot: sandboxRoot, isDebugBuild: false),
+            FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+        )
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .applications, sandboxRestricted: true, sandboxRoot: sandboxRoot, isDebugBuild: false),
+            FileManager.default.urls(for: .applicationDirectory, in: .localDomainMask).first
+                ?? URL(fileURLWithPath: "/Applications", isDirectory: true)
+        )
+    }
+
+    func testDebugRestrictedDestinationsPreserveSandboxRootBehavior() {
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .home, sandboxRestricted: true, sandboxRoot: sandboxRoot, isDebugBuild: true),
+            sandboxRoot
+        )
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .downloads, sandboxRestricted: true, sandboxRoot: sandboxRoot, isDebugBuild: true),
+            sandboxRoot.appendingPathComponent("Downloads", isDirectory: true)
+        )
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .applications, sandboxRestricted: true, sandboxRoot: sandboxRoot, isDebugBuild: true),
+            sandboxRoot
+        )
+    }
+
+    func testDebugUnrestrictedDestinationsUseSystemLocations() {
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .home, sandboxRestricted: false, sandboxRoot: sandboxRoot, isDebugBuild: true),
+            FileManager.default.homeDirectoryForCurrentUser
+        )
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .downloads, sandboxRestricted: false, sandboxRoot: sandboxRoot, isDebugBuild: true),
+            FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+        )
+        XCTAssertEqual(
+            MainCommandDestinationResolver.destination(for: .applications, sandboxRestricted: false, sandboxRoot: sandboxRoot, isDebugBuild: true),
+            FileManager.default.urls(for: .applicationDirectory, in: .localDomainMask).first
+                ?? URL(fileURLWithPath: "/Applications", isDirectory: true)
+        )
+    }
+}
+
 final class MainMenuConstructionTests: XCTestCase {
     func testDebugLogsMenuItemIsAvailableFromWindowMenu() {
         let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.debugLogs")!

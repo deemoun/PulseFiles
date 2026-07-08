@@ -2,6 +2,56 @@ import AppKit
 import Quartz
 import UniformTypeIdentifiers
 
+struct MainCommandDestinationResolver {
+    static func destination(for command: MainCommand) -> URL {
+        destination(
+            for: command,
+            sandboxRestricted: ExperimentalFlags.restrictFileAccessToAppSandboxRoot,
+            sandboxRoot: ExperimentalFlags.appSandboxRoot,
+            isDebugBuild: isDebugBuild
+        )
+    }
+
+    static func destination(
+        for command: MainCommand,
+        sandboxRestricted: Bool,
+        sandboxRoot: URL,
+        isDebugBuild: Bool
+    ) -> URL {
+        if isDebugBuild, sandboxRestricted {
+            switch command {
+            case .home, .applications:
+                return sandboxRoot
+            case .downloads:
+                return sandboxRoot.appendingPathComponent("Downloads", isDirectory: true)
+            default:
+                break
+            }
+        }
+
+        switch command {
+        case .home:
+            return FileManager.default.homeDirectoryForCurrentUser
+        case .downloads:
+            return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+        case .applications:
+            return FileManager.default.urls(for: .applicationDirectory, in: .localDomainMask).first
+                ?? URL(fileURLWithPath: "/Applications", isDirectory: true)
+        default:
+            return sandboxRoot
+        }
+    }
+
+    private static var isDebugBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+}
+
 final class MainWindowViewController: NSViewController {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220
@@ -347,12 +397,8 @@ final class MainWindowViewController: NSViewController {
             targetPane().goParent()
         case .goToFolder:
             promptForGoToFolder()
-        case .home:
-            targetPane().navigate(to: ExperimentalFlags.appSandboxRoot)
-        case .downloads:
-            targetPane().navigate(to: ExperimentalFlags.appSandboxRoot.appendingPathComponent("Downloads", isDirectory: true))
-        case .applications:
-            targetPane().navigate(to: ExperimentalFlags.appSandboxRoot)
+        case .home, .downloads, .applications:
+            targetPane().navigate(to: MainCommandDestinationResolver.destination(for: command))
         case .switchPane:
             activePaneID = activePaneID.opposite
             if isSinglePaneMode {
