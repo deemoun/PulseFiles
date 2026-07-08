@@ -43,4 +43,13 @@ enum LiquidGlassStyle {
         button.layer?.borderColor = isEnabled ? subtleStroke.cgColor : NSColor.clear.cgColor
         button.contentTintColor = isEnabled ? label : nil
     }
+
+    static func applyDestructiveButtonChrome(to button: NSButton) {
+        applyButtonChrome(to: button)
+        button.contentTintColor = .systemRed
+
+        guard isEnabled else { return }
+        button.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.12).cgColor
+        button.layer?.borderColor = NSColor.systemRed.withAlphaComponent(0.35).cgColor
+    }
 }

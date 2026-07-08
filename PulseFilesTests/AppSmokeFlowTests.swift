@@ -52,6 +52,9 @@ final class AppSmokeFlowTests: XCTestCase {
         app.commandBar
             .open()
             .expectOpen(true)
+            .expectIntrinsicWidthLayoutPriorities()
+            .expectLocalizedTooltips()
+            .expectDestructiveTreatment()
             .typeKnownCommand(.view)
             .expectExecuted([.open])
 

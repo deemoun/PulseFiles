@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import PulseFiles
@@ -48,6 +49,35 @@ final class CommandBarRobot: CommandBarPageObject {
         let command = MainCommand(commandBarAction: action)
         executedCommands.append(command)
         handler?(command)
+        return self
+    }
+
+
+    @discardableResult
+    func expectIntrinsicWidthLayoutPriorities(file: StaticString = #filePath, line: UInt = #line) -> Self {
+        XCTAssertEqual(CommandBarAction.view.commandBarVisibilityPriority, .mustHold, file: file, line: line)
+        XCTAssertEqual(CommandBarAction.copy.commandBarVisibilityPriority, .mustHold, file: file, line: line)
+        XCTAssertEqual(CommandBarAction.move.commandBarVisibilityPriority, .mustHold, file: file, line: line)
+        XCTAssertEqual(CommandBarAction.delete.commandBarVisibilityPriority, .mustHold, file: file, line: line)
+        XCTAssertLessThan(CommandBarAction.edit.commandBarVisibilityPriority.rawValue, CommandBarAction.delete.commandBarVisibilityPriority.rawValue, file: file, line: line)
+        XCTAssertLessThan(CommandBarAction.rename.commandBarVisibilityPriority.rawValue, CommandBarAction.delete.commandBarVisibilityPriority.rawValue, file: file, line: line)
+        return self
+    }
+
+    @discardableResult
+    func expectLocalizedTooltips(file: StaticString = #filePath, line: UInt = #line) -> Self {
+        CommandBarAction.allCases.forEach { action in
+            XCTAssertEqual(action.localizedTooltip, "\(action.title) (\(action.shortcut))", file: file, line: line)
+            XCTAssertNotEqual(action.localizedTooltip, action.rawValue, file: file, line: line)
+        }
+        return self
+    }
+
+    @discardableResult
+    func expectDestructiveTreatment(file: StaticString = #filePath, line: UInt = #line) -> Self {
+        XCTAssertTrue(CommandBarAction.delete.isDestructive, file: file, line: line)
+        XCTAssertFalse(CommandBarAction.copy.isDestructive, file: file, line: line)
+        XCTAssertFalse(CommandBarAction.move.isDestructive, file: file, line: line)
         return self
     }
 
