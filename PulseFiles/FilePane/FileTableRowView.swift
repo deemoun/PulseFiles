@@ -5,8 +5,8 @@ final class FileTableRowView: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard drawsActiveSelection else { return }
-        let rect = bounds.insetBy(dx: 8, dy: 2)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+        let rect = bounds.insetBy(dx: 8, dy: 4)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7)
         NSColor.systemBlue.withAlphaComponent(0.55).setFill()
         path.fill()
     }
