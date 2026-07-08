@@ -10,7 +10,8 @@ struct DropTransferPolicy {
 
     var volumeIdentifierProvider: VolumeIdentifierProvider = { (url: URL) -> String? in
         let values = try? url.resourceValues(forKeys: [.volumeURLKey])
-        return values?.volumeURL?.standardizedFileURL.path
+        return (values?.allValues[.volumeURLKey] as? URL)
+            .map { $0.standardizedFileURL.path }
     }
 
     func resolvedOperation(for sources: [URL], destinationDirectory: URL, isInternalAppDrag: Bool, optionForcesCopy: Bool) -> Operation {
