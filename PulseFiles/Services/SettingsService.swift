@@ -171,11 +171,11 @@ final class SettingsService {
 
     private func directory(forKey key: String, fallback: URL) -> URL {
         let url = defaults.url(forKey: key) ?? fallback
-        return ExperimentalFlags.restrictFileAccessToAppSandboxRoot ? SandboxFileAccessPolicy.current.validatedDirectory(url) : url
+        return SandboxFileAccessPolicy.current.validatedDirectory(url, fallback: fallback)
     }
 
     private func optionalDirectory(forKey key: String) -> URL? {
-        defaults.url(forKey: key).map { ExperimentalFlags.restrictFileAccessToAppSandboxRoot ? SandboxFileAccessPolicy.current.validatedDirectory($0) : $0 }
+        defaults.url(forKey: key).map { SandboxFileAccessPolicy.current.validatedDirectory($0) }
     }
 
     private func setOptionalDirectory(_ url: URL?, forKey key: String) {
