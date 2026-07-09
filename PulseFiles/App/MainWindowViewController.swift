@@ -1230,14 +1230,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "%@?".localized(with: operationName)
-        alert.informativeText = confirmationSummary(
-            operationName: operationName,
-            urls: items.map(\.url),
-            destinationDirectory: nil
+        alert.messageText = deleteConfirmationMessage(permanently: permanentlyDelete, itemCount: items.count)
+        alert.informativeText = deleteConfirmationDetail(
+            permanently: permanentlyDelete,
+            urls: items.map(\.url)
         )
         alert.addButton(withTitle: confirmButtonTitle)
-        alert.addButton(withTitle: "Cancel".localized)
+        alert.addButton(withTitle: "Cancel — Keep Items".localized)
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else {
@@ -1485,7 +1484,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             destinationDirectory: destinationDirectory
         )
         alert.addButton(withTitle: confirmButtonTitle)
-        alert.addButton(withTitle: "Cancel".localized)
+        alert.addButton(withTitle: "Cancel — Do Not Start".localized)
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .alertFirstButtonReturn else {
@@ -1500,6 +1499,31 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         } else {
             handleResponse(alert.runModal())
         }
+    }
+
+    private func deleteConfirmationMessage(permanently: Bool, itemCount: Int) -> String {
+        let itemLabel = itemCount == 1 ? "1 Item".localized : "%d Items".localized(with: itemCount)
+        return permanently
+            ? "Permanently Delete %@?".localized(with: itemLabel)
+            : "Move %@ to Trash?".localized(with: itemLabel)
+    }
+
+    private func deleteConfirmationDetail(permanently: Bool, urls: [URL]) -> String {
+        let operationName = permanently ? "Permanent Delete".localized : "Move to Trash".localized
+        var lines = [
+            "Operation: %@".localized(with: operationName),
+            permanently
+                ? "This permanently deletes the selected item(s) immediately. This cannot be undone from the Trash.".localized
+                : "This moves the selected item(s) to the macOS Trash. You can restore them from the Trash until it is emptied.".localized,
+            "",
+            "Items:".localized
+        ]
+        let visibleNames = urls.prefix(8).map { "- \($0.lastPathComponent)" }
+        lines.append(contentsOf: visibleNames)
+        if urls.count > visibleNames.count {
+            lines.append("- ...and %d more".localized(with: urls.count - visibleNames.count))
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func confirmationSummary(operationName: String, urls: [URL], destinationDirectory: URL?) -> String {
@@ -1583,7 +1607,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             "Failed: %d".localized(with: result.failedItems.count),
             "Cleanup warnings: %d".localized(with: result.cleanupWarnings.count)
         ]
-        if result.wasCancelled { details.append("The operation was cancelled before all items completed.".localized) }
+        if result.wasCancelled { details.append("The whole operation was cancelled before all items completed.".localized) }
+        if !result.failedItems.isEmpty {
+            details.append("Partial failure: some selected items were not changed.".localized)
+        }
         details.append(contentsOf: result.failedItems.map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" })
         details.append(contentsOf: result.cleanupWarnings.map { "\($0.url.lastPathComponent): \($0.message)" })
 
@@ -1605,11 +1632,15 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func promptForConflict(destination: URL, operationName: String) async -> FileConflictResolution {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "%@ Already Exists".localized(with: destination.lastPathComponent)
-        alert.informativeText = "%@ would replace an item in %@.".localized(with: operationName, destination.deletingLastPathComponent().path)
-        alert.addButton(withTitle: "Replace".localized)
-        alert.addButton(withTitle: "Skip".localized)
-        alert.addButton(withTitle: "Cancel".localized)
+        alert.messageText = "Replace Existing Item?".localized
+        alert.informativeText = "%@ already exists in %@. Replace only this existing item, skip this item, or cancel the whole %@ operation.".localized(
+            with: destination.lastPathComponent,
+            destination.deletingLastPathComponent().path,
+            operationName
+        )
+        alert.addButton(withTitle: "Replace Existing Item".localized)
+        alert.addButton(withTitle: "Skip This Item".localized)
+        alert.addButton(withTitle: "Cancel Whole Operation".localized)
 
         guard let window = view.window else { return .cancel }
         return await withCheckedContinuation { continuation in
