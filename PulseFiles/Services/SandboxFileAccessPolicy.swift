@@ -49,8 +49,16 @@ struct SandboxFileAccessPolicy {
         let allowed: Bool
         let reason: String
         if isEnabled {
-            allowed = isInsideExperimentalSandbox(url)
-            reason = allowed ? "inside sandbox root" : "outside sandbox root"
+            if isInsideExperimentalSandbox(url) {
+                allowed = true
+                reason = "inside sandbox root"
+            } else if grantService.hasGrant(containing: url) {
+                allowed = true
+                reason = "explicit folder access grant"
+            } else {
+                allowed = false
+                reason = "outside sandbox root and not explicitly granted"
+            }
         } else {
             allowed = hasProcessAccess(to: url) || grantService.hasGrant(containing: url)
             reason = allowed ? "directly readable, security-scoped, or granted" : "not readable or not authorized"
@@ -89,8 +97,8 @@ struct SandboxFileAccessPolicy {
     #if canImport(AppKit)
     @MainActor
     func requestAccess(to directory: URL, window: NSWindow?, completion: @escaping (Bool) -> Void) {
-        guard !isEnabled else {
-            completion(canAccess(directory))
+        if isEnabled, canAccess(directory) {
+            completion(true)
             return
         }
 

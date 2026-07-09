@@ -4,7 +4,7 @@ This file gives AI coding agents the project-specific context needed to make cha
 
 ## Project identity
 
-PulseFiles is a native macOS AppKit file manager built with Swift Package Manager. It is intended to be a fast, keyboard-first, dual-pane file manager with a cautious experimental sandbox while the app is still early-stage.
+PulseFiles is a native macOS AppKit file manager built with Swift Package Manager. It is intended to be a fast, keyboard-first, dual-pane file manager. Release builds should behave like a normal file manager; DEBUG builds may use a cautious experimental sandbox for development and testing.
 
 Core product goals:
 
@@ -83,7 +83,7 @@ Use `FilePaneViewModel` for loading, sorting, hidden-file toggling, search filte
 
 ### Sandbox and file access
 
-PulseFiles currently defaults to an experimental sandbox rooted at:
+Release builds are intended to be full normal file-manager builds. The experimental sandbox is a DEBUG-only development/testing safeguard rooted at:
 
 ```text
 ~/Library/Application Support/PulseFiles/ExperimentalSandbox
@@ -91,11 +91,11 @@ PulseFiles currently defaults to an experimental sandbox rooted at:
 
 Important rules:
 
-- `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` defaults to `true` unless disabled by UserDefaults or the `--pulsefiles-disable-experimental-sandbox` launch argument.
-- When sandbox mode is enabled, navigation and file operations must stay inside `ExperimentalFlags.appSandboxRoot`.
+- `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` defaults to `false` in release builds. In DEBUG builds it can be enabled with `--pulsefiles-enable-experimental-sandbox` or the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key, and disabled with `--pulsefiles-disable-experimental-sandbox`.
+- When DEBUG sandbox mode is enabled, navigation and file operations should stay inside `ExperimentalFlags.appSandboxRoot` unless the user explicitly grants access to a specific outside folder through `SandboxFileAccessPolicy`.
 - Always validate external or user-provided URLs through `SandboxFileAccessPolicy` before browsing or mutating files.
 - Do not bypass `SandboxFileAccessPolicy` in new code.
-- If a feature needs broader disk access, make it explicit, opt-in, and clearly messaged to the user.
+- In release builds, broader disk access is expected for a normal file manager, but code should still route access through `SandboxFileAccessPolicy` so macOS permissions and explicit folder grants are handled consistently.
 
 ### File operations
 

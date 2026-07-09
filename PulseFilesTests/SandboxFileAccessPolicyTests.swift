@@ -35,6 +35,22 @@ final class SandboxFileAccessPolicyTests: XCTestCase {
         }
     }
 
+    func testExplicitFolderGrantAllowsAccessOutsideSandboxRootWhenRestrictionIsEnabled() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let defaultsFixture = try IsolatedDefaultsFixture(prefix: "SandboxFileAccessPolicyGrantTests", testCase: self)
+        defer { defaultsFixture.cleanup() }
+        let grantService = FolderAccessGrantService(defaults: defaultsFixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root, grantService: grantService)
+        let externalFile = try fixture.externalFile("Granted/File.txt", contents: "granted")
+
+        XCTAssertFalse(policy.canAccess(externalFile))
+
+        try grantService.grantAccess(to: fixture.externalDirectory)
+
+        XCTAssertTrue(policy.canAccess(externalFile))
+        XCTAssertNoThrow(try policy.validateAccess(to: externalFile))
+    }
+
     func testSiblingPathsWithSimilarPrefixesAreRejected() throws {
         let temporaryDirectory = try TemporaryDirectoryFixture(named: "PulseFilesSandboxPrefixTests", testCase: self)
         let root = try temporaryDirectory.folder("root")
@@ -162,6 +178,19 @@ final class SandboxFileAccessPolicyTests: XCTestCase {
             XCTAssertEqual(rejectedURL, fixture.externalDirectory)
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+}
+
+private struct FakeFolderAccessBookmarkResolver: FolderAccessBookmarkResolving {
+    func makeBookmarkData(for url: URL) throws -> Data {
+        Data(url.standardizedFileURL.path.utf8)
+    }
+
+    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool) {
+        guard let path = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return (URL(fileURLWithPath: path, isDirectory: true), false)
     }
 }
 
