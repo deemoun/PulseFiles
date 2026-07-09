@@ -134,8 +134,16 @@ final class SettingsService {
     }
 
     var experimentalSandboxEnabled: Bool {
+        #if DEBUG
         get { ExperimentalFlags.isSandboxRestrictionEnabled(defaults: defaults) }
         set { set(newValue, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
+        #else
+        get { false }
+        set {
+            defaults.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+            writeSettingsJSONIfNeeded()
+        }
+        #endif
     }
 
     var fileColorScheme: FileColorScheme {
@@ -339,7 +347,11 @@ final class SettingsService {
             confirmMoveOperations: confirmMoveOperations,
             confirmDeleteOperations: confirmDeleteOperations,
             permanentlyDeleteInsteadOfTrash: permanentlyDeleteInsteadOfTrash,
+            #if DEBUG
             experimentalSandboxEnabled: experimentalSandboxEnabled,
+            #else
+            experimentalSandboxEnabled: nil,
+            #endif
             preferredSidebarWidth: preferredSidebarWidth,
             lastLeftDirectory: lastLeftDirectory.path,
             lastRightDirectory: lastRightDirectory.path,
@@ -367,7 +379,13 @@ final class SettingsService {
         if let value = settings.confirmMoveOperations { defaults.set(value, forKey: "confirmMoveOperations") }
         if let value = settings.confirmDeleteOperations { defaults.set(value, forKey: "confirmDeleteOperations") }
         if let value = settings.permanentlyDeleteInsteadOfTrash { defaults.set(value, forKey: "permanentlyDeleteInsteadOfTrash") }
+        #if DEBUG
         if let value = settings.experimentalSandboxEnabled { defaults.set(value, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
+        #else
+        if settings.experimentalSandboxEnabled != nil {
+            defaults.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+        }
+        #endif
         if let value = settings.preferredSidebarWidth { defaults.set(min(max(value, 220), 340), forKey: "preferredSidebarWidth") }
         if let value = settings.lastLeftDirectory { defaults.set(URL(fileURLWithPath: value, isDirectory: true), forKey: "lastLeftDirectory") }
         if let value = settings.lastRightDirectory { defaults.set(URL(fileURLWithPath: value, isDirectory: true), forKey: "lastRightDirectory") }
