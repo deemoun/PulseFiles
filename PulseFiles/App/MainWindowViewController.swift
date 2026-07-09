@@ -1111,9 +1111,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         view.window?.makeFirstResponder(nil)
         let alert = NSAlert()
         alert.messageText = "Go to Folder".localized
+#if DEBUG
         alert.informativeText = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
             ? "Enter a folder path inside the PulseFiles experimental sandbox.".localized
-            : "Enter an absolute, home-relative, or active-pane-relative folder path.".localized
+            : "Enter an absolute, home-relative, or active-pane-relative folder path. If macOS denies access, open or grant the folder first.".localized
+#else
+        alert.informativeText = "Enter an absolute, home-relative, or active-pane-relative folder path. If macOS denies access, open or grant the folder first.".localized
+#endif
         alert.addButton(withTitle: "Go".localized)
         alert.addButton(withTitle: "Cancel".localized)
 

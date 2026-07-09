@@ -271,10 +271,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
 
+    private var helpShortcutsText: String {
+#if DEBUG
+        "PulseFiles Help Shortcuts Debug".localized
+#else
+        "PulseFiles Help Shortcuts".localized
+#endif
+    }
+
     @objc private func showHelp(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = "PulseFiles Help".localized
-        alert.informativeText = "PulseFiles Help Shortcuts".localized
+        alert.informativeText = helpShortcutsText
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK".localized)
 
