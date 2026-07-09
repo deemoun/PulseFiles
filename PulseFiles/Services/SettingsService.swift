@@ -133,18 +133,20 @@ final class SettingsService {
         set { set(newValue, forKey: "permanentlyDeleteInsteadOfTrash") }
     }
 
+    #if DEBUG
     var experimentalSandboxEnabled: Bool {
-        #if DEBUG
         get { ExperimentalFlags.isSandboxRestrictionEnabled(defaults: defaults) }
         set { set(newValue, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
-        #else
+    }
+    #else
+    var experimentalSandboxEnabled: Bool {
         get { false }
         set {
             defaults.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
             writeSettingsJSONIfNeeded()
         }
-        #endif
     }
+    #endif
 
     var fileColorScheme: FileColorScheme {
         get {
@@ -334,6 +336,14 @@ final class SettingsService {
         _ = try? writeSettingsJSON()
     }
 
+    private var jsonExperimentalSandboxEnabled: Bool? {
+        #if DEBUG
+        experimentalSandboxEnabled
+        #else
+        nil
+        #endif
+    }
+
     private func makeJSONSettings() -> SettingsJSON {
         SettingsJSON(
             defaultSidebarVisible: defaultSidebarVisible,
@@ -347,11 +357,7 @@ final class SettingsService {
             confirmMoveOperations: confirmMoveOperations,
             confirmDeleteOperations: confirmDeleteOperations,
             permanentlyDeleteInsteadOfTrash: permanentlyDeleteInsteadOfTrash,
-            #if DEBUG
-            experimentalSandboxEnabled: experimentalSandboxEnabled,
-            #else
-            experimentalSandboxEnabled: nil,
-            #endif
+            experimentalSandboxEnabled: jsonExperimentalSandboxEnabled,
             preferredSidebarWidth: preferredSidebarWidth,
             lastLeftDirectory: lastLeftDirectory.path,
             lastRightDirectory: lastRightDirectory.path,
