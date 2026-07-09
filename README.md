@@ -58,16 +58,17 @@ Build and launch the test bundle:
 ./scripts/build_app.sh --run
 ```
 
-Build and launch a release bundle:
+Build and launch a release bundle (unsigned by default, with signing flags reserved for future distribution):
 
 ```sh
-./scripts/build_app.sh --release --run
+./scripts/build_release_app.sh --run
 ```
 
-The packaged app is written to `artifacts/PulseFiles.app`. You can also launch it manually:
+The debug app is written to `artifacts/PulseFiles.app`, while the release app is written to `artifacts/release/PulseFiles.app`. You can also launch them manually:
 
 ```sh
 open artifacts/PulseFiles.app
+open artifacts/release/PulseFiles.app
 ```
 
 The Swift package target is named `PulseFiles` and uses AppKit directly. The source tree is organized to mirror the planned Xcode project structure:
