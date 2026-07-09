@@ -206,6 +206,49 @@ final class SettingsServiceTests: XCTestCase {
         )
     }
 
+    func testSettingsJSONExportHandlesExperimentalSandboxForBuildConfiguration() throws {
+        settings.experimentalSandboxEnabled = true
+
+        let jsonURL = try settings.writeSettingsJSON()
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: jsonURL)
+        }
+
+        let document = try decodedSettingsJSONDocument(at: jsonURL)
+        let exportedSandboxValue = document["settings"]?["experimentalSandboxEnabled"] as? Bool
+
+        #if DEBUG
+        XCTAssertEqual(exportedSandboxValue, true)
+        #else
+        XCTAssertNil(exportedSandboxValue)
+        #endif
+    }
+
+    func testLegacyExperimentalSandboxJSONImportIsIgnoredInRelease() throws {
+        try withTemporaryStandardSettingsJSON(
+            settings: [
+                "defaultSidebarVisible": false,
+                "experimentalSandboxEnabled": true
+            ]
+        ) {
+            UserDefaults.standard.removeObject(forKey: "defaultSidebarVisible")
+            UserDefaults.standard.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+
+            let importedSettings = SettingsService(defaults: .standard)
+
+            XCTAssertFalse(importedSettings.defaultSidebarVisible)
+            #if DEBUG
+            XCTAssertTrue(importedSettings.experimentalSandboxEnabled)
+            #else
+            XCTAssertFalse(importedSettings.experimentalSandboxEnabled)
+            XCTAssertNil(UserDefaults.standard.object(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey))
+
+            let reexportedDocument = try decodedSettingsJSONDocument(at: SettingsService.jsonSettingsURL)
+            XCTAssertNil(reexportedDocument["settings"]?["experimentalSandboxEnabled"])
+            #endif
+        }
+    }
+
     func testFileColorSchemeDefaultAndRoundTrip() {
         assertColor(settings.fileColorScheme.color(for: .folder), equals: FileColorScheme.default.color(for: .folder))
         assertColor(settings.fileColorScheme.color(for: .sourceCode), equals: FileColorScheme.default.color(for: .sourceCode))
@@ -232,5 +275,60 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertEqual(actualRGB.greenComponent, expectedRGB.greenComponent, accuracy: 0.001, file: file, line: line)
         XCTAssertEqual(actualRGB.blueComponent, expectedRGB.blueComponent, accuracy: 0.001, file: file, line: line)
         XCTAssertEqual(actualRGB.alphaComponent, expectedRGB.alphaComponent, accuracy: 0.001, file: file, line: line)
+    }
+
+    private func decodedSettingsJSONDocument(at url: URL) throws -> [String: [String: Any]] {
+        let data = try Data(contentsOf: url)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let settings = json?["settings"] as? [String: Any] else {
+            XCTFail("Expected settings JSON document at \(url.path)")
+            return [:]
+        }
+        return ["settings": settings]
+    }
+
+    private func withTemporaryStandardSettingsJSON(
+        settings: [String: Any],
+        run body: () throws -> Void
+    ) throws {
+        let url = SettingsService.jsonSettingsURL
+        let fileManager = FileManager.default
+        let originalData = fileManager.contents(atPath: url.path)
+        let originalImportTime = UserDefaults.standard.object(forKey: "settingsJSONLastImportedModificationTime")
+        let originalSidebar = UserDefaults.standard.object(forKey: "defaultSidebarVisible")
+        let originalSandbox = UserDefaults.standard.object(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+
+        defer {
+            if let originalData {
+                try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? originalData.write(to: url, options: .atomic)
+            } else {
+                try? fileManager.removeItem(at: url)
+            }
+            restore(originalImportTime, forKey: "settingsJSONLastImportedModificationTime")
+            restore(originalSidebar, forKey: "defaultSidebarVisible")
+            restore(originalSandbox, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+        }
+
+        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let document: [String: Any] = [
+            "version": 1,
+            "settings": settings
+        ]
+        let data = try JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: url, options: .atomic)
+        let futureDate = Date().addingTimeInterval(60)
+        try fileManager.setAttributes([.modificationDate: futureDate], ofItemAtPath: url.path)
+        UserDefaults.standard.set(0, forKey: "settingsJSONLastImportedModificationTime")
+
+        try body()
+    }
+
+    private func restore(_ value: Any?, forKey key: String) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 }
