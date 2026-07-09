@@ -54,4 +54,24 @@ final class ExperimentalFlagsTests: XCTestCase {
         )
         #endif
     }
+
+    func testProductionBuildKeepsSandboxRestrictionDisabledEvenWithOptInInputs() {
+        fixture.defaults.set(true, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+
+        #if DEBUG
+        XCTAssertTrue(
+            ExperimentalFlags.isSandboxRestrictionEnabled(
+                defaults: fixture.defaults,
+                arguments: ["PulseFiles", "--pulsefiles-enable-experimental-sandbox"]
+            )
+        )
+        #else
+        XCTAssertFalse(
+            ExperimentalFlags.isSandboxRestrictionEnabled(
+                defaults: fixture.defaults,
+                arguments: ["PulseFiles", "--pulsefiles-enable-experimental-sandbox"]
+            )
+        )
+        #endif
+    }
 }

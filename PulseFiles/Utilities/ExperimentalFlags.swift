@@ -38,6 +38,7 @@ enum ExperimentalFlags {
     }
 
     static func ensureAppSandboxRootExists() {
+        #if DEBUG
         guard restrictFileAccessToAppSandboxRoot else { return }
         let fileManager = FileManager.default
         let root = appSandboxRoot
@@ -64,5 +65,6 @@ enum ExperimentalFlags {
             """
             try? text.write(to: readme, atomically: true, encoding: .utf8)
         }
+        #endif
     }
 }

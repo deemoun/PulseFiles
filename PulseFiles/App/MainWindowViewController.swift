@@ -133,7 +133,9 @@ final class MainWindowViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        #if DEBUG
         ExperimentalFlags.ensureAppSandboxRootExists()
+        #endif
         buildLayout()
         bindPaneCallbacks()
         updateActivePane()
@@ -726,7 +728,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         rightPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
         leftPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
         rightPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
+        #if DEBUG
         ExperimentalFlags.ensureAppSandboxRootExists()
+        #endif
         if accessPolicy.isEnabled {
             if !accessPolicy.canAccess(leftPane.currentDirectory) {
                 leftPane.navigate(to: accessPolicy.validatedDirectory(leftPane.currentDirectory))
