@@ -21,7 +21,8 @@ final class TerminalService {
         DiagnosticLogger.log(.info, category: "Terminal", "Resolved terminal warning state: acknowledged=\(settings.hasAcknowledgedTerminalWarning); sandboxRestrictionsEnabled=\(accessPolicy.isEnabled)")
         return TerminalWarningState(
             isAcknowledged: settings.hasAcknowledgedTerminalWarning,
-            areSandboxRestrictionsEnabled: accessPolicy.isEnabled
+            areSandboxRestrictionsEnabled: accessPolicy.isEnabled,
+            isDebugBuild: Self.isDebugBuild
         )
     }
 
@@ -32,7 +33,8 @@ final class TerminalService {
 
     func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy = .current) -> URL {
         guard let activePaneURL else {
-            DiagnosticLogger.log(.debug, category: "Terminal", "Resolved working directory to sandbox root because active pane URL was unavailable")
+            let fallbackDescription = accessPolicy.isEnabled ? "experimental sandbox root" : "default access-policy root"
+            DiagnosticLogger.log(.debug, category: "Terminal", "Resolved working directory to \(fallbackDescription) because active pane URL was unavailable")
             return accessPolicy.rootURL
         }
         let resolvedURL = accessPolicy.validatedDirectory(activePaneURL)
@@ -58,6 +60,14 @@ final class TerminalService {
         return sanitizedEnvironment
     }
 
+    private static var isDebugBuild: Bool {
+#if DEBUG
+        true
+#else
+        false
+#endif
+    }
+
     private func shouldReplaceTerminalType(_ terminalType: String?) -> Bool {
         guard let terminalType, !terminalType.isEmpty else { return true }
         return terminalType == "dumb"
@@ -72,16 +82,17 @@ struct TerminalVisibilityState: Equatable {
 struct TerminalWarningState: Equatable {
     let isAcknowledged: Bool
     let areSandboxRestrictionsEnabled: Bool
+    let isDebugBuild: Bool
 
     var messageText: String {
         "Experimental terminal warning".localized
     }
 
     var informativeText: String {
-        if areSandboxRestrictionsEnabled {
+        if isDebugBuild, areSandboxRestrictionsEnabled {
             return "The terminal runs shell commands in the selected folder. Commands can modify or delete files inside the PulseFiles experimental sandbox.".localized
         }
 
-        return "The terminal runs shell commands in the selected folder. Commands can modify or delete files, including files outside PulseFiles because sandbox restrictions are disabled.".localized
+        return "The terminal runs shell commands in the selected folder. Commands can modify or delete files that macOS permits PulseFiles to access, including folders you have opened or granted with security-scoped access.".localized
     }
 }
