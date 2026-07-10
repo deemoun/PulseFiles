@@ -1,0 +1,297 @@
+# PulseFiles Release Checklist
+
+Use this checklist before publishing a PulseFiles build. Prefer testing with a clean user account or a reset `UserDefaults` domain, and use disposable folders/files for every destructive operation.
+
+## Required build targets
+
+Run both command-line verification and manual app-bundle verification before release:
+
+- [ ] `swift test` passes from the repository root.
+- [ ] `./scripts/build_app.sh --release` creates `artifacts/PulseFiles.app` successfully.
+- [ ] A signed release app is produced and launched outside SwiftPM.
+
+> **Signed release app required:** Scenarios involving macOS security-scoped folder grants, persisted file access, Finder/Open With behavior, app relaunch persistence, release unrestricted mode, and any behavior affected by code signing, entitlements, quarantine, or TCC must be verified on a signed release `.app`, not only with `swift run`.
+
+## Manual scenarios
+
+### 1. First launch
+
+**Run on:** signed release app and, as a smoke check, local debug app.
+
+**Steps**
+
+- [ ] Remove or reset prior PulseFiles preferences for the test account.
+- [ ] Launch PulseFiles from the built `.app` bundle.
+- [ ] Observe the initial window, panes, sidebar, command bar, menus, and toolbar state.
+- [ ] Confirm no experimental terminal is visible on first launch.
+
+**Expected results**
+
+- [ ] The app opens one main window and remains responsive.
+- [ ] Two file panes are visible unless a persisted single-pane setting was intentionally restored.
+- [ ] One pane is clearly active.
+- [ ] Initial directories load without crashing or silently mutating files.
+- [ ] The experimental terminal is disabled and hidden by default.
+- [ ] Closing the last window terminates the app.
+
+### 2. Dual-pane navigation
+
+**Run on:** signed release app preferred; debug app acceptable for basic navigation.
+
+**Steps**
+
+- [ ] Navigate the left pane to a folder containing subfolders and files.
+- [ ] Navigate the right pane to a different folder.
+- [ ] Use mouse selection, double-click, Return, Backspace, breadcrumbs, and Tab to move between panes.
+- [ ] Sort each pane by Name, Size, and Modified.
+
+**Expected results**
+
+- [ ] Each pane keeps an independent current directory, selection, sort order, and navigation history.
+- [ ] Tab switches the active pane and visual active-pane styling follows focus.
+- [ ] Double-click and Return open folders/files as appropriate.
+- [ ] Sorting remains folder-first and does not affect the inactive pane unexpectedly.
+
+### 3. Parent row and Command-Up behavior
+
+**Run on:** signed release app for sandbox boundary checks; debug app acceptable for general behavior.
+
+**Steps**
+
+- [ ] Navigate into a nested folder.
+- [ ] Use the synthetic `..` parent row to navigate upward.
+- [ ] Use Command-Up to navigate upward.
+- [ ] In restricted DEBUG sandbox mode, navigate to the sandbox root and attempt to go above it using `..`, Backspace, and Command-Up.
+
+**Expected results**
+
+- [ ] The parent row appears only when upward navigation is allowed.
+- [ ] The parent row opens the parent folder and does not behave like a normal file item.
+- [ ] Command-Up navigates to the parent when allowed.
+- [ ] Restricted DEBUG sandbox mode never allows parent-row, Backspace, or Command-Up navigation outside the active sandbox root.
+
+### 4. Search/filter behavior
+
+**Run on:** signed release app preferred; debug app acceptable.
+
+**Steps**
+
+- [ ] Select the left pane and enter a search query that matches only some visible files.
+- [ ] Switch active panes and search in the right pane.
+- [ ] Search for a query with no matches.
+- [ ] Clear the search field.
+- [ ] Repeat while inside a nested folder where the parent row would normally be visible.
+
+**Expected results**
+
+- [ ] Search applies to the active pane only.
+- [ ] Matching results update promptly and preserve folder/file semantics.
+- [ ] Empty-result state is clear and non-destructive.
+- [ ] Clearing search restores the unfiltered listing.
+- [ ] The synthetic `..` parent row is hidden while search is active.
+
+### 5. Hidden-file toggle
+
+**Run on:** signed release app preferred; debug app acceptable.
+
+**Steps**
+
+- [ ] Open a folder containing dotfiles or create a disposable hidden file such as `.pulsefiles-hidden-test`.
+- [ ] Toggle hidden files on.
+- [ ] Toggle hidden files off.
+- [ ] Relaunch if hidden-file visibility is expected to persist for the chosen setting path.
+
+**Expected results**
+
+- [ ] Hidden files appear only when the toggle is enabled.
+- [ ] Hidden files sort consistently with normal files.
+- [ ] Toggling does not change the current folder or selection unexpectedly.
+- [ ] Persisted hidden-file preference is restored after relaunch when configured as a saved setting.
+
+### 6. Copy, move, rename, trash, and permanent delete
+
+**Run on:** signed release app for Finder Trash and real file-manager behavior; use disposable files only.
+
+**Steps**
+
+- [ ] Create disposable source and destination folders.
+- [ ] Copy one file from the active pane to the opposite pane.
+- [ ] Move one file from the active pane to the opposite pane.
+- [ ] Rename a file and a folder with valid names.
+- [ ] Attempt a rename with an invalid or empty name.
+- [ ] Trash a disposable file.
+- [ ] Permanently delete a disposable file only after confirming the destructive prompt and test setup.
+
+**Expected results**
+
+- [ ] Copy leaves the original in place and creates the destination item.
+- [ ] Move removes the source and creates the destination item.
+- [ ] Rename updates the item in place and refreshes the pane.
+- [ ] Invalid rename input is rejected before mutation.
+- [ ] Trash uses macOS Trash behavior where available.
+- [ ] Permanent delete is clearly confirmed, irreversible, and only affects the selected disposable item.
+- [ ] File operation results report failures, partial failures, skipped items, and cleanup warnings clearly.
+
+### 7. Conflict handling: replace, skip, cancel
+
+**Run on:** signed release app preferred; debug app acceptable with disposable folders.
+
+**Steps**
+
+- [ ] Prepare a source item and a destination item with the same name but distinguishable contents.
+- [ ] Start a copy or move that causes a name conflict and choose Replace.
+- [ ] Recreate the conflict and choose Skip.
+- [ ] Recreate the conflict and choose Cancel.
+- [ ] Repeat with a folder conflict if practical.
+
+**Expected results**
+
+- [ ] Replace overwrites only the conflicted destination item after explicit confirmation.
+- [ ] Skip preserves the existing destination item and continues other queued operations when applicable.
+- [ ] Cancel stops the operation without silently overwriting remaining conflicts.
+- [ ] Results distinguish replaced, skipped, cancelled, and failed items.
+- [ ] Replacement failure leaves a safe, explainable state and does not silently lose both source and destination.
+
+### 8. Operation cancellation
+
+**Run on:** signed release app preferred; debug app acceptable. Use large disposable files or folders.
+
+**Steps**
+
+- [ ] Start a long-running copy or move operation.
+- [ ] Observe progress UI or status reporting.
+- [ ] Cancel the operation before completion.
+- [ ] Inspect source and destination folders after cancellation.
+
+**Expected results**
+
+- [ ] Cancellation is available while the operation is in progress.
+- [ ] The UI remains responsive.
+- [ ] The result clearly reports cancellation.
+- [ ] Completed items remain valid, incomplete items are cleaned up when possible, and cleanup warnings are visible when cleanup cannot be completed.
+- [ ] No unrelated files are changed.
+
+### 9. Sidebar shortcuts and recents
+
+**Run on:** signed release app for persisted recents and system folders; debug app acceptable for smoke testing.
+
+**Steps**
+
+- [ ] Open the sidebar.
+- [ ] Click built-in shortcuts such as Home, Desktop, Documents, Downloads, or other available entries.
+- [ ] Navigate to several distinct folders in panes.
+- [ ] Confirm recent locations update.
+- [ ] Relaunch and inspect sidebar recents again.
+
+**Expected results**
+
+- [ ] Sidebar shortcuts navigate the active pane, not an unintended pane.
+- [ ] Shortcuts unavailable because of macOS permissions fail safely with a clear prompt or error.
+- [ ] Recent locations are deduplicated, bounded, and ordered by recent use.
+- [ ] Recent locations persist after relaunch.
+
+### 10. Security-scoped folder grants
+
+**Run on:** signed release app only.
+
+**Steps**
+
+- [ ] Attempt to browse a protected or previously ungranted folder that requires user approval.
+- [ ] Grant access through the macOS folder picker or app-provided access flow.
+- [ ] Navigate within the granted folder.
+- [ ] Copy, move, rename, and trash disposable items inside the granted folder if permissions allow.
+- [ ] Relaunch the signed release app and revisit the granted folder.
+
+**Expected results**
+
+- [ ] The app requests explicit access instead of bypassing macOS permission controls.
+- [ ] Granted folders are browsable and mutable according to the granted permission and operation type.
+- [ ] Security-scoped access is retained across relaunch when the app is expected to persist bookmarks.
+- [ ] Revoked or unavailable grants fail safely with a clear recovery path.
+
+### 11. Restricted DEBUG sandbox mode
+
+**Run on:** debug app launched with restricted sandbox mode, not a release-only build.
+
+**Steps**
+
+- [ ] Launch with `--pulsefiles-enable-experimental-sandbox` or enable the matching debug setting.
+- [ ] Confirm panes start inside `~/Library/Application Support/PulseFiles/ExperimentalSandbox` or another allowed sandbox root.
+- [ ] Attempt to navigate outside the sandbox root by parent navigation, typed/opened paths, sidebar shortcuts, recents, and file operations.
+- [ ] Explicitly grant an outside folder through the approved access flow.
+- [ ] Repeat navigation and file operations inside the granted outside folder.
+
+**Expected results**
+
+- [ ] Restricted mode is opt-in and clearly behaves as a development/testing safeguard.
+- [ ] Navigation and file operations are blocked outside the sandbox root unless an explicit folder grant exists.
+- [ ] Parent navigation cannot escape the sandbox root.
+- [ ] Explicit grants allow only the granted folder scope and fail safely when revoked.
+
+### 12. Release unrestricted mode
+
+**Run on:** signed release app only.
+
+**Steps**
+
+- [ ] Launch the signed release app without debug sandbox flags.
+- [ ] Browse normal user folders such as Home, Desktop, Documents, and Downloads.
+- [ ] Perform copy, move, rename, and trash operations on disposable files in normal user-controlled folders.
+- [ ] Confirm protected locations still use macOS permission prompts where applicable.
+
+**Expected results**
+
+- [ ] Release builds are not restricted to the experimental sandbox by default.
+- [ ] Normal file-manager browsing and operations work across user-approved locations.
+- [ ] Access still routes through macOS permission and security-scoped grant behavior where required.
+- [ ] No debug-only sandbox warning or forced sandbox root appears in normal release use.
+
+### 13. Terminal disabled-by-default behavior
+
+**Run on:** signed release app and debug app.
+
+**Steps**
+
+- [ ] Launch with reset preferences.
+- [ ] Confirm terminal UI is hidden.
+- [ ] Try menu, toolbar, or command-bar terminal entry points, if present.
+- [ ] Enable the experimental terminal setting intentionally.
+- [ ] Toggle terminal visibility and observe the first-use warning.
+- [ ] Disable the setting again and relaunch.
+
+**Expected results**
+
+- [ ] The terminal is disabled and hidden by default.
+- [ ] Terminal entry points do not show an active shell until the experimental setting is enabled.
+- [ ] First use warns that shell commands can modify or delete files and may affect files outside the experimental sandbox when restrictions are disabled.
+- [ ] When enabled, the terminal follows the active pane working directory where possible.
+- [ ] Disabling the setting prevents the terminal from appearing after relaunch.
+
+### 14. Settings persistence after relaunch
+
+**Run on:** signed release app only for final release sign-off; debug app acceptable for preliminary checks.
+
+**Steps**
+
+- [ ] Change startup or last directories for both panes.
+- [ ] Change sidebar visibility.
+- [ ] Change hidden-file visibility.
+- [ ] Change sort descriptor.
+- [ ] Change confirmation preferences for copy, move, delete, and permanent delete if exposed.
+- [ ] Change single-pane mode and file color scheme if exposed.
+- [ ] Quit and relaunch the app.
+
+**Expected results**
+
+- [ ] Persisted settings restore accurately after relaunch.
+- [ ] Settings apply to the intended pane or global surface only.
+- [ ] Safety-sensitive settings, especially destructive-operation confirmations and permanent delete preference, remain clear and do not silently become less safe.
+- [ ] Unavailable or moved startup folders fail safely and fall back to an accessible location.
+
+## Final release sign-off
+
+- [ ] All command-line tests passed.
+- [ ] All signed-release-app-only scenarios passed on a signed `.app`.
+- [ ] All destructive scenarios used disposable files and folders.
+- [ ] Sandbox, security-scoped grant, terminal, and permanent delete safety expectations were explicitly verified.
+- [ ] Any failures are documented with app version, build configuration, macOS version, reproduction steps, and whether the failure occurred in `swift run`, unsigned `.app`, or signed release `.app`.
