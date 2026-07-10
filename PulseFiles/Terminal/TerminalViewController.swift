@@ -5,16 +5,22 @@ final class TerminalViewController: NSViewController {
     private let terminalView = TerminalTextView()
     private let scrollView = NSScrollView()
     private let processFactory: () -> TerminalProcess
+    private let accessPolicy: SandboxFileAccessPolicy
 
     private var runningProcess: TerminalProcess?
     private var runningOutputHandle: FileHandle?
+    private var runningAccessScope: FolderAccessScope?
     private var promptStartIndex = 0
     var workingDirectoryProvider: (() -> URL)?
 
     var suggestedWorkingDirectory: URL = ExperimentalFlags.appSandboxRoot
 
-    init(processFactory: @escaping () -> TerminalProcess = { ProcessTerminalProcess() }) {
+    init(
+        processFactory: @escaping () -> TerminalProcess = { ProcessTerminalProcess() },
+        accessPolicy: SandboxFileAccessPolicy = .current
+    ) {
         self.processFactory = processFactory
+        self.accessPolicy = accessPolicy
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -71,6 +77,7 @@ final class TerminalViewController: NSViewController {
         }
 
         runningProcess = nil
+        endRunningAccessScope()
     }
 
     func runCommandForTesting(_ command: String) {
@@ -125,7 +132,20 @@ final class TerminalViewController: NSViewController {
             suggestedWorkingDirectory = workingDirectoryProvider()
         }
 
+        do {
+            try accessPolicy.validateAccess(to: suggestedWorkingDirectory)
+        } catch {
+            DiagnosticLogger.log(.warning, category: "Terminal", "Denied terminal launch because working directory is not accessible: path=\(DiagnosticLogger.sanitizedPath(suggestedWorkingDirectory)); reason=\(error.localizedDescription)")
+            appendLine("Could not run command: working directory is not authorized.")
+            if let failureReason = (error as? LocalizedError)?.failureReason {
+                appendLine(failureReason)
+            }
+            appendPrompt()
+            return
+        }
+
         DiagnosticLogger.log(.info, category: "Terminal", "Starting terminal process: shell=\(terminalService.shellPath); workingDirectory=\(DiagnosticLogger.sanitizedPath(suggestedWorkingDirectory)); commandLength=\(command.count)")
+        let accessScope = accessPolicy.beginAccess(to: [suggestedWorkingDirectory])
         let pipe = Pipe()
         let process = processFactory()
         process.configure(
@@ -137,6 +157,7 @@ final class TerminalViewController: NSViewController {
         )
         runningProcess = process
         runningOutputHandle = pipe.fileHandleForReading
+        runningAccessScope = accessScope
 
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -153,6 +174,7 @@ final class TerminalViewController: NSViewController {
                 DiagnosticLogger.log(process.terminationStatus == 0 ? .info : .warning, category: "Terminal", "Terminal process exited: status=\(process.terminationStatus); reason=\(process.terminationReason.rawValue)")
                 self?.runningProcess = nil
                 self?.runningOutputHandle = nil
+                self?.endRunningAccessScope()
                 if process.terminationStatus != 0 {
                     self?.appendLine("[exit \(process.terminationStatus)]")
                 }
@@ -168,8 +190,15 @@ final class TerminalViewController: NSViewController {
             pipe.fileHandleForReading.readabilityHandler = nil
             runningOutputHandle = nil
             runningProcess = nil
+            endRunningAccessScope()
             appendPrompt()
         }
+    }
+
+    private func endRunningAccessScope() {
+        guard let runningAccessScope else { return }
+        accessPolicy.endAccess(runningAccessScope)
+        self.runningAccessScope = nil
     }
 
     private func appendPrompt() {

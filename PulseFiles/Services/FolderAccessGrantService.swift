@@ -8,6 +8,14 @@ struct FolderAccessGrant: Codable, Equatable {
     let bookmarkData: Data
 }
 
+struct FolderAccessScope {
+    fileprivate let urls: [URL]
+
+    var isActive: Bool {
+        !urls.isEmpty
+    }
+}
+
 protocol FolderAccessBookmarkResolving {
     func makeBookmarkData(for url: URL) throws -> Data
     func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool)
@@ -130,15 +138,23 @@ final class FolderAccessGrantService {
     }
 
     func withSecurityScopedAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
-        let started = startAccessing(urls)
-        defer { stopAccessing(started) }
+        let scope = beginSecurityScopedAccess(to: urls)
+        defer { endSecurityScopedAccess(scope) }
         return try body()
     }
 
     func withSecurityScopedAccess<T>(to urls: [URL], _ body: () async throws -> T) async rethrows -> T {
-        let started = startAccessing(urls)
-        defer { stopAccessing(started) }
+        let scope = beginSecurityScopedAccess(to: urls)
+        defer { endSecurityScopedAccess(scope) }
         return try await body()
+    }
+
+    func beginSecurityScopedAccess(to urls: [URL]) -> FolderAccessScope {
+        FolderAccessScope(urls: startAccessing(urls))
+    }
+
+    func endSecurityScopedAccess(_ scope: FolderAccessScope) {
+        stopAccessing(scope.urls)
     }
 
     private func upsert(_ grant: FolderAccessGrant) {

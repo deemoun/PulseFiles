@@ -140,6 +140,14 @@ struct SandboxFileAccessPolicy {
         try await grantService.withSecurityScopedAccess(to: urls, body)
     }
 
+    func beginAccess(to urls: [URL]) -> FolderAccessScope {
+        grantService.beginSecurityScopedAccess(to: urls)
+    }
+
+    func endAccess(_ scope: FolderAccessScope) {
+        grantService.endSecurityScopedAccess(scope)
+    }
+
     private func isInsideExperimentalSandbox(_ url: URL) -> Bool {
         let rootPath = normalizedPath(rootURL)
         let candidatePath = normalizedPath(url)
