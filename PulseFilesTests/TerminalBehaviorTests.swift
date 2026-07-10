@@ -127,6 +127,53 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertFalse(process.didTerminate)
         XCTAssertFalse(controller.terminalTextForTesting.contains("[terminated]"))
     }
+
+    @MainActor
+    func testTerminalCommandDoesNotLaunchWhenWorkingDirectoryIsDenied() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.suggestedWorkingDirectory = sandboxFixture.externalDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("pwd")
+
+        XCTAssertFalse(process.didRun)
+        XCTAssertNil(process.currentDirectoryURL)
+        XCTAssertTrue(controller.terminalTextForTesting.contains("working directory is not authorized"))
+    }
+
+    @MainActor
+    func testTerminalCommandUsesGrantedWorkingDirectoryOutsideSandboxRoot() throws {
+        let grantDefaults = try IsolatedDefaultsFixture(prefix: "TerminalBehaviorGrantTests", testCase: self)
+        defer { grantDefaults.cleanup() }
+        let grantService = FolderAccessGrantService(defaults: grantDefaults.defaults, resolver: TerminalBehaviorFakeBookmarkResolver())
+        try grantService.grantAccess(to: sandboxFixture.externalDirectory)
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxFixture.root, grantService: grantService)
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(processFactory: { process }, accessPolicy: policy)
+        controller.suggestedWorkingDirectory = sandboxFixture.externalDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("pwd")
+
+        XCTAssertTrue(process.didRun)
+        XCTAssertEqual(process.currentDirectoryURL, sandboxFixture.externalDirectory)
+    }
+}
+
+private struct TerminalBehaviorFakeBookmarkResolver: FolderAccessBookmarkResolving {
+    func makeBookmarkData(for url: URL) throws -> Data {
+        Data(url.standardizedFileURL.path.utf8)
+    }
+
+    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool) {
+        guard let path = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return (URL(fileURLWithPath: path, isDirectory: true), false)
+    }
 }
 
 private final class FakeTerminalProcess: TerminalProcess {
@@ -138,6 +185,7 @@ private final class FakeTerminalProcess: TerminalProcess {
     private(set) var didRun = false
     private(set) var didTerminate = false
     private(set) var outputPipe: Pipe?
+    private(set) var currentDirectoryURL: URL?
 
     func configure(
         executableURL: URL,
@@ -146,6 +194,7 @@ private final class FakeTerminalProcess: TerminalProcess {
         currentDirectoryURL: URL,
         outputPipe: Pipe
     ) {
+        self.currentDirectoryURL = currentDirectoryURL
         self.outputPipe = outputPipe
     }
 
