@@ -4,12 +4,28 @@ final class TerminalViewController: NSViewController {
     private let terminalService = TerminalService()
     private let terminalView = TerminalTextView()
     private let scrollView = NSScrollView()
+    private let processFactory: () -> TerminalProcess
 
-    private var runningProcess: Process?
+    private var runningProcess: TerminalProcess?
+    private var runningOutputHandle: FileHandle?
     private var promptStartIndex = 0
     var workingDirectoryProvider: (() -> URL)?
 
     var suggestedWorkingDirectory: URL = ExperimentalFlags.appSandboxRoot
+
+    init(processFactory: @escaping () -> TerminalProcess = { ProcessTerminalProcess() }) {
+        self.processFactory = processFactory
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        stopRunningCommand()
+    }
 
     override func loadView() {
         view = NSView()
@@ -41,6 +57,28 @@ final class TerminalViewController: NSViewController {
 
     func focusCommandField() {
         view.window?.makeFirstResponder(terminalView)
+    }
+
+    func stopRunningCommand() {
+        guard runningProcess != nil || runningOutputHandle != nil else { return }
+        let process = runningProcess
+        runningOutputHandle?.readabilityHandler = nil
+        runningOutputHandle = nil
+
+        if process?.isRunning == true {
+            process?.terminate()
+            appendLine("[terminated]")
+        }
+
+        runningProcess = nil
+    }
+
+    func runCommandForTesting(_ command: String) {
+        run(command)
+    }
+
+    var terminalTextForTesting: String {
+        terminalView.string
     }
 
     private func buildLayout() {
@@ -88,16 +126,17 @@ final class TerminalViewController: NSViewController {
         }
 
         DiagnosticLogger.log(.info, category: "Terminal", "Starting terminal process: shell=\(terminalService.shellPath); workingDirectory=\(DiagnosticLogger.sanitizedPath(suggestedWorkingDirectory)); commandLength=\(command.count)")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: terminalService.shellPath)
-        process.arguments = ["-lc", command]
-        process.environment = terminalService.defaultEnvironment
-        process.currentDirectoryURL = suggestedWorkingDirectory
-
         let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        let process = processFactory()
+        process.configure(
+            executableURL: URL(fileURLWithPath: terminalService.shellPath),
+            arguments: ["-lc", command],
+            environment: terminalService.defaultEnvironment,
+            currentDirectoryURL: suggestedWorkingDirectory,
+            outputPipe: pipe
+        )
         runningProcess = process
+        runningOutputHandle = pipe.fileHandleForReading
 
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -110,8 +149,10 @@ final class TerminalViewController: NSViewController {
         process.terminationHandler = { [weak self] process in
             pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
+                guard self?.runningProcess === process else { return }
                 DiagnosticLogger.log(process.terminationStatus == 0 ? .info : .warning, category: "Terminal", "Terminal process exited: status=\(process.terminationStatus); reason=\(process.terminationReason.rawValue)")
                 self?.runningProcess = nil
+                self?.runningOutputHandle = nil
                 if process.terminationStatus != 0 {
                     self?.appendLine("[exit \(process.terminationStatus)]")
                 }
@@ -124,6 +165,8 @@ final class TerminalViewController: NSViewController {
         } catch {
             DiagnosticLogger.log(.error, category: "Terminal", "Failed to start terminal process: reason=\(error.localizedDescription)")
             appendLine("Could not run command: \(error.localizedDescription)")
+            pipe.fileHandleForReading.readabilityHandler = nil
+            runningOutputHandle = nil
             runningProcess = nil
             appendPrompt()
         }
@@ -153,6 +196,71 @@ final class TerminalViewController: NSViewController {
         let end = terminalView.string.count
         terminalView.setSelectedRange(NSRange(location: end, length: 0))
         terminalView.scrollRangeToVisible(NSRange(location: end, length: 0))
+    }
+}
+
+protocol TerminalProcess: AnyObject {
+    var isRunning: Bool { get }
+    var terminationStatus: Int32 { get }
+    var terminationReason: Process.TerminationReason { get }
+    var terminationHandler: ((TerminalProcess) -> Void)? { get set }
+
+    func configure(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String],
+        currentDirectoryURL: URL,
+        outputPipe: Pipe
+    )
+    func run() throws
+    func terminate()
+}
+
+private final class ProcessTerminalProcess: TerminalProcess {
+    private let process = Process()
+
+    var isRunning: Bool {
+        process.isRunning
+    }
+
+    var terminationStatus: Int32 {
+        process.terminationStatus
+    }
+
+    var terminationReason: Process.TerminationReason {
+        process.terminationReason
+    }
+
+    var terminationHandler: ((TerminalProcess) -> Void)? {
+        didSet {
+            process.terminationHandler = { [weak self] _ in
+                guard let self else { return }
+                self.terminationHandler?(self)
+            }
+        }
+    }
+
+    func configure(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String],
+        currentDirectoryURL: URL,
+        outputPipe: Pipe
+    ) {
+        process.executableURL = executableURL
+        process.arguments = arguments
+        process.environment = environment
+        process.currentDirectoryURL = currentDirectoryURL
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+    }
+
+    func run() throws {
+        try process.run()
+    }
+
+    func terminate() {
+        process.terminate()
     }
 }
 

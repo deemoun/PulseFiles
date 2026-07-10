@@ -150,6 +150,7 @@ final class MainWindowViewController: NSViewController {
     }
 
     deinit {
+        terminal.stopRunningCommand()
         if let keyEventMonitor {
             NSEvent.removeMonitor(keyEventMonitor)
         }
@@ -880,6 +881,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func removeTerminalPanel() {
         guard isTerminalInstalled else { return }
         DiagnosticLogger.log(.info, category: "Terminal", "Removing terminal panel")
+        terminal.stopRunningCommand()
         terminalHeightConstraint?.isActive = false
         contentSplitView.removeArrangedSubview(terminal.view)
         terminal.view.removeFromSuperview()
