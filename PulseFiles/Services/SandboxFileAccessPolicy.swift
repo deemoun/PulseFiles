@@ -45,7 +45,7 @@ struct SandboxFileAccessPolicy {
         isEnabledOverride ?? ExperimentalFlags.restrictFileAccessToAppSandboxRoot
     }
 
-    func canAccess(_ url: URL) -> Bool {
+    func canAccess(_ url: URL, logDecision shouldLogDecision: Bool = true) -> Bool {
         let allowed: Bool
         let reason: String
         if isEnabled {
@@ -63,7 +63,9 @@ struct SandboxFileAccessPolicy {
             allowed = hasProcessAccess(to: url) || grantService.hasGrant(containing: url)
             reason = allowed ? "directly readable, security-scoped, or granted" : "not readable or not authorized"
         }
-        logDecision(allowed ? .debug : .warning, allowed: allowed, url: url, reason: reason)
+        if shouldLogDecision {
+            logDecision(allowed ? .debug : .warning, allowed: allowed, url: url, reason: reason)
+        }
         return allowed
     }
 

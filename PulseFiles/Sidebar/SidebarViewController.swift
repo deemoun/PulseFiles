@@ -364,8 +364,9 @@ final class SidebarViewController: NSViewController {
     }
 
     private func loadDetails(for item: FileItem, selectionID: UUID) {
+        let accessPolicy = accessPolicy
         sizeTask = Task { [weak self] in
-            let totalSize = await Self.totalSize(for: item.url, fallback: item.size)
+            let totalSize = await Self.totalSize(for: item.url, fallback: item.size, accessPolicy: accessPolicy)
             let gps = item.isDirectory ? nil : Self.gpsLocation(for: item.url)
             await MainActor.run {
                 guard let self, self.representedSelectionID == selectionID else { return }
@@ -378,10 +379,11 @@ final class SidebarViewController: NSViewController {
     }
 
     private func loadTotalSize(for items: [FileItem], selectionID: UUID) {
+        let accessPolicy = accessPolicy
         sizeTask = Task { [weak self] in
             var total: Int64 = 0
             for item in items where !Task.isCancelled {
-                total += await Self.totalSize(for: item.url, fallback: item.size)
+                total += await Self.totalSize(for: item.url, fallback: item.size, accessPolicy: accessPolicy)
             }
             await MainActor.run {
                 guard let self, self.representedSelectionID == selectionID else { return }
@@ -390,18 +392,21 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    private static func totalSize(for url: URL, fallback: Int64) async -> Int64 {
+    static func totalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy = .current) async -> Int64 {
         await Task.detached(priority: .utility) {
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return fallback }
-            guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { return fallback }
-            var total: Int64 = 0
-            while let child = enumerator.nextObject() as? URL {
-                if Task.isCancelled { return total }
-                guard let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true else { continue }
-                total += Int64(values.fileSize ?? 0)
+            guard accessPolicy.canAccess(url, logDecision: false) else { return fallback }
+            return accessPolicy.withAccess(to: [url]) {
+                var isDirectory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return fallback }
+                guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { return fallback }
+                var total: Int64 = 0
+                while let child = enumerator.nextObject() as? URL {
+                    if Task.isCancelled { return total }
+                    guard let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true else { continue }
+                    total += Int64(values.fileSize ?? 0)
+                }
+                return total
             }
-            return total
         }.value
     }
 
