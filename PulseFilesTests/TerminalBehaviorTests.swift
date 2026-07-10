@@ -92,4 +92,69 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("outside PulseFiles"))
         XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("sandbox restrictions are disabled"))
     }
+
+    @MainActor
+    func testStoppingRunningTerminalCommandClearsHandlerTerminatesAndReportsTermination() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(processFactory: { process })
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("sleep 10")
+
+        XCTAssertTrue(process.didRun)
+        XCTAssertNotNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
+
+        controller.stopRunningCommand()
+
+        XCTAssertNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
+        XCTAssertTrue(process.didTerminate)
+        XCTAssertTrue(controller.terminalTextForTesting.contains("[terminated]"))
+    }
+
+    @MainActor
+    func testStoppingFinishedTerminalCommandClearsHandlerWithoutTerminationMessage() {
+        let process = FakeTerminalProcess()
+        process.isRunning = false
+        let controller = TerminalViewController(processFactory: { process })
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("echo done")
+        controller.stopRunningCommand()
+
+        XCTAssertNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
+        XCTAssertFalse(process.didTerminate)
+        XCTAssertFalse(controller.terminalTextForTesting.contains("[terminated]"))
+    }
+}
+
+private final class FakeTerminalProcess: TerminalProcess {
+    var isRunning = true
+    var terminationStatus: Int32 = 0
+    var terminationReason: Process.TerminationReason = .exit
+    var terminationHandler: ((TerminalProcess) -> Void)?
+
+    private(set) var didRun = false
+    private(set) var didTerminate = false
+    private(set) var outputPipe: Pipe?
+
+    func configure(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String],
+        currentDirectoryURL: URL,
+        outputPipe: Pipe
+    ) {
+        self.outputPipe = outputPipe
+    }
+
+    func run() throws {
+        didRun = true
+    }
+
+    func terminate() {
+        didTerminate = true
+        isRunning = false
+    }
 }
