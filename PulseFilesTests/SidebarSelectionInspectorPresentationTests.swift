@@ -53,6 +53,42 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         XCTAssertNil(SidebarViewController.SelectionInspectorPresentation.make(for: []))
     }
 
+    func testTotalSizeReturnsFallbackWhenAccessPolicyDeniesDirectory() async throws {
+        let deniedDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sandboxRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: deniedDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sandboxRoot, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: deniedDirectory)
+            try? FileManager.default.removeItem(at: sandboxRoot)
+        }
+
+        let child = deniedDirectory.appendingPathComponent("secret.txt")
+        try Data(repeating: 1, count: 128).write(to: child)
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxRoot)
+
+        let size = await SidebarViewController.totalSize(for: deniedDirectory, fallback: 42, accessPolicy: policy)
+
+        XCTAssertEqual(size, 42)
+    }
+
+    func testTotalSizeEnumeratesAllowedDirectory() async throws {
+        let sandboxRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: sandboxRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandboxRoot) }
+
+        try Data(repeating: 1, count: 128).write(to: sandboxRoot.appendingPathComponent("first.txt"))
+        try Data(repeating: 1, count: 64).write(to: sandboxRoot.appendingPathComponent("second.txt"))
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxRoot)
+
+        let size = await SidebarViewController.totalSize(for: sandboxRoot, fallback: 42, accessPolicy: policy)
+
+        XCTAssertEqual(size, 192)
+    }
+
     private func fileItem(
         _ name: String,
         type: FileItemType = .file,
