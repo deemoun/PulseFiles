@@ -27,18 +27,37 @@ enum SandboxAccessError: LocalizedError, Equatable {
 }
 
 struct SandboxFileAccessPolicy {
+    struct AccessProbe {
+        let fileExists: (String) -> Bool
+        let isReadableFile: (String) -> Bool
+        let isWritableFile: (String) -> Bool
+
+        static let fileManagerDefault = AccessProbe(
+            fileExists: { FileManager.default.fileExists(atPath: $0) },
+            isReadableFile: { FileManager.default.isReadableFile(atPath: $0) },
+            isWritableFile: { FileManager.default.isWritableFile(atPath: $0) }
+        )
+    }
+
     private let isEnabledOverride: Bool?
     private let grantService: FolderAccessGrantService
+    private let accessProbe: AccessProbe
     let rootURL: URL
 
     static let current = SandboxFileAccessPolicy(
         rootURL: ExperimentalFlags.appSandboxRoot
     )
 
-    init(isEnabled: Bool? = nil, rootURL: URL, grantService: FolderAccessGrantService = .shared) {
+    init(
+        isEnabled: Bool? = nil,
+        rootURL: URL,
+        grantService: FolderAccessGrantService = .shared,
+        accessProbe: AccessProbe = .fileManagerDefault
+    ) {
         self.isEnabledOverride = isEnabled
         self.rootURL = rootURL
         self.grantService = grantService
+        self.accessProbe = accessProbe
     }
 
     var isEnabled: Bool {
@@ -193,9 +212,9 @@ struct SandboxFileAccessPolicy {
         }
 
         let path = normalizedPath(url)
-        guard FileManager.default.isReadableFile(atPath: path) else { return false }
+        guard accessProbe.fileExists(path), accessProbe.isReadableFile(path) else { return false }
         if requireWritable {
-            return FileManager.default.isWritableFile(atPath: path)
+            return accessProbe.isWritableFile(path)
         }
         return true
     }

@@ -764,7 +764,13 @@ final class FileOperationServiceTests: XCTestCase {
         let right = try sandbox.temporaryDirectory.folder("AllowedSandbox/Right")
         if useFailingManager {
             let failingFileManager = FailingFileManager()
-            return Fixture(root: sandbox.root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: sandbox.policy), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: failingFileManager)
+            let accessProbe = SandboxFileAccessPolicy.AccessProbe(
+                fileExists: { failingFileManager.fileExists(atPath: $0) },
+                isReadableFile: { FileManager.default.isReadableFile(atPath: $0) },
+                isWritableFile: { FileManager.default.isWritableFile(atPath: $0) }
+            )
+            let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandbox.root, accessProbe: accessProbe)
+            return Fixture(root: sandbox.root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: policy), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: failingFileManager)
         }
         return Fixture(root: sandbox.root, left: left, right: right, service: sandbox.fileOperationService(), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: nil)
     }

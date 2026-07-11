@@ -140,6 +140,61 @@ final class SandboxFileAccessPolicyTests: XCTestCase {
         XCTAssertEqual(policy.validatedDirectory(temporaryDirectory.root), temporaryDirectory.root)
     }
 
+
+    func testDisabledSandboxModeUsesInjectedProbeForSourceAccess() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let readableByDefault = try fixture.externalFile("ProbeDenied.txt", contents: "exists")
+        let probe = SandboxFileAccessPolicy.AccessProbe(
+            fileExists: { _ in true },
+            isReadableFile: { _ in false },
+            isWritableFile: { _ in true }
+        )
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: fixture.root, accessProbe: probe)
+
+        XCTAssertTrue(FileManager.default.isReadableFile(atPath: readableByDefault.path))
+        XCTAssertFalse(policy.canAccess(readableByDefault))
+        XCTAssertThrowsError(try policy.validateAccess(to: readableByDefault)) { error in
+            guard case SandboxAccessError.unauthorized(let rejectedURL) = error else {
+                return XCTFail("Expected unauthorized access error, got \(error)")
+            }
+            XCTAssertEqual(rejectedURL, readableByDefault)
+        }
+    }
+
+    func testDisabledSandboxModeUsesInjectedProbeForDestinationAccess() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let destination = fixture.externalDirectory.appendingPathComponent("ProbeDestination.txt")
+        let probe = SandboxFileAccessPolicy.AccessProbe(
+            fileExists: { _ in true },
+            isReadableFile: { _ in true },
+            isWritableFile: { _ in false }
+        )
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: fixture.root, accessProbe: probe)
+
+        XCTAssertTrue(FileManager.default.isWritableFile(atPath: fixture.externalDirectory.path))
+        XCTAssertThrowsError(try policy.validateDestinationAccess(to: destination)) { error in
+            guard case SandboxAccessError.unauthorized(let rejectedURL) = error else {
+                return XCTFail("Expected unauthorized destination error, got \(error)")
+            }
+            XCTAssertEqual(rejectedURL, destination)
+        }
+    }
+
+    func testDisabledSandboxModeCanAllowPathOnlyKnownToInjectedProbe() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let virtualURL = fixture.externalDirectory.appendingPathComponent("VirtualOnly")
+        let probe = SandboxFileAccessPolicy.AccessProbe(
+            fileExists: { $0 == virtualURL.standardizedFileURL.resolvingSymlinksInPath().path },
+            isReadableFile: { $0 == virtualURL.standardizedFileURL.resolvingSymlinksInPath().path },
+            isWritableFile: { _ in false }
+        )
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: fixture.root, accessProbe: probe)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: virtualURL.path))
+        XCTAssertTrue(policy.canAccess(virtualURL))
+        XCTAssertNoThrow(try policy.validateAccess(to: virtualURL))
+    }
+
     func testFileOperationPreflightRejectsSourceURLThatFailsPolicyValidation() async throws {
         let fixture = try SandboxFixture(testCase: self)
         let outside = try fixture.externalFile("OutsideSource.txt", contents: "outside")
