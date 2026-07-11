@@ -6,6 +6,8 @@ final class FilePaneViewModel {
     private let accessPolicy: SandboxFileAccessPolicy
     private let directoryMonitor = DirectoryMonitor()
     private var loadTask: Task<Void, Never>?
+    private var nextLoadID = 0
+    private var activeLoadID = 0
 
     private(set) var state: PaneState
     private(set) var items: [FileItem] = []
@@ -174,6 +176,9 @@ final class FilePaneViewModel {
 
     private func load(directory: URL, addToHistory: Bool, onLoaded: (() -> Void)? = nil) {
         loadTask?.cancel()
+        nextLoadID += 1
+        let loadID = nextLoadID
+        activeLoadID = loadID
         DiagnosticLogger.log(.info, category: "FilePane", "Directory load started: path=\(DiagnosticLogger.sanitizedPath(directory)); includeHidden=\(state.showsHiddenFiles); sort=\(state.sort.key.rawValue); ascending=\(state.sort.ascending)")
         isLoading = true
         errorMessage = nil
@@ -189,7 +194,11 @@ final class FilePaneViewModel {
             guard let self else { return }
             do {
                 let loadedItems = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    finishCancelledLoad(loadID: loadID)
+                    return
+                }
+                guard isCurrentLoad(loadID) else { return }
                 DiagnosticLogger.log(.info, category: "FilePane", "Directory load succeeded: path=\(DiagnosticLogger.sanitizedPath(directory)); itemCount=\(loadedItems.count)")
                 items = loadedItems
                 state.currentDirectory = directory
@@ -202,7 +211,11 @@ final class FilePaneViewModel {
                 onChange?()
                 onLoaded?()
             } catch {
-                guard !Task.isCancelled else { return }
+                if error is CancellationError || Task.isCancelled {
+                    finishCancelledLoad(loadID: loadID)
+                    return
+                }
+                guard isCurrentLoad(loadID) else { return }
                 DiagnosticLogger.log(.error, category: "FilePane", "Directory load failed: path=\(DiagnosticLogger.sanitizedPath(directory)); reason=\(error.localizedDescription)")
                 state.currentDirectory = previousDirectory
                 items = previousItems
@@ -213,5 +226,15 @@ final class FilePaneViewModel {
                 onLoaded?()
             }
         }
+    }
+
+    private func isCurrentLoad(_ loadID: Int) -> Bool {
+        activeLoadID == loadID
+    }
+
+    private func finishCancelledLoad(loadID: Int) {
+        guard isCurrentLoad(loadID) else { return }
+        isLoading = false
+        onChange?()
     }
 }
