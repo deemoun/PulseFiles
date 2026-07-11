@@ -31,6 +31,10 @@ final class TerminalService {
         settings.hasAcknowledgedTerminalWarning = true
     }
 
+    func shouldAcknowledgeFirstUseWarning(response: Int, acknowledgementResponse: Int) -> Bool {
+        response == acknowledgementResponse
+    }
+
     func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy = .current) -> URL {
         guard let activePaneURL else {
             let fallbackDescription = accessPolicy.isEnabled ? "experimental sandbox root" : "default access-policy root"

@@ -55,6 +55,11 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertTrue(service.warningState(settings: reloadedSettings, accessPolicy: sandboxFixture.policy).isAcknowledged)
     }
 
+    func testFirstUseWarningAcknowledgementRequiresAcknowledgementResponse() {
+        XCTAssertTrue(service.shouldAcknowledgeFirstUseWarning(response: 1000, acknowledgementResponse: 1000))
+        XCTAssertFalse(service.shouldAcknowledgeFirstUseWarning(response: 1001, acknowledgementResponse: 1000))
+    }
+
     func testWorkingDirectoryFollowsActivePaneWhenURLIsAllowed() {
         let workingDirectory = service.resolvedWorkingDirectory(
             activePaneURL: sandboxFixture.allowedDirectory,

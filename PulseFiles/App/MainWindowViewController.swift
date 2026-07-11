@@ -863,18 +863,33 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func showFirstUseTerminalWarningIfNeeded() {
-        guard !settings.hasAcknowledgedTerminalWarning else { return }
-        terminalService.acknowledgeFirstUseWarning(settings: settings)
         let warningState = terminalService.warningState(settings: settings, accessPolicy: accessPolicy)
+        guard !warningState.isAcknowledged else { return }
+
         let alert = NSAlert()
         alert.messageText = warningState.messageText
         alert.informativeText = warningState.informativeText
         alert.alertStyle = .warning
         alert.addButton(withTitle: "I Understand".localized)
+        let acknowledgementResponse = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        let terminalService = terminalService
+        let settings = settings
         if let window = view.window {
-            alert.beginSheetModal(for: window)
+            alert.beginSheetModal(for: window) { response in
+                guard terminalService.shouldAcknowledgeFirstUseWarning(
+                    response: response.rawValue,
+                    acknowledgementResponse: acknowledgementResponse
+                ) else { return }
+                terminalService.acknowledgeFirstUseWarning(settings: settings)
+            }
         } else {
-            alert.runModal()
+            let response = alert.runModal()
+            if terminalService.shouldAcknowledgeFirstUseWarning(
+                response: response.rawValue,
+                acknowledgementResponse: acknowledgementResponse
+            ) {
+                terminalService.acknowledgeFirstUseWarning(settings: settings)
+            }
         }
     }
 
