@@ -46,7 +46,60 @@ final class FileSortingTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.displayName), ["alpha", "beta"])
     }
 
-    private func item(_ name: String, isDirectory: Bool, size: Int64, typeDescription: String? = nil) -> FileItem {
+    func testDescendingSortsKeepFoldersBeforeFiles() {
+        let oldFolder = item(
+            "a-old-folder",
+            isDirectory: true,
+            size: 1,
+            typeDescription: "Folder",
+            modificationDate: Date(timeIntervalSince1970: 100)
+        )
+        let newFolder = item(
+            "z-new-folder",
+            isDirectory: true,
+            size: 50,
+            typeDescription: "Folder",
+            modificationDate: Date(timeIntervalSince1970: 300)
+        )
+        let oldFile = item(
+            "a-old-file.txt",
+            isDirectory: false,
+            size: 10,
+            typeDescription: "Text document",
+            modificationDate: Date(timeIntervalSince1970: 200)
+        )
+        let newFile = item(
+            "z-new-file.png",
+            isDirectory: false,
+            size: 100,
+            typeDescription: "PNG image",
+            modificationDate: Date(timeIntervalSince1970: 400)
+        )
+        let items = [oldFile, oldFolder, newFile, newFolder]
+
+        let cases: [(FileSortKey, [String])] = [
+            (.name, ["z-new-folder", "a-old-folder", "z-new-file.png", "a-old-file.txt"]),
+            (.size, ["z-new-folder", "a-old-folder", "z-new-file.png", "a-old-file.txt"]),
+            (.kind, ["z-new-folder", "a-old-folder", "a-old-file.txt", "z-new-file.png"]),
+            (.modified, ["z-new-folder", "a-old-folder", "z-new-file.png", "a-old-file.txt"])
+        ]
+
+        for (key, expectedNames) in cases {
+            let sorted = FileSystemService.sorted(items, descriptor: .init(key: key, ascending: false))
+
+            XCTAssertEqual(sorted.map(\.displayName), expectedNames, "Failed descending sort for \(key)")
+            XCTAssertTrue(sorted.prefix(2).allSatisfy(\.isDirectory), "Directories should stay first for \(key)")
+            XCTAssertFalse(sorted.suffix(2).contains(where: \.isDirectory), "Files should stay after directories for \(key)")
+        }
+    }
+
+    private func item(
+        _ name: String,
+        isDirectory: Bool,
+        size: Int64,
+        typeDescription: String? = nil,
+        modificationDate: Date? = nil
+    ) -> FileItem {
         let resolvedTypeDescription = typeDescription ?? (isDirectory ? "Folder" : "File")
         FileItem(
             url: URL(fileURLWithPath: "/tmp/\(name)"),
@@ -59,7 +112,7 @@ final class FileSortingTests: XCTestCase {
             isHidden: name.hasPrefix("."),
             size: size,
             creationDate: nil,
-            modificationDate: nil,
+            modificationDate: modificationDate,
             posixPermissions: nil,
             owner: nil,
             group: nil,
