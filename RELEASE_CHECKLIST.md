@@ -215,15 +215,15 @@ Run both command-line verification and manual app-bundle verification before rel
 
 **Steps**
 
-- [ ] Launch with `--pulsefiles-enable-experimental-sandbox` or enable the matching debug setting.
-- [ ] Confirm panes start inside `~/Library/Application Support/PulseFiles/ExperimentalSandbox` or another allowed sandbox root.
+- [ ] Launch a DEBUG build with `--pulsefiles-enable-experimental-sandbox` or set the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key to `true`.
+- [ ] Confirm panes start inside `~/Library/Application Support/PulseFiles/ExperimentalSandbox`.
 - [ ] Attempt to navigate outside the sandbox root by parent navigation, typed/opened paths, sidebar shortcuts, recents, and file operations.
 - [ ] Explicitly grant an outside folder through the approved access flow.
 - [ ] Repeat navigation and file operations inside the granted outside folder.
 
 **Expected results**
 
-- [ ] Restricted mode is opt-in and clearly behaves as a development/testing safeguard.
+- [ ] Restricted mode is opt-in, driven by `ExperimentalFlags.restrictFileAccessToAppSandboxRoot`, and clearly behaves as a development/testing safeguard.
 - [ ] Navigation and file operations are blocked outside the sandbox root unless an explicit folder grant exists.
 - [ ] Parent navigation cannot escape the sandbox root.
 - [ ] Explicit grants allow only the granted folder scope and fail safely when revoked.
@@ -234,14 +234,14 @@ Run both command-line verification and manual app-bundle verification before rel
 
 **Steps**
 
-- [ ] Launch the signed release app without debug sandbox flags.
+- [ ] Launch the signed release app without debug sandbox flags or debug-only sandbox preferences.
 - [ ] Browse normal user folders such as Home, Desktop, Documents, and Downloads.
 - [ ] Perform copy, move, rename, and trash operations on disposable files in normal user-controlled folders.
 - [ ] Confirm protected locations still use macOS permission prompts where applicable.
 
 **Expected results**
 
-- [ ] Release builds are not restricted to the experimental sandbox by default.
+- [ ] Release builds default to normal file-manager access behavior and `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` is effectively `false`.
 - [ ] Normal file-manager browsing and operations work across user-approved locations.
 - [ ] Access still routes through macOS permission and security-scoped grant behavior where required.
 - [ ] No debug-only sandbox warning or forced sandbox root appears in normal release use.
