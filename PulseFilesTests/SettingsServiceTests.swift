@@ -142,6 +142,24 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertFalse(SettingsService(defaults: fixture.defaults).defaultTerminalVisible)
     }
 
+    func testManualTerminalVisibilityDoesNotChangeDefaultStartupVisibility() {
+        settings.experimentalTerminalEnabled = true
+        XCTAssertFalse(settings.defaultTerminalVisible)
+
+        settings.isTerminalVisible = true
+
+        XCTAssertTrue(settings.isTerminalVisible)
+        XCTAssertFalse(settings.defaultTerminalVisible)
+        XCTAssertFalse(SettingsService(defaults: fixture.defaults).defaultTerminalVisible)
+
+        settings.defaultTerminalVisible = true
+        settings.isTerminalVisible = false
+
+        XCTAssertFalse(settings.isTerminalVisible)
+        XCTAssertTrue(settings.defaultTerminalVisible)
+        XCTAssertTrue(SettingsService(defaults: fixture.defaults).defaultTerminalVisible)
+    }
+
     func testSinglePaneModeDefaultAndRoundTrip() {
         XCTAssertFalse(settings.defaultSinglePaneMode)
 
