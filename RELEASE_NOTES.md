@@ -80,10 +80,11 @@ Terminal V1 is experimental, opt-in, and not a hardened shell environment or sec
 
 PulseFiles is intended to behave like a normal file manager in release builds while still routing browsing and mutation decisions through its sandbox/access policy layer.
 
-- Release builds are intended for broader normal file-manager disk access, subject to macOS permissions and user-granted access.
-- DEBUG builds may use an experimental development sandbox rooted at `~/Library/Application Support/PulseFiles/ExperimentalSandbox`.
-- The experimental sandbox can be enabled or disabled through supported launch arguments or persisted preferences in development builds.
-- When experimental sandbox restrictions are enabled, navigation and file operations should remain inside the sandbox root unless the user explicitly grants access to an outside folder.
+- Release builds default to broader normal file-manager disk access, subject to macOS permissions and user-granted access; they are not restricted to the experimental sandbox by default.
+- DEBUG builds also default to unrestricted normal file-manager behavior, but can opt into the experimental development sandbox with `--pulsefiles-enable-experimental-sandbox` or the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key.
+- `--pulsefiles-disable-experimental-sandbox` forces `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` off; in release builds the flag resolves to `false`, and release settings import/export does not preserve the debug-only sandbox preference.
+- The experimental sandbox root is `~/Library/Application Support/PulseFiles/ExperimentalSandbox`.
+- When experimental sandbox restrictions are enabled in DEBUG, navigation and file operations should remain inside the sandbox root unless the user explicitly grants access to an outside folder.
 - External or user-provided locations should be validated through the sandbox file-access policy before browsing or mutating files.
 
 ## Known Limitations and Distribution Notes

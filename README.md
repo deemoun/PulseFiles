@@ -19,7 +19,7 @@ Phase 1 is implemented:
 - Bottom command bar.
 - Model, service, controller, view, command, and utility separation.
 - Unit tests for navigation history, sorting, path utilities, and bookmark persistence.
-- Experimental sandbox-root access flag defaults to enabled, limiting navigation to `~/Library/Application Support/PulseFiles/ExperimentalSandbox`.
+- Release builds default to normal file-manager access behavior, subject to macOS permissions and any user-granted folders. DEBUG builds are unrestricted by default too, but can opt into the experimental sandbox with `--pulsefiles-enable-experimental-sandbox` or the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key. When that flag is enabled, browsing and file operations are restricted to `~/Library/Application Support/PulseFiles/ExperimentalSandbox` unless the user explicitly grants access to an outside folder.
 
 ## Keyboard shortcuts
 
@@ -35,6 +35,20 @@ Phase 1 is implemented:
 | Command-Shift-. | Show or hide hidden files |
 | Command-` | Toggle Terminal V1 after enabling it in Settings |
 | Command-Period | Cancel the active file operation |
+
+## Experimental sandbox access
+
+Release builds default to normal file-manager access behavior: PulseFiles is not restricted to its experimental sandbox by default, and access is governed by macOS permissions plus any folders the user explicitly grants.
+
+DEBUG builds also default to unrestricted normal file-manager behavior. For development and testing, launch a DEBUG build with `--pulsefiles-enable-experimental-sandbox` or set the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key to `true` to restrict browsing and file operations. `--pulsefiles-disable-experimental-sandbox` forces the restriction off. In release builds, `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` resolves to `false`; persisted sandbox preferences are ignored/removed by settings import/export behavior.
+
+When `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` is enabled in DEBUG, PulseFiles creates and uses this root:
+
+```text
+~/Library/Application Support/PulseFiles/ExperimentalSandbox
+```
+
+Restricted DEBUG browsing and file operations should stay inside that root unless the user explicitly grants an outside folder through the app's access policy flow.
 
 ## Terminal V1 status
 
