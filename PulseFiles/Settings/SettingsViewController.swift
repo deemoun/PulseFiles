@@ -316,7 +316,7 @@ final class SettingsViewController: NSViewController {
     private func terminalV1StatusView() -> NSView {
         let message = settings.experimentalTerminalEnabled
             ? "Terminal V1 is enabled. It runs shell commands in the active pane folder; commands can modify or delete files.".localized
-            : "Terminal V1 is hidden by default. Enable it only if you accept the risk that shell commands can modify or delete files.".localized
+            : "Terminal V1 is disabled and hidden. Enable it only if you accept the risk that shell commands can modify or delete files.".localized
         let label = NSTextField(wrappingLabelWithString: message)
         label.textColor = .secondaryLabelColor
         return label

@@ -12,6 +12,7 @@ final class TerminalViewController: NSViewController {
     private var runningAccessScope: FolderAccessScope?
     private var promptStartIndex = 0
     var workingDirectoryProvider: (() -> URL)?
+    var isShellInteractionAllowedProvider: (() -> Bool)?
 
     var suggestedWorkingDirectory: URL = ExperimentalFlags.appSandboxRoot
 
@@ -124,6 +125,12 @@ final class TerminalViewController: NSViewController {
         }
         guard runningProcess == nil else {
             DiagnosticLogger.log(.warning, category: "Terminal", "Ignored terminal command because a process is already running")
+            appendPrompt()
+            return
+        }
+        guard isShellInteractionAllowedProvider?() ?? true else {
+            DiagnosticLogger.log(.warning, category: "Terminal", "Blocked terminal command until the first-use warning is acknowledged")
+            appendLine("Acknowledge the experimental terminal warning before running shell commands.")
             appendPrompt()
             return
         }
