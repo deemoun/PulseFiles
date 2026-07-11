@@ -167,30 +167,31 @@ final class FileSystemService: FileSystemServicing {
     static func sorted(_ items: [FileItem], descriptor: FileSortDescriptor) -> [FileItem] {
         items.sorted { lhs, rhs in
             if lhs.isDirectory != rhs.isDirectory {
+                // Keep folders grouped before files regardless of ascending/descending order.
                 return lhs.isDirectory && !rhs.isDirectory
             }
 
-            let ordered: Bool
+            let comparison: ComparisonResult
             switch descriptor.key {
             case .name:
-                ordered = lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+                comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
             case .kind:
                 let kindComparison = lhs.typeDescription.localizedStandardCompare(rhs.typeDescription)
-                ordered = kindComparison == .orderedSame
-                    ? lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
-                    : kindComparison == .orderedAscending
+                comparison = kindComparison == .orderedSame
+                    ? lhs.displayName.localizedStandardCompare(rhs.displayName)
+                    : kindComparison
             case .size:
-                ordered = lhs.size == rhs.size
-                    ? lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
-                    : lhs.size < rhs.size
+                comparison = lhs.size == rhs.size
+                    ? lhs.displayName.localizedStandardCompare(rhs.displayName)
+                    : (lhs.size < rhs.size ? .orderedAscending : .orderedDescending)
             case .modified:
                 let left = lhs.modificationDate ?? .distantPast
                 let right = rhs.modificationDate ?? .distantPast
-                ordered = left == right
-                    ? lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
-                    : left < right
+                comparison = left == right
+                    ? lhs.displayName.localizedStandardCompare(rhs.displayName)
+                    : (left < right ? .orderedAscending : .orderedDescending)
             }
-            return descriptor.ascending ? ordered : !ordered
+            return descriptor.ascending ? comparison == .orderedAscending : comparison == .orderedDescending
         }
     }
 }
