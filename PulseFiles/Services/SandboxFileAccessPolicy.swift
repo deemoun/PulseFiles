@@ -77,6 +77,34 @@ struct SandboxFileAccessPolicy {
         }
     }
 
+    func validateDestinationAccess(to destination: URL) throws {
+        let parentDirectory = destination.deletingLastPathComponent()
+        let allowed: Bool
+        let reason: String
+
+        if isEnabled {
+            if isInsideExperimentalSandbox(parentDirectory) {
+                allowed = true
+                reason = "parent inside sandbox root"
+            } else if grantService.hasGrant(containing: parentDirectory) {
+                allowed = true
+                reason = "parent inside explicit folder access grant"
+            } else {
+                allowed = false
+                reason = "parent outside sandbox root and not explicitly granted"
+            }
+        } else {
+            allowed = hasProcessAccess(to: parentDirectory, requireWritable: true) || grantService.hasGrant(containing: parentDirectory)
+            reason = allowed ? "parent directly readable and writable, security-scoped, or granted" : "parent not writable or not authorized"
+        }
+
+        logDecision(allowed ? .debug : .warning, allowed: allowed, url: destination, reason: reason)
+        guard allowed else {
+            DiagnosticLogger.log(.warning, category: "Sandbox", "Denied destination access validation: destination=\(DiagnosticLogger.sanitizedPath(destination)); parent=\(DiagnosticLogger.sanitizedPath(parentDirectory)); reason=\(reason)")
+            throw isEnabled ? SandboxAccessError.outsideExperimentalSandbox(destination) : SandboxAccessError.unauthorized(destination)
+        }
+    }
+
     func validatedDirectory(_ url: URL, fallback: URL? = nil) -> URL {
         if canAccess(url) {
             return url
@@ -156,7 +184,7 @@ struct SandboxFileAccessPolicy {
         return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
     }
 
-    private func hasProcessAccess(to url: URL) -> Bool {
+    private func hasProcessAccess(to url: URL, requireWritable: Bool = false) -> Bool {
         let didStartScopedAccess = url.startAccessingSecurityScopedResource()
         defer {
             if didStartScopedAccess {
@@ -164,13 +192,12 @@ struct SandboxFileAccessPolicy {
             }
         }
 
-        var isDirectory: ObjCBool = false
         let path = normalizedPath(url)
-        if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
-            return FileManager.default.isReadableFile(atPath: path)
+        guard FileManager.default.isReadableFile(atPath: path) else { return false }
+        if requireWritable {
+            return FileManager.default.isWritableFile(atPath: path)
         }
-
-        return FileManager.default.isReadableFile(atPath: path)
+        return true
     }
 
     private func logDecision(_ level: DiagnosticLogLevel, allowed: Bool, url: URL, reason: String) {

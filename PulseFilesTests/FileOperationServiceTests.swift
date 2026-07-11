@@ -556,6 +556,66 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "old")
     }
 
+
+    func testCreateFileAllowsNonexistentDestinationWhenParentIsAccessibleInSandbox() throws {
+        let fixture = try makeFixture()
+        let destination = fixture.left.appendingPathComponent("Brand New.txt")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+
+        let created = try fixture.service.createFile(named: "Brand New.txt", in: fixture.left)
+
+        XCTAssertEqual(created, destination)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    func testCopyAllowsNonexistentDestinationWhenParentIsAccessibleInSandbox() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("New Copy Source.txt")
+        let destination = fixture.right.appendingPathComponent(source.lastPathComponent)
+        try "copy me".write(to: source, atomically: true, encoding: .utf8)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try String(contentsOf: destination), "copy me")
+    }
+
+    func testMoveAllowsNonexistentDestinationWhenParentIsAccessibleInSandbox() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("New Move Source.txt")
+        let destination = fixture.right.appendingPathComponent(source.lastPathComponent)
+        try "move me".write(to: source, atomically: true, encoding: .utf8)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+
+        let result = try await fixture.service.move(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try String(contentsOf: destination), "move me")
+    }
+
+    func testUnrestrictedModeAllowsCreationWhenNonexistentDestinationParentIsWritable() throws {
+        let fixture = try makeFixture()
+        let externalDirectory = try makeTemporaryDirectory()
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy)
+        let destination = externalDirectory.appendingPathComponent("External New.txt")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+
+        let created = try service.createFile(named: "External New.txt", in: externalDirectory)
+
+        XCTAssertEqual(created, destination)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
+    }
+
     func testCreateFolderCreatesDirectoryInSandbox() throws {
         let fixture = try makeFixture()
 
@@ -694,6 +754,7 @@ final class FileOperationServiceTests: XCTestCase {
         let left: URL
         let right: URL
         let service: FileOperationService
+        let unrestrictedPolicy: SandboxFileAccessPolicy
         let failingFileManager: FailingFileManager?
     }
 
@@ -703,9 +764,9 @@ final class FileOperationServiceTests: XCTestCase {
         let right = try sandbox.temporaryDirectory.folder("AllowedSandbox/Right")
         if useFailingManager {
             let failingFileManager = FailingFileManager()
-            return Fixture(root: sandbox.root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: sandbox.policy), failingFileManager: failingFileManager)
+            return Fixture(root: sandbox.root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: sandbox.policy), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: failingFileManager)
         }
-        return Fixture(root: sandbox.root, left: left, right: right, service: sandbox.fileOperationService(), failingFileManager: nil)
+        return Fixture(root: sandbox.root, left: left, right: right, service: sandbox.fileOperationService(), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: nil)
     }
 
     private func makeTemporaryDirectory() throws -> URL {
