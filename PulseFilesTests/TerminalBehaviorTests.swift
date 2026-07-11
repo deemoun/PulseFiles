@@ -134,6 +134,22 @@ final class TerminalBehaviorTests: XCTestCase {
     }
 
     @MainActor
+    func testTerminalCommandDoesNotLaunchBeforeFirstUseWarningAcknowledgement() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.isShellInteractionAllowedProvider = { false }
+        controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("pwd")
+
+        XCTAssertFalse(process.didRun)
+        XCTAssertNil(process.currentDirectoryURL)
+        XCTAssertTrue(controller.terminalTextForTesting.contains("Acknowledge the experimental terminal warning"))
+    }
+
+    @MainActor
     func testTerminalCommandDoesNotLaunchWhenWorkingDirectoryIsDenied() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(processFactory: { process }, accessPolicy: sandboxFixture.policy)

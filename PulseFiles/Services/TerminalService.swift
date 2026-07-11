@@ -97,6 +97,6 @@ struct TerminalWarningState: Equatable {
             return "The terminal runs shell commands in the selected folder. Commands can modify or delete files inside the PulseFiles experimental sandbox.".localized
         }
 
-        return "The terminal runs shell commands in the selected folder. Commands can modify or delete files that macOS permits PulseFiles to access, including folders you have opened or granted with security-scoped access.".localized
+        return "The terminal runs shell commands in the selected folder. Commands can modify or delete files outside PulseFiles when sandbox restrictions are disabled, including folders macOS permits PulseFiles to access or folders you have granted with security-scoped access.".localized
     }
 }

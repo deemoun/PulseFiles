@@ -239,6 +239,10 @@ final class MainWindowViewController: NSViewController {
                 accessPolicy: self.accessPolicy
             )
         }
+        terminal.isShellInteractionAllowedProvider = { [weak self] in
+            guard let self else { return false }
+            return self.settings.experimentalTerminalEnabled && self.settings.hasAcknowledgedTerminalWarning
+        }
         leftPane.onActivate = { [weak self] in self?.activePaneID = .left }
         rightPane.onActivate = { [weak self] in self?.activePaneID = .right }
         leftPane.onSwitchPane = { [weak self] in self?.activePaneID = .right }
@@ -717,11 +721,15 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         view.window?.backgroundColor = LiquidGlassStyle.windowBackground
         setSidebarVisible(settings.defaultSidebarVisible)
         let shouldShowTerminal = settings.experimentalTerminalEnabled && settings.defaultTerminalVisible
-        if shouldShowTerminal != isTerminalInstalled {
+        if !settings.experimentalTerminalEnabled {
+            removeTerminalPanel()
+            settings.isTerminalVisible = false
+        } else if shouldShowTerminal != isTerminalInstalled {
             if shouldShowTerminal {
                 installTerminalPanel(showWarning: true)
             } else {
                 removeTerminalPanel()
+                settings.isTerminalVisible = false
             }
         }
         setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)

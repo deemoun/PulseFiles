@@ -66,9 +66,9 @@ PulseFiles persists user preferences through its settings service, including:
 
 Settings are stored with UserDefaults-backed app preferences, with import/export support where available in the app.
 
-## Experimental Terminal
+## Experimental Terminal V1
 
-The integrated terminal is experimental and opt-in.
+Terminal V1 is experimental, opt-in, and not a hardened shell environment or security boundary.
 
 - It is disabled and hidden by default.
 - Users must explicitly enable the experimental terminal setting before it can be shown or toggled by default.
@@ -93,7 +93,7 @@ PulseFiles is intended to behave like a normal file manager in release builds wh
 - Network shares, removable drives, external volumes, mounted disk images, and custom filesystem providers may have edge cases that are not guaranteed unless explicitly tested.
 - File permissions, extended attributes, package directories, symlinks, aliases, and provider-specific metadata should be verified for the specific release scenario before making preservation guarantees.
 - Long-running operations and unusual failure modes may depend on macOS filesystem behavior, permissions prompts, and volume availability.
-- The integrated terminal remains experimental and should not be presented as a hardened shell environment or security boundary.
+- Terminal V1 remains experimental and should not be presented as a hardened shell environment or security boundary.
 - The DEBUG experimental sandbox is a development/testing safeguard, not a substitute for a production App Sandbox entitlement model.
 
 ## Suggested Release Body Summary
