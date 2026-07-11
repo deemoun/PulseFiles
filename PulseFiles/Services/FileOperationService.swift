@@ -771,7 +771,7 @@ final class FileOperationService: FileOperationServicing {
         try accessPolicy.validateAccess(to: directory)
         let name = try FileNameValidator.validate(rawName, in: directory)
         let destination = directory.appendingPathComponent(name, isDirectory: isDirectory)
-        try accessPolicy.validateAccess(to: destination)
+        try accessPolicy.validateDestinationAccess(to: destination)
         guard !fileManager.fileExists(atPath: destination.path) else {
             throw FileOperationError.destinationExists(destination)
         }
@@ -794,7 +794,7 @@ final class FileOperationService: FileOperationServicing {
             }
 
             let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
-            try accessPolicy.validateAccess(to: destination)
+            try accessPolicy.validateDestinationAccess(to: destination)
             try validateDestination(destination, for: source)
             let normalizedDestination = FilePathComparison.normalizedPath(destination)
             guard normalizedDestinations.insert(normalizedDestination).inserted else {
@@ -805,7 +805,7 @@ final class FileOperationService: FileOperationServicing {
 
     private func preflightRename(source: URL, destination: URL) throws {
         try accessPolicy.validateAccess(to: source)
-        try accessPolicy.validateAccess(to: destination)
+        try accessPolicy.validateDestinationAccess(to: destination)
         try validateExistingSource(source)
         try validateExistingDirectory(source.deletingLastPathComponent())
         try validateDestination(destination, for: source)
