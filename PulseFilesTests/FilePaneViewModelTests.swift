@@ -135,6 +135,53 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertNotNil(viewModel.errorMessage)
     }
 
+
+    func testRapidNavigationKeepsLatestSuccessfulLoadResult() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let firstDirectory = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/First")
+        let secondDirectory = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Second")
+        let fileSystem = DelayedFileSystem()
+        fileSystem.setItems([TestFileSystem.item(named: "Old.txt", in: firstDirectory)], for: firstDirectory, delay: 200_000_000)
+        fileSystem.setItems([TestFileSystem.item(named: "New.txt", in: secondDirectory)], for: secondDirectory, delay: 10_000_000)
+        let viewModel = FilePaneViewModel(
+            initialDirectory: sandbox.allowedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.policy
+        )
+
+        viewModel.navigate(to: firstDirectory)
+        viewModel.navigate(to: secondDirectory)
+        await waitUntilLoaded(viewModel)
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertEqual(viewModel.currentDirectory, secondDirectory)
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["New.txt"])
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    func testCurrentLoadCancellationClearsLoadingAndNotifiesChange() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = DelayedFileSystem()
+        fileSystem.setError(CancellationError(), for: sandbox.allowedDirectory, delay: 10_000_000)
+        let viewModel = FilePaneViewModel(
+            initialDirectory: sandbox.allowedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.policy
+        )
+        var changeCount = 0
+        viewModel.onChange = { changeCount += 1 }
+
+        viewModel.loadCurrentDirectory()
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertGreaterThanOrEqual(changeCount, 2)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.loadFailure)
+        XCTAssertTrue(viewModel.visibleItems.isEmpty)
+    }
+
     private func load(_ viewModel: FilePaneViewModel) async {
         await withCheckedContinuation { continuation in
             viewModel.loadCurrentDirectory {
@@ -147,5 +194,30 @@ final class FilePaneViewModelTests: XCTestCase {
         while viewModel.isLoading {
             await Task.yield()
         }
+    }
+}
+
+
+private final class DelayedFileSystem: FileSystemServicing {
+    private var responses: [URL: (items: [FileItem], error: Error?, delay: UInt64)] = [:]
+
+    func setItems(_ items: [FileItem], for directory: URL, delay: UInt64) {
+        responses[directory] = (items: items, error: nil, delay: delay)
+    }
+
+    func setError(_ error: Error, for directory: URL, delay: UInt64) {
+        responses[directory] = (items: [], error: error, delay: delay)
+    }
+
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem] {
+        let response = responses[url] ?? (items: [], error: nil, delay: 0)
+        if response.delay > 0 {
+            try? await Task.sleep(nanoseconds: response.delay)
+        }
+        if let error = response.error {
+            throw error
+        }
+        let visibleItems = includingHidden ? response.items : response.items.filter { !$0.isHidden }
+        return FileSystemService.sorted(visibleItems, descriptor: sort)
     }
 }
