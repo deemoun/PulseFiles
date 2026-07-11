@@ -18,6 +18,7 @@ final class SettingsService {
     private let downloadsDirectoryProvider: () -> URL
     private let applicationSupportDirectoryProvider: () -> URL
     private var isSyncingJSON = false
+    private var runtimeTerminalVisible: Bool?
 
     init(
         defaults: UserDefaults = .standard,
@@ -205,8 +206,11 @@ final class SettingsService {
     }
 
     var isTerminalVisible: Bool {
-        get { defaultTerminalVisible }
-        set { defaultTerminalVisible = experimentalTerminalEnabled && newValue }
+        get {
+            guard experimentalTerminalEnabled else { return false }
+            return runtimeTerminalVisible ?? defaultTerminalVisible
+        }
+        set { runtimeTerminalVisible = experimentalTerminalEnabled && newValue }
     }
 
     private var accessPolicy: SandboxFileAccessPolicy {

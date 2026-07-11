@@ -213,7 +213,7 @@ final class MainWindowViewController: NSViewController {
         setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)
 
         addChild(terminal)
-        if settings.experimentalTerminalEnabled, settings.isTerminalVisible {
+        if settings.experimentalTerminalEnabled && settings.defaultTerminalVisible {
             installTerminalPanel(showWarning: true)
         }
     }
