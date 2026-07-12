@@ -9,8 +9,9 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] `swift test` passes from the repository root.
 - [ ] `./scripts/build_app.sh --release` creates `artifacts/PulseFiles.app` successfully.
 - [ ] A signed release app is produced and launched outside SwiftPM.
+- [ ] `scripts/release_validation.sh --signed-app artifacts/release/PulseFiles.app` runs on macOS, including the signed-app UI harness, or any skipped harness run is documented with an environment reason.
 
-> **Signed release app required:** Scenarios involving macOS security-scoped folder grants, persisted file access, Finder/Open With behavior, app relaunch persistence, release unrestricted mode, and any behavior affected by code signing, entitlements, quarantine, or TCC must be verified on a signed release `.app`, not only with `swift run`.
+> **Signed release app required:** Scenarios involving macOS security-scoped folder grants, persisted file access, Finder/Open With behavior, app relaunch persistence, release unrestricted mode, and any behavior affected by code signing, entitlements, quarantine, or TCC must be verified on a signed release `.app`, not only with `swift run`. The external harness in `qa/ui-harness/` is the automated signed-app smoke gate for these flows and requires Accessibility permission for the invoking terminal or CI runner.
 
 ## Manual scenarios
 
