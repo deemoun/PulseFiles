@@ -1604,8 +1604,14 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             }
 
             do {
-                let result = try await operation { [weak self] progress in
-                    self?.updateFileOperationProgress(progress, operationName: operationName)
+                // Keep the operation coordinator and every AppKit update on the
+                // main actor, while ensuring a service implementation cannot do
+                // synchronous filesystem work on the UI executor before its
+                // first suspension point.
+                let result = try await runFileOperationOffMain {
+                    try await operation { [weak self] progress in
+                        self?.updateFileOperationProgress(progress, operationName: operationName)
+                    }
                 }
                 self.clearClipboardFeedback()
                 self.refreshBothPanes()
@@ -1615,6 +1621,17 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 let detail = localizedError?.failureReason ?? error.localizedDescription
                 self.showError(message: "Could Not %@ Items".localized(with: operationName), detail: detail)
             }
+        }
+    }
+
+    private func runFileOperationOffMain(
+        _ operation: @escaping @Sendable () async throws -> FileOperationResult
+    ) async throws -> FileOperationResult {
+        let worker = Task.detached(priority: .userInitiated, operation: operation)
+        return try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
         }
     }
 

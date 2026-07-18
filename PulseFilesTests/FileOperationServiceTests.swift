@@ -905,6 +905,40 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Data.bin").path))
     }
 
+    func testBlockingStreamingCopyDoesNotBlockMainActorProgressCallbacks() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Data.bin")
+        try Data(repeating: 1, count: 4).write(to: source)
+        let copier = BlockingStreamingCopier()
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: copier)
+        let started = expectation(description: "streaming copy started on its worker")
+        let progress = expectation(description: "main-actor progress callback ran while copy is blocked")
+        let mainActorWork = expectation(description: "main actor remained responsive")
+        copier.onStarted = { started.fulfill() }
+
+        let copyTask = Task {
+            try await service.copy(
+                FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+                conflictHandler: { _ in .replace },
+                progressHandler: { _ in
+                    if copier.isStarted {
+                        XCTAssertTrue(Thread.isMainThread)
+                        progress.fulfill()
+                    }
+                }
+            )
+        }
+
+        await fulfillment(of: [started, progress], timeout: 2)
+        await MainActor.run { mainActorWork.fulfill() }
+        await fulfillment(of: [mainActorWork], timeout: 1)
+
+        copier.releaseCopy()
+        let result = try await copyTask.value
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try Data(contentsOf: fixture.right.appendingPathComponent("Data.bin")).count, 4)
+    }
+
     func testPermanentDeleteRejectsDuplicateSourcesBeforeMutation() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")
@@ -1246,6 +1280,36 @@ private final class ScriptedStreamingCopier: FileOperationStreamingCopying {
             offset = end
         }
         try copied.write(to: destination)
+    }
+}
+
+private final class BlockingStreamingCopier: FileOperationStreamingCopying {
+    private let lock = NSLock()
+    private let releaseSemaphore = DispatchSemaphore(value: 0)
+    private var hasStarted = false
+    var onStarted: (() -> Void)?
+
+    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        lock.lock()
+        hasStarted = true
+        let started = onStarted
+        lock.unlock()
+        started?()
+        try await progress(1)
+        releaseSemaphore.wait()
+        try Task.checkCancellation()
+        try Data(contentsOf: source).write(to: destination)
+        try await progress(3)
+    }
+
+    var isStarted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hasStarted
+    }
+
+    func releaseCopy() {
+        releaseSemaphore.signal()
     }
 }
 

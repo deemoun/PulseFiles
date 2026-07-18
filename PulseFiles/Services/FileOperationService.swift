@@ -216,19 +216,29 @@ final class FileHandleStreamingCopier: FileOperationStreamingCopying {
     private let chunkSize = 1_048_576
 
     func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
-        let reader = try FileHandle(forReadingFrom: source)
-        defer { try? reader.close() }
-        guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        let writer = try FileHandle(forWritingTo: destination)
-        defer { try? writer.close() }
+        // FileHandle reads and writes can block, particularly for network
+        // volumes. Use a detached executor even when this copier is used
+        // independently of FileOperationService.
+        let worker = Task.detached(priority: .utility) { [chunkSize = self.chunkSize] in
+            let reader = try FileHandle(forReadingFrom: source)
+            defer { try? reader.close() }
+            guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let writer = try FileHandle(forWritingTo: destination)
+            defer { try? writer.close() }
 
-        while true {
-            try Task.checkCancellation()
-            guard let data = try reader.read(upToCount: chunkSize), !data.isEmpty else { break }
-            try writer.write(contentsOf: data)
-            try await progress(data.count)
+            while true {
+                try Task.checkCancellation()
+                guard let data = try reader.read(upToCount: chunkSize), !data.isEmpty else { break }
+                try writer.write(contentsOf: data)
+                try await progress(data.count)
+            }
+        }
+        try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
         }
     }
 }
@@ -340,6 +350,24 @@ final class FileOperationService: FileOperationServicing {
         _ request: FileOperationRequest,
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
+    ) async throws -> FileOperationResult {
+        let worker = Task.detached(priority: .utility) { [self] in
+            try await self.copyOnWorker(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+        }
+        return try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+    }
+
+    /// This runs the complete copy path on a detached executor. It deliberately
+    /// includes preflight, recursive staging, placement, and FileManager calls;
+    /// the only cross-executor work is the async conflict/progress callbacks.
+    private func copyOnWorker(
+        _ request: FileOperationRequest,
+        conflictHandler: @escaping FileConflictHandler,
+        progressHandler: FileOperationProgressHandler?
     ) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Copy operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
         do {
