@@ -54,6 +54,21 @@ Restricted DEBUG browsing and file operations should stay inside that root unles
 
 The integrated terminal is a V1 experimental feature. It is hidden and disabled by default. To use it, open Settings and enable **Enable experimental terminal**; optionally enable **Show terminal by default** after that. On first use, PulseFiles warns that shell commands can modify or delete files, including files outside the app's experimental sandbox when sandbox restrictions are disabled.
 
+## Version 1.0 storage compatibility
+
+The following is the 1.0 product commitment, not a promise that every third-party filesystem provider implements identical macOS behavior. Final release sign-off for the supported rows is performed against a signed app using the scenarios in `RELEASE_CHECKLIST.md`.
+
+| Item class | 1.0 status | Behavior and recovery |
+| --- | --- | --- |
+| iCloud Drive and cloud-provider folders | Supported when the item is locally available and the provider allows the operation | Browsing and normal operations use macOS access checks. A cloud-only iCloud item is rejected before mutation; download it in Finder and retry. Provider sync conflicts, provider-specific metadata, and providers that do not expose normal file semantics are not guaranteed. |
+| Network shares and removable media | Supported while mounted, reachable, writable, and permitted by macOS | Operations are preflighted and re-check availability before mutation. A disconnected volume is reported as unavailable; reconnect/remount it and retry. Read-only media is rejected with a writable-media recovery message. |
+| Packages | Supported as directory trees | PulseFiles lists packages as packages and copies/moves their contents as a tree. Test application-specific package integrity before replacing production packages. |
+| Symbolic links | Supported as links | Copy preserves the stored link destination without resolving or traversing the target. This prevents a link from reading an unselected external target. |
+| Finder aliases | Not supported for mutation in 1.0 | PulseFiles detects a Finder alias before mutation and leaves it unchanged. Use Finder to manage the alias or operate on the original item. Finder aliases are not symbolic links. |
+| Metadata preservation | Best-effort support | Copy paths preserve POSIX permissions, ownership IDs where permitted, timestamps, Finder tags/labels, extended attributes, and ACLs. If a destination/provider rejects metadata, content remains copied but PulseFiles reports a cleanup warning; verify metadata on the destination before removing the source. |
+
+Do not treat a successful file-content transfer as a guarantee that cloud-provider state, custom metadata, or application-specific package internals were preserved. These limits are intentionally reflected in the release-facing copy rather than hidden behind a generic "all files" claim.
+
 ## Opening
 
 Open the repository folder or `Package.swift` in Xcode. The local environment used to create this project only has Command Line Tools active, so full Xcode project generation/build verification was left for a machine with Xcode selected.

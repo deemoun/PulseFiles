@@ -305,10 +305,37 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] A pane on the removed volume clears its stale selection and safely falls back to an accessible, policy-validated folder.
 - [ ] The app does not continue mutations after the removed source or destination is detected; partial failures and any cleanup warnings are shown.
 
+### 16. Version 1.0 storage compatibility
+
+**Run on:** a signed release app only. Use only disposable fixtures. Run the cloud
+case with a dedicated test account/provider folder, the network case with a
+disposable share, and removable-media cases with a disposable disk image or
+empty external volume. Record provider, filesystem, mount protocol, and macOS
+version alongside each result.
+
+**Steps**
+
+- [ ] **Cloud folder:** copy and move a locally downloaded disposable item in iCloud Drive or another provider folder. If iCloud optimized storage can produce a cloud-only fixture, attempt the same operation before downloading it, then download it in Finder and retry.
+- [ ] **Network share:** browse, copy, move, rename, and trash a disposable file on a mounted writable share. Disconnect the share before one retry.
+- [ ] **Removable media:** copy to and from a writable disposable disk image/external volume, then repeat a destination attempt after mounting it read-only or ejecting it.
+- [ ] **Package:** copy, move, rename, trash, and open/reveal a disposable `.app`, `.bundle`, or other package fixture; compare its tree before and after.
+- [ ] **Symbolic link:** copy and move a link whose target is outside the fixture root and a self-referential directory link. Confirm the copied link retains its stored destination and no target content is copied through the link.
+- [ ] **Finder alias:** create a Finder alias to a disposable target and attempt copy, move, rename, trash, and permanent delete. Confirm each requested mutation is blocked before changing the alias or target.
+- [ ] **Metadata:** apply disposable permissions, timestamps, Finder tags, an extended attribute, and an ACL where supported; copy across the same filesystem and across the network/removable fixture. Inspect the destination and any result warning before removing the source.
+
+**Expected results**
+
+- [ ] Locally available cloud items and mounted writable network/removable volumes complete normal operations only when macOS access permits them.
+- [ ] A cloud-only iCloud item is rejected before mutation with a download-and-retry recovery message. A disconnected volume asks for reconnect/remount; a read-only destination asks for writable media. No rejected scenario writes a destination item.
+- [ ] Package trees remain complete for the checked operation. Symbolic links remain links and never cause traversal of an unselected target.
+- [ ] Finder aliases are explicitly rejected before mutation with Finder/original-item recovery guidance; they are not presented as symbolic links.
+- [ ] Standard metadata is preserved where the destination supports it. Any unsupported metadata is called out as a cleanup warning, and the source is retained until the operator verifies the destination.
+
 ## Final release sign-off
 
 - [ ] All command-line tests passed.
 - [ ] All signed-release-app-only scenarios passed on a signed `.app`.
 - [ ] All destructive scenarios used disposable files and folders.
 - [ ] Sandbox, security-scoped grant, terminal, and permanent delete safety expectations were explicitly verified.
+- [ ] The signed-app storage-compatibility scenarios documented above were recorded for cloud, network, removable, package, symbolic-link, Finder-alias, and metadata behavior; unsupported/partial provider behavior is reflected in release notes rather than marketed as supported.
 - [ ] Any failures are documented with app version, build configuration, macOS version, reproduction steps, and whether the failure occurred in `swift run`, unsigned `.app`, or signed release `.app`.
