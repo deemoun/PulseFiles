@@ -29,6 +29,57 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(source.lastPathComponent).path))
     }
 
+    func testFinderAliasIsRejectedBeforeMutation() async throws {
+        let fixture = try makeFixture()
+        let alias = fixture.left.appendingPathComponent("Reference.alias")
+        try Data("alias data".utf8).write(to: alias)
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            pathSafetyStateProvider: { url in
+                url == alias ? FileOperationPathSafetyState(isFinderAlias: true) : FileOperationPathSafetyState()
+            }
+        )
+
+        do {
+            _ = try await service.move(FileOperationRequest(sources: [alias], destinationDirectory: fixture.right), conflictHandler: { _ in
+                XCTFail("A Finder alias must be rejected before conflict handling")
+                return .cancel
+            }, progressHandler: nil)
+            XCTFail("Expected an unsupported Finder alias error")
+        } catch FileOperationError.finderAliasUnsupported(let rejectedURL) {
+            XCTAssertEqual(rejectedURL, alias)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: alias.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(alias.lastPathComponent).path))
+    }
+
+    func testFinderAliasDestinationIsRejectedBeforeReplacement() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Reference.alias")
+        let destination = fixture.right.appendingPathComponent(source.lastPathComponent)
+        try Data("source data".utf8).write(to: source)
+        try Data("existing alias data".utf8).write(to: destination)
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            pathSafetyStateProvider: { url in
+                url == destination ? FileOperationPathSafetyState(isFinderAlias: true) : FileOperationPathSafetyState()
+            }
+        )
+
+        do {
+            _ = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in
+                XCTFail("A Finder alias destination must be rejected before conflict handling")
+                return .replace
+            }, progressHandler: nil)
+            XCTFail("Expected an unsupported Finder alias error")
+        } catch FileOperationError.finderAliasUnsupported(let rejectedURL) {
+            XCTAssertEqual(rejectedURL, destination)
+        }
+        XCTAssertEqual(try String(contentsOf: destination), "existing alias data")
+    }
+
     func testReadOnlyDestinationIsRejectedBeforeCopy() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Source.txt")

@@ -32,7 +32,8 @@ final class FileSystemService: FileSystemServicing {
                 .contentModificationDateKey,
                 .localizedTypeDescriptionKey,
                 .contentTypeKey,
-                .isPackageKey
+                .isPackageKey,
+                .isAliasFileKey
             ]
             let urls = try self.fileManager.contentsOfDirectory(
                 at: url,
@@ -67,7 +68,8 @@ final class FileSystemService: FileSystemServicing {
             .contentModificationDateKey,
             .localizedTypeDescriptionKey,
             .contentTypeKey,
-            .isPackageKey
+            .isPackageKey,
+            .isAliasFileKey
         ])
         let attributes = try? fileManager.attributesOfItem(atPath: url.path)
         let permissions = attributes?[.posixPermissions] as? Int
@@ -127,7 +129,10 @@ final class FileSystemService: FileSystemServicing {
         }
 
         if fileType == .symbolicLink {
-            return "Alias"
+            return "Symbolic Link"
+        }
+        if values.isAliasFile == true {
+            return "Finder Alias (not supported for mutation)"
         }
         if fileType == .package {
             return "Package"

@@ -90,14 +90,16 @@ PulseFiles is intended to behave like a normal file manager in release builds wh
 ## Known Limitations and Distribution Notes
 
 - App Store sandbox distribution is not guaranteed by this draft. A Mac App Store build would need separate entitlement, bookmark, permission, and review-oriented configuration before it should be described as App Store sandbox ready.
-- iCloud Drive, Desktop & Documents in iCloud, optimized-storage placeholders, conflict files, and cloud-provider sync states do not have special documented handling unless separately verified in testing.
-- Network shares, removable drives, external volumes, mounted disk images, and custom filesystem providers may have edge cases that are not guaranteed unless explicitly tested.
-- File permissions, extended attributes, package directories, symlinks, aliases, and provider-specific metadata should be verified for the specific release scenario before making preservation guarantees.
+- **Cloud-provider folders:** supported only for items that macOS reports as locally available and accessible. A cloud-only iCloud item is rejected before mutation with instructions to download it in Finder and retry. Sync conflicts, provider-specific metadata, and providers that do not offer normal file semantics are not guaranteed.
+- **Network shares and removable media:** supported while mounted, reachable, writable, and allowed by macOS. A removed/disconnected volume is rejected before mutation where detectable and asks the user to reconnect or remount it; read-only destinations are rejected with a writable-media recovery message.
+- **Packages:** supported as directory trees for browsing, copy, move, rename, trash, and deletion. Application-specific package validity remains the owning application's responsibility, so release QA uses disposable package fixtures.
+- **Symbolic links:** supported as links. Copy stores the original link destination rather than resolving or traversing it, so a selected link does not cause an unselected external target to be copied.
+- **Finder aliases:** not supported for mutation in 1.0. PulseFiles detects Finder aliases before mutation where macOS identifies them and leaves them unchanged; users should use Finder to manage the alias or operate on its original item. An alias is not a symbolic link.
+- **Metadata:** content transfers make a best-effort attempt to preserve permissions, ownership IDs where permitted, timestamps, Finder tags/labels, extended attributes, and ACLs. A metadata failure is surfaced as a cleanup warning rather than silently claimed as complete; users must verify destination metadata before deleting the source. Provider-specific metadata is not guaranteed.
 - Long-running operations and unusual failure modes may depend on macOS filesystem behavior, permissions prompts, and volume availability.
 - Terminal V1 remains experimental and should not be presented as a hardened shell environment or security boundary.
 - The DEBUG experimental sandbox is a development/testing safeguard, not a substitute for a production App Sandbox entitlement model.
 
 ## Suggested Release Body Summary
 
-PulseFiles is a native AppKit dual-pane file manager for macOS 13+ focused on keyboard-first navigation, predictable file operations, active-pane search/filtering, configurable hidden-file visibility, and persisted user preferences. This release includes opt-in experimental terminal support with a first-use safety warning and an access model designed to keep DEBUG sandbox testing separate from normal release-build file-manager behavior.
-
+PulseFiles is a native AppKit dual-pane file manager for macOS 13+ focused on keyboard-first navigation, predictable file operations, active-pane search/filtering, configurable hidden-file visibility, and persisted user preferences. Version 1.0 supports locally available cloud folders, mounted writable network/removable volumes, package directory trees, and symbolic links without traversing their targets. It preserves standard metadata on a best-effort basis and clearly reports metadata warnings. Finder alias mutation and provider-specific cloud metadata are not supported promises. This release includes opt-in experimental terminal support with a first-use safety warning and an access model designed to keep DEBUG sandbox testing separate from normal release-build file-manager behavior.
