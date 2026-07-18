@@ -10,10 +10,10 @@ This folder contains an external macOS UI harness for release validation. It dri
 - active pane switching with Tab
 - keyboard navigation with arrow keys and Command-Up
 - search/filter using the toolbar search shortcut
-- sidebar visibility/navigation entry points
+- sidebar visibility entry points
 - command bar invocation and dismissal
 - terminal disabled state, then enabled state after an explicit preference flip
-- copy, move, and delete confirmation entry points using disposable files, cancelling each prompt to prove the harness does not mutate real user data
+- copy, move, and delete confirmation entry points using disposable files, cancelling each prompt to prove the harness does not mutate real user data; each flow now fails unless its confirmation sheet was actually displayed
 
 ## Prerequisites
 
@@ -46,3 +46,20 @@ Use `--skip-ui-harness` only for non-macOS automation or environments that canno
 ## Safety notes
 
 The harness only creates and targets folders under a temporary directory. Destructive operation dialogs are opened and cancelled, and the script verifies the disposable source files still exist after the confirmation-flow checks.
+
+## Sections 6–8 and 15 release sign-off
+
+The signed-app harness is a smoke gate, not a replacement for the destructive
+manual scenarios in `RELEASE_CHECKLIST.md`. In particular, it deliberately
+cancels its confirmation sheets and therefore does **not** mutate data to test
+multi-item transfers, conflict choices, permanent deletion, in-flight
+cancellation, or volume ejection. Run those scenarios against a signed release
+bundle on macOS using a disposable directory and disk image/external volume,
+then record the outcome (including any UI-versus-service mismatch) in the
+release handoff. Do not treat a Linux or unsigned-bundle run as sign-off.
+
+The confirmation smoke coverage intentionally stays on the initial disposable
+pane instead of navigating to Home before it runs. It also asserts that every
+requested destructive action produced a sheet; this prevents a missing
+selection or a navigation regression from being reported as a successful
+cancelled-operation check.

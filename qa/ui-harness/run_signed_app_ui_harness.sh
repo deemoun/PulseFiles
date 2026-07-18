@@ -89,6 +89,16 @@ on pressMenu(processName, menuName, itemName)
   end tell
 end pressMenu
 
+-- A cancelled confirmation only proves the command path was exercised when a
+-- sheet was actually presented.  Keep this assertion next to every destructive
+-- command so a navigation or selection regression cannot turn the test into a
+-- false-positive no-op.
+on requireSheet(processName, operationName)
+  tell application "System Events" to tell process processName
+    if (count of sheets of window 1) = 0 then error operationName & " did not present its confirmation sheet"
+  end tell
+end requireSheet
+
 on assertWindowContains(processName, expectedText)
   tell application "System Events" to tell process processName
     set windowDescription to entire contents of window 1 as string
@@ -132,13 +142,12 @@ tell application "System Events" to tell process appName
   delay 0.3
 end tell
 
--- Sidebar navigation: toggle visibility and invoke a safe built-in Go shortcut.
+-- Sidebar navigation: toggle visibility. Do not navigate to Home here: the
+-- destructive-flow fixture below intentionally remains selected in Left Pane.
 pressMenu(appName, "View", "Toggle Sidebar")
 delay 0.3
 pressMenu(appName, "View", "Toggle Sidebar")
 delay 0.3
-pressMenu(appName, "Go", "Home")
-delay 0.5
 
 -- Command bar invocation. Escape closes it without mutating files.
 tell application "System Events" to tell process appName
@@ -164,8 +173,9 @@ tell application "System Events" to tell process appName
 end tell
 pressMenu(appName, "Edit", "Copy to Opposite Pane")
 delay 0.5
+requireSheet(appName, "Copy")
 tell application "System Events" to tell process appName
-  if (count of sheets of window 1) > 0 then key code 53
+  key code 53
 end tell
 
 tell application "System Events" to tell process appName
@@ -178,8 +188,9 @@ tell application "System Events" to tell process appName
 end tell
 pressMenu(appName, "Edit", "Move to Opposite Pane")
 delay 0.5
+requireSheet(appName, "Move")
 tell application "System Events" to tell process appName
-  if (count of sheets of window 1) > 0 then key code 53
+  key code 53
 end tell
 
 tell application "System Events" to tell process appName
@@ -192,8 +203,9 @@ tell application "System Events" to tell process appName
 end tell
 pressMenu(appName, "File", "Move to Trash")
 delay 0.5
+requireSheet(appName, "Move to Trash")
 tell application "System Events" to tell process appName
-  if (count of sheets of window 1) > 0 then key code 53
+  key code 53
 end tell
 
 -- Enable terminal preference and verify the toggle path can be invoked. The app may show its first-use warning.
