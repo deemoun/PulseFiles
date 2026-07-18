@@ -28,16 +28,14 @@ final class FileClipboard {
     }
 
     func read() -> Payload? {
-        guard let operationValue = pasteboard.string(forType: Self.operationPasteboardType),
-              let operation = Operation(rawValue: operationValue) else {
-            return nil
-        }
+        let operation = pasteboard.string(forType: Self.operationPasteboardType)
+            .flatMap(Operation.init(rawValue:)) ?? .copy
         let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) ?? []
         let urls = objects.compactMap { object -> URL? in
             if let url = object as? URL { return url }
             if let nsURL = object as? NSURL { return nsURL as URL }
             return nil
-        }
+        }.filter(\.isFileURL)
         guard !urls.isEmpty else { return nil }
         return Payload(urls: urls, operation: operation)
     }

@@ -68,17 +68,63 @@ final class AppSmokeFlowTests: XCTestCase {
             .expectDestructiveMutationCount(0)
     }
 
-    func testFileClipboardRoundTripPreservesOperationAndURLs() throws {
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name("PulseFilesTests.FileClipboard.\(UUID().uuidString)"))
+    func testFileClipboardReadsFinderStyleFileURLsAsCopy() throws {
+        let pasteboard = makeFileClipboardPasteboard()
         let clipboard = FileClipboard(pasteboard: pasteboard)
         let urls = [
             URL(fileURLWithPath: "/tmp/PulseFiles/alpha.txt"),
             URL(fileURLWithPath: "/tmp/PulseFiles/beta.txt")
         ]
 
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.writeObjects(urls as [NSURL]))
+
+        XCTAssertEqual(clipboard.read(), FileClipboard.Payload(urls: urls, operation: .copy))
+    }
+
+    func testFileClipboardReadsPulseFilesCopyInput() throws {
+        let pasteboard = makeFileClipboardPasteboard()
+        let clipboard = FileClipboard(pasteboard: pasteboard)
+        let urls = [URL(fileURLWithPath: "/tmp/PulseFiles/alpha.txt")]
+
+        clipboard.write(urls: urls, operation: .copy)
+
+        XCTAssertEqual(clipboard.read(), FileClipboard.Payload(urls: urls, operation: .copy))
+    }
+
+    func testFileClipboardReadsPulseFilesCutInput() throws {
+        let pasteboard = makeFileClipboardPasteboard()
+        let clipboard = FileClipboard(pasteboard: pasteboard)
+        let urls = [URL(fileURLWithPath: "/tmp/PulseFiles/alpha.txt")]
+
         clipboard.write(urls: urls, operation: .move)
 
         XCTAssertEqual(clipboard.read(), FileClipboard.Payload(urls: urls, operation: .move))
         XCTAssertGreaterThan(clipboard.changeCount, 0)
+    }
+
+    func testFileClipboardReturnsNilForEmptyPasteboard() throws {
+        let pasteboard = makeFileClipboardPasteboard()
+        let clipboard = FileClipboard(pasteboard: pasteboard)
+
+        pasteboard.clearContents()
+
+        XCTAssertNil(clipboard.read())
+    }
+
+    func testFileClipboardIgnoresMixedInvalidPasteboardEntries() throws {
+        let pasteboard = makeFileClipboardPasteboard()
+        let clipboard = FileClipboard(pasteboard: pasteboard)
+        let fileURL = URL(fileURLWithPath: "/tmp/PulseFiles/alpha.txt")
+        let webURL = URL(string: "https://example.com/alpha.txt")!
+
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL, webURL as NSURL, "not a URL" as NSString]))
+
+        XCTAssertEqual(clipboard.read(), FileClipboard.Payload(urls: [fileURL], operation: .copy))
+    }
+
+    private func makeFileClipboardPasteboard() -> NSPasteboard {
+        NSPasteboard(name: NSPasteboard.Name("PulseFilesTests.FileClipboard.\(UUID().uuidString)"))
     }
 }
