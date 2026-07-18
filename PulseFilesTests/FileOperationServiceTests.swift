@@ -83,6 +83,61 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Report.txt")), "source")
     }
 
+    func testCopySymbolicLinkToFilePreservesLinkWithoutCopyingTarget() async throws {
+        let fixture = try makeFixture()
+        let target = fixture.left.appendingPathComponent("Target.txt")
+        let link = fixture.left.appendingPathComponent("Target Link.txt")
+        try "target contents".write(to: target, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [link], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel }, progressHandler: nil
+        )
+
+        let copiedLink = fixture.right.appendingPathComponent(link.lastPathComponent)
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: copiedLink.path), target.path)
+        XCTAssertEqual(try copiedLink.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, true)
+    }
+
+    func testCopyDirectorySymbolicLinkOutsideSourceRootPreservesLinkWithoutReadingOutsideContent() async throws {
+        let fixture = try makeFixture()
+        let outsideDirectory = try makeTemporaryDirectory()
+        let outsideFile = outsideDirectory.appendingPathComponent("Private.txt")
+        let link = fixture.left.appendingPathComponent("External Directory")
+        try "outside content".write(to: outsideFile, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outsideDirectory)
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [link], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel }, progressHandler: nil
+        )
+
+        let copiedLink = fixture.right.appendingPathComponent(link.lastPathComponent)
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: copiedLink.path), outsideDirectory.path)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(at: fixture.right, includingPropertiesForKeys: nil).map(\.lastPathComponent), [link.lastPathComponent])
+    }
+
+    func testCopyCyclicDirectorySymbolicLinkTerminatesByPreservingLink() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Cycle", isDirectory: true)
+        let link = source.appendingPathComponent("Self")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel }, progressHandler: nil
+        )
+
+        let copiedLink = fixture.right.appendingPathComponent("Cycle/Self")
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: copiedLink.path), source.path)
+        XCTAssertEqual(try copiedLink.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, true)
+    }
+
     func testCopyReplaceStagesBeforeReplacingDestination() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")
@@ -1054,6 +1109,14 @@ private final class FailingFileManager: FileOperationFileManaging {
 
     func createEmptyFile(at url: URL) throws {
         try Data().write(to: url, options: .withoutOverwriting)
+    }
+
+    func destinationOfSymbolicLink(atPath path: String) throws -> String {
+        try FileManager.default.destinationOfSymbolicLink(atPath: path)
+    }
+
+    func createSymbolicLink(atPath path: String, withDestinationPath destPath: String) throws {
+        try FileManager.default.createSymbolicLink(atPath: path, withDestinationPath: destPath)
     }
 
     func trashItem(at url: URL, resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws {

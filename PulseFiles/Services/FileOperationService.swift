@@ -164,6 +164,8 @@ protocol FileOperationFileManaging {
     func removeItem(at URL: URL) throws
     func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws
     func createEmptyFile(at url: URL) throws
+    func destinationOfSymbolicLink(atPath path: String) throws -> String
+    func createSymbolicLink(atPath path: String, withDestinationPath destPath: String) throws
     func trashItem(at url: URL, resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws
     func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: FileManager.DirectoryEnumerationOptions) throws -> [URL]
 }
@@ -211,6 +213,18 @@ extension FileManager: FileOperationFileManaging {
 }
 
 final class FileOperationService: FileOperationServicing {
+    /// PulseFiles copies symbolic links as links, never as the item they point
+    /// to. This avoids unintentionally reading content outside the selected
+    /// tree, prevents directory-link cycles, and preserves the user's link.
+    /// Link traversal is deliberately not a transfer mode; any future mode
+    /// that follows links must validate each resolved descendant with
+    /// `SandboxFileAccessPolicy` and detect repeated file identities/paths.
+    private enum SourceItemKind {
+        case file
+        case directory
+        case symbolicLink(destination: String)
+    }
+
     private struct TransferFailure: Error {
         let underlyingError: Error
         let cleanupWarnings: [FileOperationCleanupWarning]
@@ -306,9 +320,9 @@ final class FileOperationService: FileOperationServicing {
 
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         let parentDirectory = source.deletingLastPathComponent()
-        try accessPolicy.validateAccess(to: source)
-        try accessPolicy.validateAccess(to: parentDirectory)
         try validateExistingSource(source)
+        try validateSourceAccess(source)
+        try accessPolicy.validateAccess(to: parentDirectory)
         try validateExistingDirectory(parentDirectory)
 
         let destinationName = try FileNameValidator.validate(rawName, in: parentDirectory, replacing: source)
@@ -698,11 +712,20 @@ final class FileOperationService: FileOperationServicing {
     private func calculateTransferMetadata(for urls: [URL]) async -> TransferMetadata? {
         let fileManager = self.fileManager
         return await Task.detached(priority: .utility) {
+            func itemKind(at url: URL) throws -> SourceItemKind {
+                let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+                if values.isSymbolicLink == true {
+                    return .symbolicLink(destination: try fileManager.destinationOfSymbolicLink(atPath: url.path))
+                }
+                return values.isDirectory == true ? .directory : .file
+            }
+
             func metadata(for url: URL) -> TransferMetadata? {
                 guard !Task.isCancelled else { return nil }
-                var isDirectory = ObjCBool(false)
-                guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return TransferMetadata(itemCount: 1, byteCount: nil) }
-                guard isDirectory.boolValue else {
+                guard let kind = try? itemKind(at: url) else { return TransferMetadata(itemCount: 1, byteCount: nil) }
+                guard case .directory = kind else {
+                    // Link metadata describes the link itself, not its target.
+                    guard case .file = kind else { return TransferMetadata(itemCount: 1, byteCount: 0) }
                     let values = try? url.resourceValues(forKeys: [.fileSizeKey])
                     return TransferMetadata(itemCount: 1, byteCount: values?.fileSize.map(Int64.init))
                 }
@@ -741,7 +764,20 @@ final class FileOperationService: FileOperationServicing {
         progressHandler: FileOperationProgressHandler?
     ) async throws {
         try Task.checkCancellation()
-        if isDirectory(source) {
+        switch try sourceItemKind(at: source) {
+        case .symbolicLink(let linkDestination):
+            // Preserve the exact stored destination, including relative links,
+            // so staging cannot resolve or copy an external target.
+            try fileManager.createSymbolicLink(atPath: destination.path, withDestinationPath: linkDestination)
+            recursiveProgress.completedItemCount += 1
+            await emitProgress(
+                currentItem: source,
+                completedCount: topLevelCompletedCount,
+                totalCount: topLevelTotalCount,
+                recursiveProgress: recursiveProgress,
+                progressHandler: progressHandler
+            )
+        case .directory:
             try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
             recursiveProgress.completedItemCount += 1
             await emitProgress(
@@ -761,14 +797,14 @@ final class FileOperationService: FileOperationServicing {
                 try Task.checkCancellation()
                 try await recursivelyCopy(
                     source: child,
-                    to: destination.appendingPathComponent(child.lastPathComponent, isDirectory: isDirectory(child)),
+                    to: destination.appendingPathComponent(child.lastPathComponent),
                     topLevelCompletedCount: topLevelCompletedCount,
                     topLevelTotalCount: topLevelTotalCount,
                     recursiveProgress: recursiveProgress,
                     progressHandler: progressHandler
                 )
             }
-        } else {
+        case .file:
             try await streamingCopier.copyFile(from: source, to: destination) { [source] byteCount in
                 try Task.checkCancellation()
                 recursiveProgress.completedByteCount += Int64(byteCount)
@@ -809,9 +845,12 @@ final class FileOperationService: FileOperationServicing {
         ))
     }
 
-    private func isDirectory(_ url: URL) -> Bool {
-        var isDirectory = ObjCBool(false)
-        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    private func sourceItemKind(at url: URL) throws -> SourceItemKind {
+        let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        if values.isSymbolicLink == true {
+            return .symbolicLink(destination: try fileManager.destinationOfSymbolicLink(atPath: url.path))
+        }
+        return values.isDirectory == true ? .directory : .file
     }
 
     private func shouldFallbackToCopyDelete(forMoveError error: Error) -> Bool {
@@ -916,8 +955,8 @@ final class FileOperationService: FileOperationServicing {
         var normalizedSources = Set<String>()
         var normalizedDestinations = Set<String>()
         for source in request.sources {
-            try accessPolicy.validateAccess(to: source)
             try validateExistingSource(source)
+            try validateSourceAccess(source)
             let normalizedSource = FilePathComparison.normalizedPath(source)
             guard normalizedSources.insert(normalizedSource).inserted else {
                 throw FileOperationError.duplicateSource(source)
@@ -934,9 +973,9 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func preflightRename(source: URL, destination: URL) throws {
-        try accessPolicy.validateAccess(to: source)
-        try accessPolicy.validateDestinationAccess(to: destination)
         try validateExistingSource(source)
+        try validateSourceAccess(source)
+        try accessPolicy.validateDestinationAccess(to: destination)
         try validateExistingDirectory(source.deletingLastPathComponent())
         try validateDestination(destination, for: source)
         if fileManager.fileExists(atPath: destination.path), FilePathComparison.normalizedPath(source) != FilePathComparison.normalizedPath(destination) {
@@ -948,8 +987,8 @@ final class FileOperationService: FileOperationServicing {
         guard !urls.isEmpty else { throw FileOperationError.emptySelection }
         var normalizedSources = Set<String>()
         for url in urls {
-            try accessPolicy.validateAccess(to: url)
             try validateExistingSource(url)
+            try validateSourceAccess(url)
             guard normalizedSources.insert(FilePathComparison.normalizedPath(url)).inserted else {
                 throw FileOperationError.duplicateSource(url)
             }
@@ -962,12 +1001,21 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
+    private func validateSourceAccess(_ source: URL) throws {
+        if case .symbolicLink = try sourceItemKind(at: source) {
+            // Access to the link is governed by its containing directory. Do
+            // not resolve its target: the copy policy above never traverses it.
+            try accessPolicy.validateAccess(to: source.deletingLastPathComponent())
+        } else {
+            try accessPolicy.validateAccess(to: source)
+        }
+    }
+
     private func validateExistingDirectory(_ url: URL) throws {
-        var isDirectory = ObjCBool(false)
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+        guard fileManager.fileExists(atPath: url.path) else {
             throw FileOperationError.destinationDirectoryMissing(url)
         }
-        guard isDirectory.boolValue else {
+        guard case .directory? = try? sourceItemKind(at: url) else {
             throw FileOperationError.destinationNotDirectory(url)
         }
     }
