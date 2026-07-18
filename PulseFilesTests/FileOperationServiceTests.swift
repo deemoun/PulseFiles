@@ -1,4 +1,7 @@
 import XCTest
+#if os(macOS)
+import Darwin
+#endif
 @testable import PulseFiles
 
 final class FileOperationServiceTests: XCTestCase {
@@ -81,6 +84,54 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertTrue(result.succeededCompletely)
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
         XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Report.txt")), "source")
+    }
+
+    func testStagedCopyPreservesFileAndDirectoryMetadata() async throws {
+        #if os(macOS)
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Metadata", isDirectory: true)
+        let child = source.appendingPathComponent("Document.txt")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try "metadata".write(to: child, atomically: true, encoding: .utf8)
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes([.posixPermissions: 0o640, .modificationDate: timestamp], ofItemAtPath: child.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o750, .modificationDate: timestamp], ofItemAtPath: source.path)
+        try setTestExtendedAttribute(on: child)
+
+        let result = try await fixture.service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        let copiedDirectory = fixture.right.appendingPathComponent("Metadata")
+        let copiedChild = copiedDirectory.appendingPathComponent("Document.txt")
+
+        XCTAssertTrue(result.cleanupWarnings.isEmpty, "Metadata preservation warnings: \(result.cleanupWarnings.map(\.message))")
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: copiedChild.path)[.posixPermissions] as? NSNumber, 0o640)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: copiedDirectory.path)[.posixPermissions] as? NSNumber, 0o750)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: copiedDirectory.path)[.modificationDate] as? Date, timestamp)
+        XCTAssertEqual(try testExtendedAttribute(on: copiedChild), Data("pulsefiles".utf8))
+        #else
+        throw XCTSkip("macOS metadata APIs are unavailable on this platform.")
+        #endif
+    }
+
+    func testCrossVolumeFallbackMovePreservesMetadata() async throws {
+        #if os(macOS)
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Metadata.txt")
+        try "metadata".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: source.path)
+        try setTestExtendedAttribute(on: source)
+        fixture.failingFileManager?.failMoveToURL = fixture.right.appendingPathComponent(source.lastPathComponent)
+        fixture.failingFileManager?.moveFailureError = POSIXError(.EXDEV)
+
+        let result = try await fixture.service.move(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        let destination = fixture.right.appendingPathComponent(source.lastPathComponent)
+
+        XCTAssertTrue(result.cleanupWarnings.isEmpty, "Metadata preservation warnings: \(result.cleanupWarnings.map(\.message))")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: destination.path)[.posixPermissions] as? NSNumber, 0o600)
+        XCTAssertEqual(try testExtendedAttribute(on: destination), Data("pulsefiles".utf8))
+        #else
+        throw XCTSkip("macOS metadata APIs are unavailable on this platform.")
+        #endif
     }
 
     func testCopySymbolicLinkToFilePreservesLinkWithoutCopyingTarget() async throws {
@@ -1133,3 +1184,27 @@ private final class FailingFileManager: FileOperationFileManaging {
         try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: mask)
     }
 }
+
+
+#if os(macOS)
+private let metadataTestExtendedAttribute = "com.pulsefiles.tests.metadata"
+
+private func setTestExtendedAttribute(on url: URL) throws {
+    let value = Array("pulsefiles".utf8)
+    guard setxattr(url.path, metadataTestExtendedAttribute, value, value.count, 0, 0) == 0 else {
+        let error = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        if errno == ENOTSUP || errno == EOPNOTSUPP { throw XCTSkip("Extended attributes are unavailable: \(error.localizedDescription)") }
+        throw error
+    }
+}
+
+private func testExtendedAttribute(on url: URL) throws -> Data {
+    let size = getxattr(url.path, metadataTestExtendedAttribute, nil, 0, 0, 0)
+    guard size >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    var value = [UInt8](repeating: 0, count: size)
+    guard getxattr(url.path, metadataTestExtendedAttribute, &value, value.count, 0, 0) >= 0 else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+    return Data(value)
+}
+#endif
