@@ -87,6 +87,8 @@ struct FileOperationProgress {
     let totalRecursiveItemCount: Int?
     let completedByteCount: Int64?
     let totalByteCount: Int64?
+    /// True while the recursive item and byte totals are being discovered.
+    let isPreparingTransfer: Bool
 
     init(
         currentItemName: String,
@@ -95,7 +97,8 @@ struct FileOperationProgress {
         completedRecursiveItemCount: Int? = nil,
         totalRecursiveItemCount: Int? = nil,
         completedByteCount: Int64? = nil,
-        totalByteCount: Int64? = nil
+        totalByteCount: Int64? = nil,
+        isPreparingTransfer: Bool = false
     ) {
         self.currentItemName = currentItemName
         self.completedCount = completedCount
@@ -104,6 +107,7 @@ struct FileOperationProgress {
         self.totalRecursiveItemCount = totalRecursiveItemCount
         self.completedByteCount = completedByteCount
         self.totalByteCount = totalByteCount
+        self.isPreparingTransfer = isPreparingTransfer
     }
 }
 
@@ -194,6 +198,10 @@ final class FileOperationService: FileOperationServicing {
     private struct RecursiveProgressState {
         let totalItemCount: Int?
         var completedItemCount: Int
+    }
+
+    private struct CancelledTransfer: Error {
+        let cleanupWarning: FileOperationCleanupWarning?
     }
 
     private let fileManager: FileOperationFileManaging
@@ -398,10 +406,19 @@ final class FileOperationService: FileOperationServicing {
         let activePlans = plans.filter { $0.conflictResolution == .replace }
         let totalCount = activePlans.count
         var completedCount = 0
-        var recursiveProgress = RecursiveProgressState(
-            totalItemCount: progressHandler == nil ? nil : preScanRecursiveItemCount(for: activePlans.map(\.source)),
-            completedItemCount: 0
-        )
+        if progressHandler != nil {
+            await progressHandler?(FileOperationProgress(
+                currentItemName: "Preparing transfer".localized,
+                completedCount: 0,
+                totalCount: totalCount,
+                isPreparingTransfer: true
+            ))
+        }
+        let recursiveTotal = await preScanRecursiveItemCount(for: activePlans.map(\.source))
+        if Task.isCancelled {
+            return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
+        }
+        var recursiveProgress = RecursiveProgressState(totalItemCount: recursiveTotal, completedItemCount: 0)
 
         skippedItems.append(contentsOf: plans.filter { $0.conflictResolution == .skip }.map(\.source))
 
@@ -459,6 +476,15 @@ final class FileOperationService: FileOperationServicing {
                     cleanupWarnings.append(contentsOf: warnings)
                 }
                 completedItems.append(plan.source)
+            } catch let cancellation as CancelledTransfer {
+                if let warning = cancellation.cleanupWarning { cleanupWarnings.append(warning) }
+                return FileOperationResult(
+                    completedItems: completedItems,
+                    skippedItems: skippedItems,
+                    failedItems: failedItems,
+                    cleanupWarnings: cleanupWarnings,
+                    wasCancelled: true
+                )
             } catch is CancellationError {
                 DiagnosticLogger.log(.info, category: "FileOperation", "Transfer operation cancelled by task check: completedCount=\(completedItems.count); skippedCount=\(skippedItems.count); failedCount=\(failedItems.count); cleanupWarningCount=\(cleanupWarnings.count)")
                 return FileOperationResult(
@@ -522,6 +548,9 @@ final class FileOperationService: FileOperationServicing {
                 progressHandler: progressHandler
             )
             return try placeStagedItem(tempURL, at: destination)
+        } catch is CancellationError {
+            let warning = cleanupCancelledStagingItem(tempURL)
+            throw CancelledTransfer(cleanupWarning: warning)
         } catch {
             try? removeIfExists(tempURL)
             throw error
@@ -539,7 +568,7 @@ final class FileOperationService: FileOperationServicing {
     ) async throws -> [FileOperationCleanupWarning] {
         guard replacingExistingDestination else {
             do {
-                let movedItemCount = recursiveProgress.totalItemCount == nil ? 1 : (recursiveItemCount(for: source) ?? 1)
+                let movedItemCount = recursiveProgress.totalItemCount == nil ? 1 : (await recursiveItemCount(for: source) ?? 1)
                 try fileManager.moveItem(at: source, to: destination)
                 if recursiveProgress.totalItemCount != nil {
                     recursiveProgress.completedItemCount += movedItemCount
@@ -605,6 +634,9 @@ final class FileOperationService: FileOperationServicing {
                 ))
             }
             return warnings
+        } catch is CancellationError {
+            let warning = cleanupCancelledStagingItem(tempURL)
+            throw CancelledTransfer(cleanupWarning: warning)
         } catch {
             try? removeIfExists(tempURL)
             throw error
@@ -612,16 +644,16 @@ final class FileOperationService: FileOperationServicing {
     }
 
 
-    private func preScanRecursiveItemCount(for urls: [URL]) -> Int? {
+    private func preScanRecursiveItemCount(for urls: [URL]) async -> Int? {
         var total = 0
         for url in urls {
             guard !Task.isCancelled else { return nil }
-            total += recursiveItemCount(for: url) ?? 1
+            total += await recursiveItemCount(for: url) ?? 1
         }
         return total
     }
 
-    private func recursiveItemCount(for url: URL) -> Int? {
+    private func recursiveItemCount(for url: URL) async -> Int? {
         guard isDirectory(url) else { return 1 }
         do {
             let children = try fileManager.contentsOfDirectory(
@@ -632,7 +664,10 @@ final class FileOperationService: FileOperationServicing {
             var count = 1
             for child in children {
                 guard !Task.isCancelled else { return nil }
-                count += recursiveItemCount(for: child) ?? 1
+                // Yield between directory entries so a large prescan never monopolizes
+                // the executor that drives the cancel button.
+                await Task.yield()
+                count += await recursiveItemCount(for: child) ?? 1
             }
             return count
         } catch {
@@ -677,7 +712,7 @@ final class FileOperationService: FileOperationServicing {
                 )
             }
         } else {
-            try fileManager.copyItem(at: source, to: destination)
+            try await copyRegularFile(source: source, to: destination)
             recursiveProgress.completedItemCount += 1
             await emitProgress(
                 currentItem: source,
@@ -703,6 +738,44 @@ final class FileOperationService: FileOperationServicing {
             completedRecursiveItemCount: recursiveProgress.totalItemCount == nil ? nil : recursiveProgress.completedItemCount,
             totalRecursiveItemCount: recursiveProgress.totalItemCount
         ))
+    }
+
+    private func copyRegularFile(source: URL, to destination: URL) async throws {
+        // Keep injected file managers on their existing path so failure-injection tests
+        // and custom file providers retain their semantics.
+        guard fileManager is FileManager else {
+            try Task.checkCancellation()
+            try fileManager.copyItem(at: source, to: destination)
+            try Task.checkCancellation()
+            return
+        }
+
+        let input = try FileHandle(forReadingFrom: source)
+        defer { try? input.close() }
+        FileManager.default.createFile(atPath: destination.path, contents: nil)
+        let output = try FileHandle(forWritingTo: destination)
+        defer { try? output.close() }
+
+        while true {
+            try Task.checkCancellation()
+            let data = try input.read(upToCount: 1_048_576) ?? Data()
+            if data.isEmpty { break }
+            try output.write(contentsOf: data)
+            // Give cancellation requests a chance to be scheduled during large files.
+            await Task.yield()
+        }
+    }
+
+    private func cleanupCancelledStagingItem(_ url: URL) -> FileOperationCleanupWarning? {
+        do {
+            try removeIfExists(url)
+            return nil
+        } catch {
+            return FileOperationCleanupWarning(
+                url: url,
+                message: "The incomplete staged transfer could not be removed: %@".localized(with: error.localizedDescription)
+            )
+        }
     }
 
     private func isDirectory(_ url: URL) -> Bool {

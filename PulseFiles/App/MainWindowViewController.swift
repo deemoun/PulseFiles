@@ -1619,6 +1619,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
+        if progress.isPreparingTransfer {
+            let status = "Preparing transfer…".localized
+            view.window?.title = status
+            commandBar.setOperationStatus(status)
+            return
+        }
         var detail = "\(progress.completedCount)/\(progress.totalCount)"
         if let completedRecursiveItemCount = progress.completedRecursiveItemCount,
            let totalRecursiveItemCount = progress.totalRecursiveItemCount,
