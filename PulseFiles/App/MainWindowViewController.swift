@@ -1569,9 +1569,15 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         if urls.count > visibleNames.count {
             lines.append("- ...and %d more".localized(with: urls.count - visibleNames.count))
         }
+        let sourceVolumes = Dictionary(grouping: urls, by: { VolumeStatusPresentation.resolve(for: $0).locationDescription }).keys.sorted()
+        if !sourceVolumes.isEmpty {
+            lines.append("")
+            lines.append("Source volume%@: %@".localized(with: sourceVolumes.count == 1 ? "" : "s", sourceVolumes.joined(separator: ", ")))
+        }
         if let destinationDirectory {
             lines.append("")
             lines.append("Destination: %@".localized(with: destinationDirectory.path))
+            lines.append("Destination volume: %@".localized(with: VolumeStatusPresentation.resolve(for: destinationDirectory).locationDescription))
         }
         return lines.joined(separator: "\n")
     }
