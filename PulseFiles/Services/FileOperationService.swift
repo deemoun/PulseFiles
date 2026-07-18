@@ -168,6 +168,38 @@ protocol FileOperationFileManaging {
     func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: FileManager.DirectoryEnumerationOptions) throws -> [URL]
 }
 
+/// The byte-oriented part of a transfer is deliberately separate from the
+/// filesystem coordinator so it can be exercised without relying on
+/// `FileManager.copyItem`'s opaque progress behaviour.
+protocol FileOperationStreamingCopying {
+    func copyFile(
+        from source: URL,
+        to destination: URL,
+        progress: @escaping @Sendable (Int) async throws -> Void
+    ) async throws
+}
+
+final class FileHandleStreamingCopier: FileOperationStreamingCopying {
+    private let chunkSize = 1_048_576
+
+    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        let reader = try FileHandle(forReadingFrom: source)
+        defer { try? reader.close() }
+        guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        let writer = try FileHandle(forWritingTo: destination)
+        defer { try? writer.close() }
+
+        while true {
+            try Task.checkCancellation()
+            guard let data = try reader.read(upToCount: chunkSize), !data.isEmpty else { break }
+            try writer.write(contentsOf: data)
+            try await progress(data.count)
+        }
+    }
+}
+
 extension FileManager: FileOperationFileManaging {
     func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
         try createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: nil)
@@ -191,22 +223,32 @@ final class FileOperationService: FileOperationServicing {
         let replacesExistingDestination: Bool
     }
 
-    private struct RecursiveProgressState {
+    private struct TransferMetadata: Sendable {
+        let itemCount: Int
+        let byteCount: Int64?
+    }
+
+    private final class RecursiveProgressState {
         let totalItemCount: Int?
         var completedItemCount: Int
+        let totalByteCount: Int64?
+        var completedByteCount: Int64
     }
 
     private let fileManager: FileOperationFileManaging
     private let accessPolicy: SandboxFileAccessPolicy
+    private let streamingCopier: FileOperationStreamingCopying
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
+        self.streamingCopier = streamingCopier
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy) {
+    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
+        self.streamingCopier = streamingCopier
     }
 
     func copy(
@@ -398,9 +440,12 @@ final class FileOperationService: FileOperationServicing {
         let activePlans = plans.filter { $0.conflictResolution == .replace }
         let totalCount = activePlans.count
         var completedCount = 0
+        let metadata = progressHandler == nil ? nil : await calculateTransferMetadata(for: activePlans.map(\.source))
         var recursiveProgress = RecursiveProgressState(
-            totalItemCount: progressHandler == nil ? nil : preScanRecursiveItemCount(for: activePlans.map(\.source)),
-            completedItemCount: 0
+            totalItemCount: metadata?.itemCount,
+            completedItemCount: 0,
+            totalByteCount: metadata?.byteCount,
+            completedByteCount: 0
         )
 
         skippedItems.append(contentsOf: plans.filter { $0.conflictResolution == .skip }.map(\.source))
@@ -442,7 +487,7 @@ final class FileOperationService: FileOperationServicing {
                         to: plan.destination,
                         completedCount: completedCount,
                         totalCount: totalCount,
-                        recursiveProgress: &recursiveProgress,
+                        recursiveProgress: recursiveProgress,
                         progressHandler: progressHandler
                     )
                     cleanupWarnings.append(contentsOf: warnings)
@@ -453,7 +498,7 @@ final class FileOperationService: FileOperationServicing {
                         replacingExistingDestination: plan.replacesExistingDestination,
                         completedCount: completedCount,
                         totalCount: totalCount,
-                        recursiveProgress: &recursiveProgress,
+                        recursiveProgress: recursiveProgress,
                         progressHandler: progressHandler
                     )
                     cleanupWarnings.append(contentsOf: warnings)
@@ -508,7 +553,7 @@ final class FileOperationService: FileOperationServicing {
         to destination: URL,
         completedCount: Int,
         totalCount: Int,
-        recursiveProgress: inout RecursiveProgressState,
+        recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
     ) async throws -> [FileOperationCleanupWarning] {
         let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-copy")
@@ -518,7 +563,7 @@ final class FileOperationService: FileOperationServicing {
                 to: tempURL,
                 topLevelCompletedCount: completedCount,
                 topLevelTotalCount: totalCount,
-                recursiveProgress: &recursiveProgress,
+                recursiveProgress: recursiveProgress,
                 progressHandler: progressHandler
             )
             return try placeStagedItem(tempURL, at: destination)
@@ -534,15 +579,17 @@ final class FileOperationService: FileOperationServicing {
         replacingExistingDestination: Bool,
         completedCount: Int,
         totalCount: Int,
-        recursiveProgress: inout RecursiveProgressState,
+        recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
     ) async throws -> [FileOperationCleanupWarning] {
         guard replacingExistingDestination else {
             do {
-                let movedItemCount = recursiveProgress.totalItemCount == nil ? 1 : (recursiveItemCount(for: source) ?? 1)
                 try fileManager.moveItem(at: source, to: destination)
                 if recursiveProgress.totalItemCount != nil {
-                    recursiveProgress.completedItemCount += movedItemCount
+                    // A successful same-volume rename has no byte stream. The
+                    // aggregate byte total is therefore intentionally unknown
+                    // unless a copy fallback is used.
+                    recursiveProgress.completedItemCount += 1
                     await emitProgress(
                         currentItem: source,
                         completedCount: completedCount,
@@ -561,7 +608,7 @@ final class FileOperationService: FileOperationServicing {
                     to: destination,
                     completedCount: completedCount,
                     totalCount: totalCount,
-                    recursiveProgress: &recursiveProgress,
+                    recursiveProgress: recursiveProgress,
                     progressHandler: progressHandler
                 )
             }
@@ -572,7 +619,7 @@ final class FileOperationService: FileOperationServicing {
             to: destination,
             completedCount: completedCount,
             totalCount: totalCount,
-            recursiveProgress: &recursiveProgress,
+            recursiveProgress: recursiveProgress,
             progressHandler: progressHandler
         )
     }
@@ -582,7 +629,7 @@ final class FileOperationService: FileOperationServicing {
         to destination: URL,
         completedCount: Int,
         totalCount: Int,
-        recursiveProgress: inout RecursiveProgressState,
+        recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
     ) async throws -> [FileOperationCleanupWarning] {
         let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-move")
@@ -592,7 +639,7 @@ final class FileOperationService: FileOperationServicing {
                 to: tempURL,
                 topLevelCompletedCount: completedCount,
                 topLevelTotalCount: totalCount,
-                recursiveProgress: &recursiveProgress,
+                recursiveProgress: recursiveProgress,
                 progressHandler: progressHandler
             )
             var warnings = try placeStagedItem(tempURL, at: destination)
@@ -611,33 +658,43 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-
-    private func preScanRecursiveItemCount(for urls: [URL]) -> Int? {
-        var total = 0
-        for url in urls {
-            guard !Task.isCancelled else { return nil }
-            total += recursiveItemCount(for: url) ?? 1
-        }
-        return total
-    }
-
-    private func recursiveItemCount(for url: URL) -> Int? {
-        guard isDirectory(url) else { return 1 }
-        do {
-            let children = try fileManager.contentsOfDirectory(
-                at: url,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: []
-            )
-            var count = 1
-            for child in children {
+    /// Directory enumeration and metadata reads can be expensive (and can
+    /// block on network volumes), so plan them off the caller's actor.
+    private func calculateTransferMetadata(for urls: [URL]) async -> TransferMetadata? {
+        let fileManager = self.fileManager
+        return await Task.detached(priority: .utility) {
+            func metadata(for url: URL) -> TransferMetadata? {
                 guard !Task.isCancelled else { return nil }
-                count += recursiveItemCount(for: child) ?? 1
+                var isDirectory = ObjCBool(false)
+                guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return TransferMetadata(itemCount: 1, byteCount: nil) }
+                guard isDirectory.boolValue else {
+                    let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+                    return TransferMetadata(itemCount: 1, byteCount: values?.fileSize.map(Int64.init))
+                }
+                guard let children = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: []) else {
+                    return TransferMetadata(itemCount: 1, byteCount: nil)
+                }
+                var itemCount = 1
+                var byteCount: Int64 = 0
+                var hasUnknownByteCount = false
+                for child in children {
+                    guard let childMetadata = metadata(for: child) else { return nil }
+                    itemCount += childMetadata.itemCount
+                    if let childBytes = childMetadata.byteCount { byteCount += childBytes } else { hasUnknownByteCount = true }
+                }
+                return TransferMetadata(itemCount: itemCount, byteCount: hasUnknownByteCount ? nil : byteCount)
             }
-            return count
-        } catch {
-            return 1
-        }
+
+            var itemCount = 0
+            var byteCount: Int64 = 0
+            var hasUnknownByteCount = false
+            for url in urls {
+                guard let result = metadata(for: url) else { return nil }
+                itemCount += result.itemCount
+                if let bytes = result.byteCount { byteCount += bytes } else { hasUnknownByteCount = true }
+            }
+            return TransferMetadata(itemCount: itemCount, byteCount: hasUnknownByteCount ? nil : byteCount)
+        }.value
     }
 
     private func recursivelyCopy(
@@ -645,7 +702,7 @@ final class FileOperationService: FileOperationServicing {
         to destination: URL,
         topLevelCompletedCount: Int,
         topLevelTotalCount: Int,
-        recursiveProgress: inout RecursiveProgressState,
+        recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
     ) async throws {
         try Task.checkCancellation()
@@ -672,12 +729,22 @@ final class FileOperationService: FileOperationServicing {
                     to: destination.appendingPathComponent(child.lastPathComponent, isDirectory: isDirectory(child)),
                     topLevelCompletedCount: topLevelCompletedCount,
                     topLevelTotalCount: topLevelTotalCount,
-                    recursiveProgress: &recursiveProgress,
+                    recursiveProgress: recursiveProgress,
                     progressHandler: progressHandler
                 )
             }
         } else {
-            try fileManager.copyItem(at: source, to: destination)
+            try await streamingCopier.copyFile(from: source, to: destination) { [source] byteCount in
+                try Task.checkCancellation()
+                recursiveProgress.completedByteCount += Int64(byteCount)
+                await self.emitProgress(
+                    currentItem: source,
+                    completedCount: topLevelCompletedCount,
+                    totalCount: topLevelTotalCount,
+                    recursiveProgress: recursiveProgress,
+                    progressHandler: progressHandler
+                )
+            }
             recursiveProgress.completedItemCount += 1
             await emitProgress(
                 currentItem: source,
@@ -701,7 +768,9 @@ final class FileOperationService: FileOperationServicing {
             completedCount: completedCount,
             totalCount: totalCount,
             completedRecursiveItemCount: recursiveProgress.totalItemCount == nil ? nil : recursiveProgress.completedItemCount,
-            totalRecursiveItemCount: recursiveProgress.totalItemCount
+            totalRecursiveItemCount: recursiveProgress.totalItemCount,
+            completedByteCount: recursiveProgress.totalByteCount == nil ? nil : recursiveProgress.completedByteCount,
+            totalByteCount: recursiveProgress.totalByteCount
         ))
     }
 
