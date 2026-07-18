@@ -70,6 +70,75 @@ final class FileOperationServiceTests: XCTestCase {
     }
 
 
+    func testCapacityPreflightReportsSufficientSpaceForCopy() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Sized.txt")
+        try Data(repeating: 1, count: 12).write(to: source)
+        let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, destinationCapacityProvider: { _ in 12 })
+
+        let result = try await service.transferCapacityPreflight(for: FileOperationRequest(sources: [source], destinationDirectory: fixture.right), isMove: false)
+
+        XCTAssertEqual(result, .sufficient(required: 12, available: 12))
+    }
+
+    func testCapacityPreflightRejectsInsufficientSpaceBeforeConflictResolution() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Sized.txt")
+        try Data(repeating: 1, count: 12).write(to: source)
+        let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, destinationCapacityProvider: { _ in 11 })
+
+        do {
+            _ = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in
+                XCTFail("Conflict resolution must not run after an insufficient-capacity preflight")
+                return .cancel
+            }, progressHandler: nil)
+            XCTFail("Expected insufficient capacity error")
+        } catch FileOperationError.insufficientDestinationCapacity(let required, let available) {
+            XCTAssertEqual(required, 12)
+            XCTAssertEqual(available, 11)
+        }
+    }
+
+    func testCapacityPreflightReportsUnknownCapacity() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Sized.txt")
+        try Data(repeating: 1, count: 12).write(to: source)
+        let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, destinationCapacityProvider: { _ in nil })
+
+        let result = try await service.transferCapacityPreflight(for: FileOperationRequest(sources: [source], destinationDirectory: fixture.right), isMove: false)
+
+        XCTAssertEqual(result, .cannotVerify(required: 12))
+    }
+
+    func testCapacityPreflightAppliesToCrossVolumeMoves() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Sized.txt")
+        try Data(repeating: 1, count: 12).write(to: source)
+        let service = FileOperationService(
+            fileManager: FileManager.default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            destinationCapacityProvider: { _ in 11 },
+            volumeIdentifierProvider: { $0.path.hasPrefix(fixture.left.path) ? "source" : "destination" }
+        )
+
+        let result = try await service.transferCapacityPreflight(for: FileOperationRequest(sources: [source], destinationDirectory: fixture.right), isMove: true)
+
+        XCTAssertEqual(result, .insufficient(required: 12, available: 11))
+    }
+
+    func testCapacityPreflightConservativelyIncludesReplacementSize() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Sized.txt")
+        let destination = fixture.right.appendingPathComponent("Sized.txt")
+        try Data(repeating: 1, count: 12).write(to: source)
+        try Data(repeating: 1, count: 100).write(to: destination)
+        let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, destinationCapacityProvider: { _ in 11 })
+
+        let result = try await service.transferCapacityPreflight(for: FileOperationRequest(sources: [source], destinationDirectory: fixture.right), isMove: false)
+
+        XCTAssertEqual(result, .insufficient(required: 12, available: 11))
+    }
+
     func testCopyWithoutConflictCreatesDestinationAndKeepsSource() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")
