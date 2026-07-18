@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS)
+import Darwin
+#endif
 
 enum FileOperationError: LocalizedError, Equatable {
     case emptySelection
@@ -594,15 +597,12 @@ final class FileOperationService: FileOperationServicing {
     ) async throws -> [FileOperationCleanupWarning] {
         let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-copy")
         do {
-            try await recursivelyCopy(
-                source: source,
-                to: tempURL,
-                topLevelCompletedCount: completedCount,
-                topLevelTotalCount: totalCount,
-                recursiveProgress: recursiveProgress,
-                progressHandler: progressHandler
+            var warnings = try await recursivelyCopy(
+                source: source, to: tempURL, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
+                recursiveProgress: recursiveProgress, progressHandler: progressHandler
             )
-            return try placeStagedItem(tempURL, at: destination)
+            warnings.append(contentsOf: try placeStagedItem(tempURL, at: destination))
+            return warnings
         } catch {
             let cleanupWarnings = cleanupWarningsAfterFailedStagingRemoval(at: tempURL)
             throw TransferFailure(underlyingError: error, cleanupWarnings: cleanupWarnings)
@@ -670,15 +670,11 @@ final class FileOperationService: FileOperationServicing {
     ) async throws -> [FileOperationCleanupWarning] {
         let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-move")
         do {
-            try await recursivelyCopy(
-                source: source,
-                to: tempURL,
-                topLevelCompletedCount: completedCount,
-                topLevelTotalCount: totalCount,
-                recursiveProgress: recursiveProgress,
-                progressHandler: progressHandler
+            var warnings = try await recursivelyCopy(
+                source: source, to: tempURL, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
+                recursiveProgress: recursiveProgress, progressHandler: progressHandler
             )
-            var warnings = try placeStagedItem(tempURL, at: destination)
+            warnings.append(contentsOf: try placeStagedItem(tempURL, at: destination))
             do {
                 try fileManager.removeItem(at: source)
             } catch {
@@ -762,8 +758,9 @@ final class FileOperationService: FileOperationServicing {
         topLevelTotalCount: Int,
         recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
-    ) async throws {
+    ) async throws -> [FileOperationCleanupWarning] {
         try Task.checkCancellation()
+        var warnings: [FileOperationCleanupWarning] = []
         switch try sourceItemKind(at: source) {
         case .symbolicLink(let linkDestination):
             // Preserve the exact stored destination, including relative links,
@@ -777,6 +774,7 @@ final class FileOperationService: FileOperationServicing {
                 recursiveProgress: recursiveProgress,
                 progressHandler: progressHandler
             )
+            warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
         case .directory:
             try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
             recursiveProgress.completedItemCount += 1
@@ -795,15 +793,14 @@ final class FileOperationService: FileOperationServicing {
             )
             for child in children {
                 try Task.checkCancellation()
-                try await recursivelyCopy(
-                    source: child,
-                    to: destination.appendingPathComponent(child.lastPathComponent),
-                    topLevelCompletedCount: topLevelCompletedCount,
-                    topLevelTotalCount: topLevelTotalCount,
-                    recursiveProgress: recursiveProgress,
-                    progressHandler: progressHandler
-                )
+                warnings.append(contentsOf: try await recursivelyCopy(
+                    source: child, to: destination.appendingPathComponent(child.lastPathComponent),
+                    topLevelCompletedCount: topLevelCompletedCount, topLevelTotalCount: topLevelTotalCount,
+                    recursiveProgress: recursiveProgress, progressHandler: progressHandler
+                ))
             }
+            // Child creation changes a directory's timestamps, so restore its metadata last.
+            warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
         case .file:
             try await streamingCopier.copyFile(from: source, to: destination) { [source] byteCount in
                 try Task.checkCancellation()
@@ -824,8 +821,77 @@ final class FileOperationService: FileOperationServicing {
                 recursiveProgress: recursiveProgress,
                 progressHandler: progressHandler
             )
+            warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
         }
+        return warnings
     }
+
+    /// Preserve metadata after content. Metadata failures are reported as warnings so
+    /// a copied item is never presented as completely successful when it lost data.
+    private func preserveMetadata(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
+        var warnings: [FileOperationCleanupWarning] = []
+        do {
+            let sourceAttributes = try FileManager.default.attributesOfItem(atPath: source.path)
+            let attributes = sourceAttributes.filter { [.posixPermissions, .ownerAccountID, .groupOwnerAccountID, .creationDate, .modificationDate].contains($0.key) }
+            try FileManager.default.setAttributes(attributes, ofItemAtPath: destination.path)
+        } catch {
+            warnings.append(metadataWarning(for: destination, error: error))
+        }
+        do {
+            let sourceValues = try source.resourceValues(forKeys: [.tagNamesKey, .labelNumberKey])
+            if sourceValues.tagNames != nil || sourceValues.labelNumber != nil {
+                var values = URLResourceValues()
+                values.tagNames = sourceValues.tagNames
+                values.labelNumber = sourceValues.labelNumber
+                try destination.setResourceValues(values)
+            }
+        } catch {
+            warnings.append(metadataWarning(for: destination, error: error))
+        }
+        #if os(macOS)
+        warnings.append(contentsOf: copyExtendedAttributes(from: source, to: destination))
+        warnings.append(contentsOf: copyAccessControlList(from: source, to: destination))
+        #endif
+        return warnings
+    }
+
+    private func metadataWarning(for url: URL, error: Error) -> FileOperationCleanupWarning {
+        FileOperationCleanupWarning(url: url, message: "PulseFiles copied item contents but could not preserve all metadata at %@: %@".localized(with: url.path, error.localizedDescription))
+    }
+
+    #if os(macOS)
+    private func copyExtendedAttributes(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
+        let options = Int32(XATTR_NOFOLLOW)
+        let size = listxattr(source.path, nil, 0, options)
+        guard size >= 0 else { return metadataWarnings(for: source, errno: errno) }
+        guard size > 0 else { return [] }
+        var names = [CChar](repeating: 0, count: size)
+        guard listxattr(source.path, &names, names.count, options) >= 0 else { return metadataWarnings(for: source, errno: errno) }
+        var warnings: [FileOperationCleanupWarning] = []
+        var offset = 0
+        while offset < names.count {
+            let name = String(cString: &names[offset]); offset += name.utf8.count + 1
+            let valueSize = getxattr(source.path, name, nil, 0, 0, options)
+            guard valueSize >= 0 else { warnings.append(contentsOf: metadataWarnings(for: source, errno: errno)); continue }
+            var value = [UInt8](repeating: 0, count: valueSize)
+            guard getxattr(source.path, name, &value, value.count, 0, options) >= 0,
+                  setxattr(destination.path, name, value, value.count, 0, options) == 0 else {
+                warnings.append(contentsOf: metadataWarnings(for: destination, errno: errno)); continue
+            }
+        }
+        return warnings
+    }
+
+    private func copyAccessControlList(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
+        guard copyfile(source.path, destination.path, nil, copyfile_flags_t(COPYFILE_ACL)) == 0 else { return metadataWarnings(for: destination, errno: errno) }
+        return []
+    }
+
+    private func metadataWarnings(for url: URL, errno code: Int32) -> [FileOperationCleanupWarning] {
+        guard code != ENOTSUP && code != EOPNOTSUPP else { return [] }
+        return [metadataWarning(for: url, error: POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO))]
+    }
+    #endif
 
     private func emitProgress(
         currentItem: URL,
