@@ -93,6 +93,32 @@ final class CommandBarView: NSVisualEffectView {
         cancelOperationButton.isEnabled = !status.isEmpty
     }
 
+    func setOperationProgress(_ progress: FileOperationProgress, operationName: String) {
+        let itemDetail: String
+        if let completed = progress.completedRecursiveItemCount,
+           let total = progress.totalRecursiveItemCount {
+            itemDetail = "\(completed)/\(total) items"
+        } else {
+            itemDetail = "\(progress.completedCount)/\(progress.totalCount) items"
+        }
+
+        let byteDetail: String
+        if let completed = progress.completedByteCount,
+           let total = progress.totalByteCount {
+            let transferred = ByteCountFormatter.string(fromByteCount: completed, countStyle: .file)
+            let totalText = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+            if total > 0 {
+                let percentage = min(100, Int((Double(completed) / Double(total) * 100).rounded()))
+                byteDetail = "\(transferred)/\(totalText) (\(percentage)%)"
+            } else {
+                byteDetail = "\(transferred)/\(totalText)"
+            }
+        } else {
+            byteDetail = "Calculating size…"
+        }
+        setOperationStatus("\(operationName): \(progress.currentItemName) (\(itemDetail) • \(byteDetail))")
+    }
+
     func setTransientStatus(_ status: String) {
         operationStatusLabel.stringValue = status
         operationStatusLabel.toolTip = status

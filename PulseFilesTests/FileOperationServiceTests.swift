@@ -116,10 +116,8 @@ final class FileOperationServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(result.succeededCompletely)
-        XCTAssertEqual(fixture.failingFileManager?.copiedItems.count, 1)
         XCTAssertEqual(fixture.failingFileManager?.simulatedExistingStagingPathHits, 1)
         XCTAssertEqual(try String(contentsOf: destination), "source")
-        XCTAssertFalse(fixture.failingFileManager?.copiedItems.first?.destination.lastPathComponent == fixture.failingFileManager?.simulatedExistingStagingLastPathComponent)
     }
 
     func testCopySkipLeavesDestinationUntouched() async throws {
@@ -192,7 +190,6 @@ final class FileOperationServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(result.succeededCompletely)
-        XCTAssertEqual(fixture.failingFileManager?.copiedItems.count, 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
         XCTAssertEqual(try String(contentsOf: destination), "source")
     }
@@ -327,7 +324,6 @@ final class FileOperationServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(result.succeededCompletely)
-        XCTAssertEqual(fixture.failingFileManager?.copiedItems.count, 1)
         XCTAssertTrue(fixture.failingFileManager?.movedItems.contains { $0.destination.lastPathComponent.hasPrefix(".pulsefiles-backup") } == true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
         XCTAssertEqual(try String(contentsOf: destination), "new")
@@ -440,9 +436,13 @@ final class FileOperationServiceTests: XCTestCase {
         let secondSource = fixture.left.appendingPathComponent("Second.txt")
         try "first".write(to: firstSource, atomically: true, encoding: .utf8)
         try "second".write(to: secondSource, atomically: true, encoding: .utf8)
-        fixture.failingFileManager?.failCopyFromURL = secondSource
+        let service = FileOperationService(
+            fileManager: fixture.failingFileManager!,
+            accessPolicy: fixture.unrestrictedPolicy,
+            streamingCopier: FailingStreamingCopier(failingSource: secondSource)
+        )
 
-        let result = try await fixture.service.copy(
+        let result = try await service.copy(
             FileOperationRequest(sources: [firstSource, secondSource], destinationDirectory: fixture.right),
             conflictHandler: { _ in .replace },
             progressHandler: nil
@@ -500,6 +500,8 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Folder/Child/Nested.txt")), "nested")
         XCTAssertEqual(progressEvents.compactMap(\.totalRecursiveItemCount).last, 4)
         XCTAssertEqual(progressEvents.compactMap(\.completedRecursiveItemCount).max(), 4)
+        XCTAssertEqual(progressEvents.compactMap(\.totalByteCount).last, 10)
+        XCTAssertEqual(progressEvents.compactMap(\.completedByteCount).max(), 10)
         XCTAssertTrue(progressEvents.contains { $0.currentItemName == "Nested.txt" && $0.completedRecursiveItemCount == 4 })
     }
 
@@ -525,6 +527,49 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("Child/Nested.txt")), "nested")
         XCTAssertEqual(progressEvents.compactMap(\.totalRecursiveItemCount).last, 3)
         XCTAssertEqual(progressEvents.compactMap(\.completedRecursiveItemCount).max(), 3)
+        XCTAssertEqual(progressEvents.compactMap(\.totalByteCount).last, 6)
+        XCTAssertEqual(progressEvents.compactMap(\.completedByteCount).max(), 6)
+    }
+
+    func testStreamingCopyReportsMonotonicAggregateByteProgressForNestedAndEmptyFiles() async throws {
+        let fixture = try makeFixture()
+        let folder = fixture.left.appendingPathComponent("Folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(repeating: 7, count: 6).write(to: folder.appendingPathComponent("Data.bin"))
+        FileManager.default.createFile(atPath: folder.appendingPathComponent("Empty.bin").path, contents: Data())
+        let copier = ScriptedStreamingCopier(chunkSize: 2)
+        let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: copier)
+        var progressEvents: [FileOperationProgress] = []
+
+        let result = try await service.copy(
+            FileOperationRequest(sources: [folder], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: { progressEvents.append($0) }
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(progressEvents.compactMap(\.totalByteCount).last, 6)
+        XCTAssertEqual(progressEvents.compactMap(\.completedByteCount).max(), 6)
+        XCTAssertEqual(progressEvents.compactMap(\.completedByteCount), progressEvents.compactMap(\.completedByteCount).sorted())
+        XCTAssertEqual(try Data(contentsOf: fixture.right.appendingPathComponent("Folder/Data.bin")).count, 6)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Folder/Empty.bin").path))
+    }
+
+    func testStreamingCopyCancellationLeavesNoStagedDestination() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Data.bin")
+        try Data(repeating: 1, count: 4).write(to: source)
+        let copier = ScriptedStreamingCopier(chunkSize: 2, cancelsAfterFirstChunk: true)
+        let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: copier)
+
+        let result = try await service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: { _ in }
+        )
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Data.bin").path))
     }
 
     func testPermanentDeleteRejectsDuplicateSourcesBeforeMutation() async throws {
@@ -783,6 +828,45 @@ final class FileOperationServiceTests: XCTestCase {
 private struct RecordedFileOperation: Equatable {
     let source: URL
     let destination: URL
+}
+
+private final class ScriptedStreamingCopier: FileOperationStreamingCopying {
+    let chunkSize: Int
+    let cancelsAfterFirstChunk: Bool
+
+    init(chunkSize: Int, cancelsAfterFirstChunk: Bool = false) {
+        self.chunkSize = chunkSize
+        self.cancelsAfterFirstChunk = cancelsAfterFirstChunk
+    }
+
+    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        let data = try Data(contentsOf: source)
+        var copied = Data()
+        var offset = 0
+        while offset < data.count {
+            let end = min(offset + chunkSize, data.count)
+            copied.append(data[offset..<end])
+            try await progress(end - offset)
+            if cancelsAfterFirstChunk { throw CancellationError() }
+            offset = end
+        }
+        try copied.write(to: destination)
+    }
+}
+
+private final class FailingStreamingCopier: FileOperationStreamingCopying {
+    private let failingSource: URL
+
+    init(failingSource: URL) {
+        self.failingSource = failingSource.standardizedFileURL
+    }
+
+    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        if source.standardizedFileURL == failingSource { throw CocoaError(.fileReadNoPermission) }
+        let data = try Data(contentsOf: source)
+        try data.write(to: destination)
+        try await progress(data.count)
+    }
 }
 
 private final class FailingFileManager: FileOperationFileManaging {
