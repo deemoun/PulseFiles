@@ -289,6 +289,22 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] Safety-sensitive settings, especially destructive-operation confirmations and permanent delete preference, remain clear and do not silently become less safe.
 - [ ] Unavailable or moved startup folders fail safely and fall back to an accessible location.
 
+### 15. Mounted-volume changes
+
+**Run on:** signed release app only. Use a disposable external drive or disk image.
+
+**Steps**
+
+- [ ] Open the sidebar and confirm the volume appears under Devices.
+- [ ] Navigate one pane into a folder on that volume, then unmount/eject it in Finder.
+- [ ] If practical, start a multi-item copy involving the volume and eject it during the operation.
+
+**Expected results**
+
+- [ ] Devices refreshes promptly after mount and unmount events.
+- [ ] A pane on the removed volume clears its stale selection and safely falls back to an accessible, policy-validated folder.
+- [ ] The app does not continue mutations after the removed source or destination is detected; partial failures and any cleanup warnings are shown.
+
 ## Final release sign-off
 
 - [ ] All command-line tests passed.

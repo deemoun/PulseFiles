@@ -147,6 +147,17 @@ final class FilePaneViewController: NSViewController {
         viewModel.navigate(to: url)
     }
 
+    /// Clears UI state before redirecting away from an unmounted directory.
+    @discardableResult
+    func fallBackIfCurrentDirectoryIsUnavailable() -> Bool {
+        guard viewModel.fallBackIfCurrentDirectoryIsUnavailable() else { return false }
+        pendingSelectionURL = nil
+        previousSelectedRowIndexes = []
+        tableView.deselectAll(nil)
+        onSelectionChanged?([])
+        return true
+    }
+
     func goBack() {
         viewModel.goBack()
     }

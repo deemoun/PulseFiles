@@ -323,6 +323,12 @@ final class SidebarViewController: NSViewController {
         Self.deviceItems(volumes: volumeDiscovery.mountedVolumes(), accessPolicy: accessPolicy)
     }
 
+    /// Rebuilds navigation content after a mounted-volume change.
+    func refreshDevices() {
+        guard selectedMode == .navigation else { return }
+        rebuild()
+    }
+
     static func deviceItems(volumes: [Volume], accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
         VolumeDiscoveryService.sortedVolumes(volumes)
             .filter { !$0.displayName.isEmpty }

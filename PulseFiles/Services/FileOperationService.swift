@@ -365,12 +365,19 @@ final class FileOperationService: FileOperationServicing {
                 return FileOperationResult(completedItems: completedItems, skippedItems: [], failedItems: failedItems, wasCancelled: true)
             }
             await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
+            guard fileManager.fileExists(atPath: url.path) else {
+                failedItems.append(FileOperationItemFailure(url: url, error: FileOperationError.sourceMissing(url)))
+                break
+            }
             do {
                 try operation(fileManager, url)
                 completedItems.append(url)
             } catch {
                 DiagnosticLogger.log(.error, category: "FileOperation", "Item operation failed: path=\(DiagnosticLogger.sanitizedPath(url)); reason=\(error.localizedDescription)")
                 failedItems.append(FileOperationItemFailure(url: url, error: error))
+                if isUnavailableVolumeError(error) {
+                    break
+                }
             }
             completedCount += 1
             await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
@@ -417,6 +424,16 @@ final class FileOperationService: FileOperationServicing {
                 recursiveProgress: recursiveProgress,
                 progressHandler: progressHandler
             )
+            // A volume can disappear after preflight. Re-check immediately before
+            // mutating and stop the request so later items are never touched.
+            guard fileManager.fileExists(atPath: plan.source.path) else {
+                failedItems.append(FileOperationItemFailure(url: plan.source, error: FileOperationError.sourceMissing(plan.source)))
+                break
+            }
+            guard fileManager.fileExists(atPath: plan.destination.deletingLastPathComponent().path) else {
+                failedItems.append(FileOperationItemFailure(url: plan.destination, error: FileOperationError.destinationDirectoryMissing(plan.destination.deletingLastPathComponent())))
+                break
+            }
             do {
                 switch kind {
                 case .copy:
@@ -454,6 +471,9 @@ final class FileOperationService: FileOperationServicing {
             } catch {
                 DiagnosticLogger.log(.error, category: "FileOperation", "Transfer item failed: source=\(DiagnosticLogger.sanitizedPath(plan.source)); destination=\(DiagnosticLogger.sanitizedPath(plan.destination)); reason=\(error.localizedDescription)")
                 failedItems.append(FileOperationItemFailure(url: plan.source, error: error))
+                if isUnavailableVolumeError(error) {
+                    break
+                }
             }
             completedCount += 1
             if recursiveProgress.totalItemCount == nil {
@@ -475,6 +495,12 @@ final class FileOperationService: FileOperationServicing {
             cleanupWarnings: cleanupWarnings,
             wasCancelled: false
         )
+    }
+
+    private func isUnavailableVolumeError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return (nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoSuchFileError)
+            || (nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT))
     }
 
     private func safelyCopy(

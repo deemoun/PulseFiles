@@ -56,6 +56,24 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
         XCTAssertEqual(SidebarViewController.volumeSymbol(for: volume(name: "DVD", path: "/Volumes/DVD")), "opticaldiscdrive")
     }
 
+    @MainActor
+    func testVolumeChangeMonitorPublishesFreshMountedVolumeList() {
+        let discovery = MutableVolumeDiscovery()
+        let center = NotificationCenter()
+        let monitor = VolumeChangeMonitor(discovery: discovery, notificationCenter: center)
+        var published: [[String]] = []
+        monitor.onVolumesChanged = { published.append($0.map(\.displayName)) }
+
+        discovery.volumes = [volume(name: "Mounted", path: "/Volumes/Mounted")]
+        center.post(name: NSWorkspace.didMountNotification, object: nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        discovery.volumes = []
+        center.post(name: NSWorkspace.didUnmountNotification, object: nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
+        XCTAssertEqual(published, [["Mounted"], []])
+    }
+
     private func volume(name: String, path: String, removable: Bool = false, local: Bool = true, readOnly: Bool = false, total: Int64? = nil, available: Int64? = nil) -> Volume {
         Volume(url: URL(fileURLWithPath: path, isDirectory: true), displayName: name, isRemovable: removable, isLocal: local, isNetwork: !local, isReadOnly: readOnly, totalCapacity: total, availableCapacity: available)
     }
@@ -63,6 +81,11 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
     private struct FixtureVolumeDiscovery: VolumeDiscovering {
         let volumes: [Volume]
 
+        func mountedVolumes() -> [Volume] { volumes }
+    }
+
+    private final class MutableVolumeDiscovery: VolumeDiscovering {
+        var volumes: [Volume] = []
         func mountedVolumes() -> [Volume] { volumes }
     }
 }
