@@ -154,6 +154,7 @@ struct FileOperationProgress {
     let totalRecursiveItemCount: Int?
     let completedByteCount: Int64?
     let totalByteCount: Int64?
+    let isPreparingTransfer: Bool
 
     init(
         currentItemName: String,
@@ -162,7 +163,8 @@ struct FileOperationProgress {
         completedRecursiveItemCount: Int? = nil,
         totalRecursiveItemCount: Int? = nil,
         completedByteCount: Int64? = nil,
-        totalByteCount: Int64? = nil
+        totalByteCount: Int64? = nil,
+        isPreparingTransfer: Bool = false
     ) {
         self.currentItemName = currentItemName
         self.completedCount = completedCount
@@ -171,6 +173,7 @@ struct FileOperationProgress {
         self.totalRecursiveItemCount = totalRecursiveItemCount
         self.completedByteCount = completedByteCount
         self.totalByteCount = totalByteCount
+        self.isPreparingTransfer = isPreparingTransfer
     }
 }
 
@@ -369,7 +372,7 @@ final class FileOperationService: FileOperationServicing {
             return sourceVolume != destinationVolume
         }
         guard requiresCopy else { return .notRequired }
-        guard let required = (await calculateTransferMetadata(for: request.sources))?.byteCount else { return .cannotVerify(required: nil) }
+        guard let required = (try await calculateTransferMetadata(for: request.sources))?.byteCount else { return .cannotVerify(required: nil) }
         guard let available = destinationCapacityProvider(request.destinationDirectory) else { return .cannotVerify(required: required) }
         return available >= required ? .sufficient(required: required, available: available) : .insufficient(required: required, available: available)
     }
@@ -410,10 +413,14 @@ final class FileOperationService: FileOperationServicing {
         let worker = Task.detached(priority: .utility) { [self] in
             try await self.copyOnWorker(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
-        return try await withTaskCancellationHandler {
-            try await worker.value
-        } onCancel: {
-            worker.cancel()
+        do {
+            return try await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
+        } catch is CancellationError {
+            return FileOperationResult(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true)
         }
     }
 
@@ -450,6 +457,25 @@ final class FileOperationService: FileOperationServicing {
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
     ) async throws -> FileOperationResult {
+        let worker = Task.detached(priority: .utility) { [self] in
+            try await self.moveOnWorker(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+        }
+        do {
+            return try await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
+        } catch is CancellationError {
+            return FileOperationResult(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true)
+        }
+    }
+
+    private func moveOnWorker(
+        _ request: FileOperationRequest,
+        conflictHandler: @escaping FileConflictHandler,
+        progressHandler: FileOperationProgressHandler?
+    ) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Move operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
         do {
             try preflightTransferRequest(request, isMove: true)
@@ -460,7 +486,6 @@ final class FileOperationService: FileOperationServicing {
         }
         let plans = try await resolveTransferPlans(for: request, conflictHandler: conflictHandler)
         if plans.contains(where: { $0.conflictResolution == .cancel }) {
-            DiagnosticLogger.log(.info, category: "FileOperation", "Move operation cancelled during conflict resolution: skippedCount=\(plans.filter { $0.conflictResolution == .skip }.count)")
             return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
         }
         return await accessPolicy.withAccess(to: request.sources + [request.destinationDirectory]) {
@@ -642,7 +667,17 @@ final class FileOperationService: FileOperationServicing {
         let activePlans = plans.filter { $0.conflictResolution.performsTransfer }
         let totalCount = activePlans.count
         var completedCount = 0
-        let metadata = progressHandler == nil ? nil : await calculateTransferMetadata(for: activePlans.map(\.source))
+        if progressHandler != nil {
+            await progressHandler?(FileOperationProgress(currentItemName: "Preparing transfer".localized, completedCount: 0, totalCount: totalCount, isPreparingTransfer: true))
+        }
+        let metadata: TransferMetadata?
+        do {
+            metadata = progressHandler == nil ? nil : try await calculateTransferMetadata(for: activePlans.map(\.source))
+        } catch is CancellationError {
+            return FileOperationResult(completedItems: completedItems, skippedItems: skippedItems, failedItems: failedItems, cleanupWarnings: cleanupWarnings, wasCancelled: true)
+        } catch {
+            metadata = nil
+        }
         var recursiveProgress = RecursiveProgressState(
             totalItemCount: metadata?.itemCount,
             completedItemCount: 0,
@@ -899,9 +934,9 @@ final class FileOperationService: FileOperationServicing {
 
     /// Directory enumeration and metadata reads can be expensive (and can
     /// block on network volumes), so plan them off the caller's actor.
-    private func calculateTransferMetadata(for urls: [URL]) async -> TransferMetadata? {
+    private func calculateTransferMetadata(for urls: [URL]) async throws -> TransferMetadata? {
         let fileManager = self.fileManager
-        return await Task.detached(priority: .utility) {
+        let worker = Task.detached(priority: .utility) {
             func itemKind(at url: URL) throws -> SourceItemKind {
                 let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
                 if values.isSymbolicLink == true {
@@ -910,8 +945,8 @@ final class FileOperationService: FileOperationServicing {
                 return values.isDirectory == true ? .directory : .file
             }
 
-            func metadata(for url: URL) -> TransferMetadata? {
-                guard !Task.isCancelled else { return nil }
+            func metadata(for url: URL) throws -> TransferMetadata? {
+                try Task.checkCancellation()
                 guard let kind = try? itemKind(at: url) else { return TransferMetadata(itemCount: 1, byteCount: nil) }
                 guard case .directory = kind else {
                     // Link metadata describes the link itself, not its target.
@@ -926,7 +961,7 @@ final class FileOperationService: FileOperationServicing {
                 var byteCount: Int64 = 0
                 var hasUnknownByteCount = false
                 for child in children {
-                    guard let childMetadata = metadata(for: child) else { return nil }
+                    guard let childMetadata = try metadata(for: child) else { return nil }
                     itemCount += childMetadata.itemCount
                     if let childBytes = childMetadata.byteCount { byteCount += childBytes } else { hasUnknownByteCount = true }
                 }
@@ -937,12 +972,17 @@ final class FileOperationService: FileOperationServicing {
             var byteCount: Int64 = 0
             var hasUnknownByteCount = false
             for url in urls {
-                guard let result = metadata(for: url) else { return nil }
+                guard let result = try metadata(for: url) else { return nil }
                 itemCount += result.itemCount
                 if let bytes = result.byteCount { byteCount += bytes } else { hasUnknownByteCount = true }
             }
             return TransferMetadata(itemCount: itemCount, byteCount: hasUnknownByteCount ? nil : byteCount)
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
     private func recursivelyCopy(

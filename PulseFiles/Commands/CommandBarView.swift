@@ -94,6 +94,10 @@ final class CommandBarView: NSVisualEffectView {
     }
 
     func setOperationProgress(_ progress: FileOperationProgress, operationName: String) {
+        if progress.isPreparingTransfer {
+            setOperationStatus("\(operationName): Preparing transfer…".localized)
+            return
+        }
         let itemDetail: String
         if let completed = progress.completedRecursiveItemCount,
            let total = progress.totalRecursiveItemCount {
