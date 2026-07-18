@@ -1,0 +1,68 @@
+import XCTest
+@testable import PulseFiles
+
+final class VolumeDiscoveryServiceTests: XCTestCase {
+    func testSortingUsesCaseInsensitiveDisplayName() {
+        let volumes = [
+            volume(name: "zeta", path: "/Volumes/zeta"),
+            volume(name: "Alpha", path: "/Volumes/alpha"),
+            volume(name: "beta", path: "/Volumes/beta")
+        ]
+
+        XCTAssertEqual(VolumeDiscoveryService.sortedVolumes(volumes).map(\.displayName), ["Alpha", "beta", "zeta"])
+    }
+
+    func testSidebarPresentationIncludesDeniedVolumesWithoutGrantingAccess() {
+        let sandbox = URL(fileURLWithPath: "/sandbox", isDirectory: true)
+        let policy = SandboxFileAccessPolicy(
+            isEnabled: true,
+            rootURL: sandbox,
+            accessProbe: .init(fileExists: { _ in true }, isReadableFile: { _ in true }, isWritableFile: { _ in true })
+        )
+        let volumes = [
+            volume(name: "Network Share", path: "/Volumes/network", local: false),
+            volume(name: "Sandbox Disk", path: "/sandbox", total: 1_000, available: 250),
+            volume(name: "Backup", path: "/Volumes/backup", removable: true, readOnly: true),
+            volume(name: "", path: "/Volumes/unnamed")
+        ]
+
+        let items = SidebarViewController.deviceItems(volumes: volumes, accessPolicy: policy)
+
+        XCTAssertEqual(items.map(\.title), ["Backup", "Network Share", "Sandbox Disk"])
+        XCTAssertEqual(items.map(\.isAvailable), [false, false, true])
+        XCTAssertEqual(items[0].symbol, "externaldrive")
+        XCTAssertEqual(items[1].symbol, "network")
+        XCTAssertTrue(items[0].subtitle?.contains("Permission required") == true)
+        XCTAssertTrue(items[0].subtitle?.contains("Read-only") == true)
+        XCTAssertTrue(items[2].subtitle?.contains("available of") == true)
+    }
+
+    func testSidebarUsesInjectedVolumeDiscoveryData() {
+        let sandbox = URL(fileURLWithPath: "/sandbox", isDirectory: true)
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandbox)
+        let discovery = FixtureVolumeDiscovery(volumes: [volume(name: "Injected", path: "/sandbox")])
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let sidebar = SidebarViewController(
+            recentLocations: RecentLocationService(defaults: defaults),
+            accessPolicy: policy,
+            volumeDiscovery: discovery
+        )
+
+        XCTAssertEqual(sidebar.deviceItems().map(\.title), ["Injected"])
+    }
+
+    func testVolumePresentationSelectsInternalAndOpticalSymbols() {
+        XCTAssertEqual(SidebarViewController.volumeSymbol(for: volume(name: "System", path: "/")), "internaldrive")
+        XCTAssertEqual(SidebarViewController.volumeSymbol(for: volume(name: "DVD", path: "/Volumes/DVD")), "opticaldiscdrive")
+    }
+
+    private func volume(name: String, path: String, removable: Bool = false, local: Bool = true, readOnly: Bool = false, total: Int64? = nil, available: Int64? = nil) -> Volume {
+        Volume(url: URL(fileURLWithPath: path, isDirectory: true), displayName: name, isRemovable: removable, isLocal: local, isNetwork: !local, isReadOnly: readOnly, totalCapacity: total, availableCapacity: available)
+    }
+
+    private struct FixtureVolumeDiscovery: VolumeDiscovering {
+        let volumes: [Volume]
+
+        func mountedVolumes() -> [Volume] { volumes }
+    }
+}
