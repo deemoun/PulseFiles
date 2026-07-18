@@ -226,6 +226,72 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "source")
     }
 
+    func testCopyKeepBothCreatesUniqueGeneratedDestinationName() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try "new".write(to: source, atomically: true, encoding: .utf8)
+        try "old".write(to: destination, atomically: true, encoding: .utf8)
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .keepBoth },
+            progressHandler: nil
+        )
+
+        let keptBothDestination = fixture.right.appendingPathComponent("Report copy.txt")
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try String(contentsOf: destination), "old")
+        XCTAssertEqual(try String(contentsOf: keptBothDestination), "new")
+    }
+
+    func testCopyKeepBothRetriesGeneratedNameCollisions() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        try "new".write(to: source, atomically: true, encoding: .utf8)
+        try "old".write(to: fixture.right.appendingPathComponent("Report.txt"), atomically: true, encoding: .utf8)
+        try "first copy".write(to: fixture.right.appendingPathComponent("Report copy.txt"), atomically: true, encoding: .utf8)
+        try "second copy".write(to: fixture.right.appendingPathComponent("Report copy 2.txt"), atomically: true, encoding: .utf8)
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .keepBoth },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Report copy 3.txt")), "new")
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Report copy.txt")), "first copy")
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Report copy 2.txt")), "second copy")
+    }
+
+    func testCopyApplyKeepBothToRemainingConflictsUsesOneConflictDecision() async throws {
+        let fixture = try makeFixture()
+        let firstSource = fixture.left.appendingPathComponent("One.txt")
+        let secondSource = fixture.left.appendingPathComponent("Two.txt")
+        try "new one".write(to: firstSource, atomically: true, encoding: .utf8)
+        try "new two".write(to: secondSource, atomically: true, encoding: .utf8)
+        try "old one".write(to: fixture.right.appendingPathComponent("One.txt"), atomically: true, encoding: .utf8)
+        try "old two".write(to: fixture.right.appendingPathComponent("Two.txt"), atomically: true, encoding: .utf8)
+        var conflictPromptCount = 0
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [firstSource, secondSource], destinationDirectory: fixture.right),
+            conflictHandler: { _ in
+                conflictPromptCount += 1
+                return .applyToRemainingKeepBoth
+            },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(conflictPromptCount, 1)
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("One.txt")), "old one")
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Two.txt")), "old two")
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("One copy.txt")), "new one")
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Two copy.txt")), "new two")
+    }
+
     func testCopySkipLeavesDestinationUntouched() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")

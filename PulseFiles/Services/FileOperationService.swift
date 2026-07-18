@@ -78,10 +78,14 @@ enum FileOperationError: LocalizedError, Equatable {
     }
 }
 
-enum FileConflictResolution {
+enum FileConflictResolution: Equatable {
     case replace
     case skip
+    case keepBoth
     case cancel
+    case applyToRemainingReplace
+    case applyToRemainingSkip
+    case applyToRemainingKeepBoth
 }
 
 struct FileOperationRequest {
@@ -466,7 +470,7 @@ final class FileOperationService: FileOperationServicing {
         var skippedItems: [URL] = []
         var failedItems: [FileOperationItemFailure] = []
         var cleanupWarnings: [FileOperationCleanupWarning] = []
-        let activePlans = plans.filter { $0.conflictResolution == .replace }
+        let activePlans = plans.filter { $0.conflictResolution.performsTransfer }
         let totalCount = activePlans.count
         var completedCount = 0
         let metadata = progressHandler == nil ? nil : await calculateTransferMetadata(for: activePlans.map(\.source))
@@ -982,30 +986,79 @@ final class FileOperationService: FileOperationServicing {
         conflictHandler: FileConflictHandler
     ) async throws -> [TransferPlan] {
         var plans: [TransferPlan] = []
+        var resolutionForRemainingConflicts: FileConflictResolution?
+        var reservedDestinations = Set(request.sources.map {
+            FilePathComparison.normalizedPath(request.destinationDirectory.appendingPathComponent($0.lastPathComponent))
+        })
+
         for source in request.sources {
-            let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
-            let replacesExistingDestination = fileManager.fileExists(atPath: destination.path)
+            let originalDestination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
+            let replacesExistingDestination = fileManager.fileExists(atPath: originalDestination.path)
             let resolution: FileConflictResolution
             if replacesExistingDestination {
-                resolution = await conflictHandler(destination)
-                DiagnosticLogger.log(.info, category: "FileOperation", "Conflict decision: destination=\(DiagnosticLogger.sanitizedPath(destination)); resolution=\(resolution.logValue)")
+                let decision = resolutionForRemainingConflicts ?? await conflictHandler(originalDestination)
+                if let appliedResolution = decision.resolutionAppliedToRemainingConflicts {
+                    resolutionForRemainingConflicts = appliedResolution
+                    resolution = appliedResolution
+                } else {
+                    resolution = decision
+                }
+                DiagnosticLogger.log(.info, category: "FileOperation", "Conflict decision: destination=\(DiagnosticLogger.sanitizedPath(originalDestination)); resolution=\(resolution.logValue)")
             } else {
                 resolution = .replace
             }
 
             if resolution == .cancel {
-                plans.append(TransferPlan(source: source, destination: destination, conflictResolution: .cancel, replacesExistingDestination: true))
+                plans.append(TransferPlan(source: source, destination: originalDestination, conflictResolution: .cancel, replacesExistingDestination: true))
                 return plans
             }
+
+            let destination: URL
+            if resolution == .keepBoth {
+                destination = Self.keepBothDestination(
+                    for: originalDestination,
+                    reservedDestinations: reservedDestinations,
+                    fileExists: { self.fileManager.fileExists(atPath: $0.path) }
+                )
+            } else {
+                destination = originalDestination
+            }
+            try accessPolicy.validateDestinationAccess(to: destination)
+            reservedDestinations.insert(FilePathComparison.normalizedPath(destination))
             plans.append(TransferPlan(
                 source: source,
                 destination: destination,
                 conflictResolution: resolution,
-                replacesExistingDestination: replacesExistingDestination
+                replacesExistingDestination: resolution == .replace && replacesExistingDestination
             ))
         }
 
         return plans
+    }
+
+    static func keepBothDestination(
+        for destination: URL,
+        reservedDestinations: Set<String> = [],
+        fileExists: (URL) -> Bool
+    ) -> URL {
+        let originalName = destination.lastPathComponent
+        let fileExtension = destination.pathExtension
+        let baseName = fileExtension.isEmpty
+            ? originalName
+            : destination.deletingPathExtension().lastPathComponent
+
+        var copyIndex = 1
+        while true {
+            let suffix = copyIndex == 1 ? " copy" : " copy \(copyIndex)"
+            let candidateName = fileExtension.isEmpty
+                ? "\(baseName)\(suffix)"
+                : "\(baseName)\(suffix).\(fileExtension)"
+            let candidate = destination.deletingLastPathComponent().appendingPathComponent(candidateName)
+            if !fileExists(candidate), !reservedDestinations.contains(FilePathComparison.normalizedPath(candidate)) {
+                return candidate
+            }
+            copyIndex += 1
+        }
     }
 
     private func preflightCreation(rawName: String, in directory: URL, isDirectory: Bool) throws -> URL {
@@ -1150,7 +1203,26 @@ private extension FileConflictResolution {
         switch self {
         case .replace: return "replace"
         case .skip: return "skip"
+        case .keepBoth: return "keepBoth"
         case .cancel: return "cancel"
+        case .applyToRemainingReplace: return "replace (remaining)"
+        case .applyToRemainingSkip: return "skip (remaining)"
+        case .applyToRemainingKeepBoth: return "keepBoth (remaining)"
+        }
+    }
+}
+
+private extension FileConflictResolution {
+    var performsTransfer: Bool {
+        self == .replace || self == .keepBoth
+    }
+
+    var resolutionAppliedToRemainingConflicts: FileConflictResolution? {
+        switch self {
+        case .applyToRemainingReplace: return .replace
+        case .applyToRemainingSkip: return .skip
+        case .applyToRemainingKeepBoth: return .keepBoth
+        default: return nil
         }
     }
 }

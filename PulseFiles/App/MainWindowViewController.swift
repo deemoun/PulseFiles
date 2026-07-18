@@ -1659,26 +1659,39 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     @MainActor
     private func promptForConflict(destination: URL, operationName: String) async -> FileConflictResolution {
+        let keepBothDestination = FileOperationService.keepBothDestination(
+            for: destination,
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+        )
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Replace Existing Item?".localized
-        alert.informativeText = "%@ already exists in %@. Replace only this existing item, skip this item, or cancel the whole %@ operation.".localized(
+        alert.messageText = "An Item With This Name Already Exists".localized
+        alert.informativeText = "%@ already exists in %@. Keep Both will save the incoming item as %@ during this %@ operation.".localized(
             with: destination.lastPathComponent,
             destination.deletingLastPathComponent().path,
+            keepBothDestination.lastPathComponent,
             operationName
         )
+        alert.addButton(withTitle: "Keep Both — Use New Name".localized)
         alert.addButton(withTitle: "Replace Existing Item".localized)
         alert.addButton(withTitle: "Skip This Item".localized)
         alert.addButton(withTitle: "Cancel Whole Operation".localized)
 
+        let applyToRemaining = NSButton(checkboxWithTitle: "Apply this choice to remaining conflicts".localized, target: nil, action: nil)
+        applyToRemaining.setAccessibilityLabel("Apply this conflict choice to remaining conflicts".localized)
+        alert.accessoryView = applyToRemaining
+
         guard let window = view.window else { return .cancel }
         return await withCheckedContinuation { continuation in
             alert.beginSheetModal(for: window) { response in
+                let apply = applyToRemaining.state == .on
                 switch response {
                 case .alertFirstButtonReturn:
-                    continuation.resume(returning: .replace)
+                    continuation.resume(returning: apply ? .applyToRemainingKeepBoth : .keepBoth)
                 case .alertSecondButtonReturn:
-                    continuation.resume(returning: .skip)
+                    continuation.resume(returning: apply ? .applyToRemainingReplace : .replace)
+                case .alertThirdButtonReturn:
+                    continuation.resume(returning: apply ? .applyToRemainingSkip : .skip)
                 default:
                     continuation.resume(returning: .cancel)
                 }
