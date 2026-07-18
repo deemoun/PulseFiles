@@ -6,6 +6,9 @@ import Darwin
 enum FileOperationError: LocalizedError, Equatable {
     case emptySelection
     case duplicateSource(URL)
+    /// Multi-source operations reject overlapping paths instead of attempting
+    /// an order-dependent partial mutation of a parent and its descendant.
+    case overlappingSources(ancestor: URL, descendant: URL)
     case duplicateDestination(URL)
     case sourceMissing(URL)
     case destinationDirectoryMissing(URL)
@@ -22,6 +25,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "No files are selected.".localized
         case .duplicateSource(let url):
             return "%@ is selected more than once.".localized(with: url.lastPathComponent)
+        case .overlappingSources(let ancestor, let descendant):
+            return "%@ and %@ cannot be selected together.".localized(with: ancestor.lastPathComponent, descendant.lastPathComponent)
         case .duplicateDestination(let url):
             return "Multiple selected items would write to %@.".localized(with: url.lastPathComponent)
         case .sourceMissing(let url):
@@ -49,6 +54,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "Select one or more items in the active pane.".localized
         case .duplicateSource(let url):
             return "PulseFiles rejected the operation before changing files because %@ appeared more than once.".localized(with: url.path)
+        case .overlappingSources(let ancestor, let descendant):
+            return "PulseFiles rejected the operation before changing files because %@ contains %@.".localized(with: ancestor.path, descendant.path)
         case .duplicateDestination(let url):
             return "PulseFiles rejected the operation before changing files because more than one source would write to %@.".localized(with: url.path)
         case .sourceMissing(let url):
@@ -1014,20 +1021,13 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func preflightTransferRequest(_ request: FileOperationRequest) throws {
-        guard !request.sources.isEmpty else { throw FileOperationError.emptySelection }
         try validateExistingDirectory(request.destinationDirectory)
         try accessPolicy.validateAccess(to: request.destinationDirectory)
 
-        var normalizedSources = Set<String>()
+        try preflightMultiSourceSelection(request.sources)
+
         var normalizedDestinations = Set<String>()
         for source in request.sources {
-            try validateExistingSource(source)
-            try validateSourceAccess(source)
-            let normalizedSource = FilePathComparison.normalizedPath(source)
-            guard normalizedSources.insert(normalizedSource).inserted else {
-                throw FileOperationError.duplicateSource(source)
-            }
-
             let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
             try accessPolicy.validateDestinationAccess(to: destination)
             try validateDestination(destination, for: source)
@@ -1050,13 +1050,32 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func preflightDelete(_ urls: [URL]) throws {
+        try preflightMultiSourceSelection(urls)
+    }
+
+    /// Reject a parent and one of its descendants in the same request. This is
+    /// intentionally shared by copy, move, trash, and permanent delete so the
+    /// outcome cannot depend on selection order or mutation progress.
+    private func preflightMultiSourceSelection(_ urls: [URL]) throws {
         guard !urls.isEmpty else { throw FileOperationError.emptySelection }
+
         var normalizedSources = Set<String>()
         for url in urls {
             try validateExistingSource(url)
             try validateSourceAccess(url)
             guard normalizedSources.insert(FilePathComparison.normalizedPath(url)).inserted else {
                 throw FileOperationError.duplicateSource(url)
+            }
+        }
+
+        for (ancestorIndex, ancestor) in urls.enumerated() {
+            for descendant in urls.dropFirst(ancestorIndex + 1) {
+                if FilePathComparison.isSameOrDescendant(descendant, ofDirectory: ancestor) {
+                    throw FileOperationError.overlappingSources(ancestor: ancestor, descendant: descendant)
+                }
+                if FilePathComparison.isSameOrDescendant(ancestor, ofDirectory: descendant) {
+                    throw FileOperationError.overlappingSources(ancestor: descendant, descendant: ancestor)
+                }
             }
         }
     }
