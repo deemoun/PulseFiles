@@ -433,6 +433,7 @@ final class FilePaneViewController: NSViewController {
             selectedItems: selectedItems,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
+            volumeStatus: VolumeStatusPresentation.resolve(for: viewModel.currentDirectory),
             actions: actions
         )
     }

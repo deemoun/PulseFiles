@@ -41,20 +41,24 @@ final class PaneStatusView: NSVisualEffectView {
         nil
     }
 
-    func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?, actions: [Action] = []) {
+    func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?, volumeStatus: VolumeStatusPresentation, actions: [Action] = []) {
         configureActions(actions)
         if isLoading {
             label.stringValue = "Loading...".localized
+            label.textColor = LiquidGlassStyle.secondaryLabel
             return
         }
         if let errorMessage {
             label.stringValue = "Unable to read folder: %@".localized(with: errorMessage)
+            label.textColor = .systemOrange
             return
         }
         let selectedSize = selectedItems.reduce(Int64(0)) { $0 + $1.size }
         let folderCount = items.filter(\.isDirectory).count
         let size = selectedItems.isEmpty ? "" : " · %@ selected".localized(with: FileSizeFormatter.string(fromByteCount: selectedSize))
-        label.stringValue = "%d items · %d folders · %d selected%@".localized(with: items.count, folderCount, selectedItems.count, size)
+        let itemSummary = "%d items · %d folders · %d selected%@".localized(with: items.count, folderCount, selectedItems.count, size)
+        label.stringValue = "\(itemSummary) · \(volumeStatus.detail)"
+        label.textColor = volumeStatus.isWarning ? .systemOrange : LiquidGlassStyle.secondaryLabel
     }
 
     private func configureActions(_ actions: [Action]) {
