@@ -786,6 +786,44 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: source), "source")
     }
 
+    func testCopyRejectsParentAndChildSourcesBeforeConflictResolutionOrMutation() async throws {
+        try await assertOverlappingSelectionIsRejected { service, parent, child, destination in
+            try await service.copy(
+                FileOperationRequest(sources: [parent, child], destinationDirectory: destination),
+                conflictHandler: { _ in
+                    XCTFail("Conflict resolution must not run for overlapping sources")
+                    return .replace
+                },
+                progressHandler: nil
+            )
+        }
+    }
+
+    func testMoveRejectsParentAndChildSourcesBeforeConflictResolutionOrMutation() async throws {
+        try await assertOverlappingSelectionIsRejected { service, parent, child, destination in
+            try await service.move(
+                FileOperationRequest(sources: [parent, child], destinationDirectory: destination),
+                conflictHandler: { _ in
+                    XCTFail("Conflict resolution must not run for overlapping sources")
+                    return .replace
+                },
+                progressHandler: nil
+            )
+        }
+    }
+
+    func testTrashRejectsParentAndChildSourcesBeforeMutation() async throws {
+        try await assertOverlappingSelectionIsRejected { service, parent, child, _ in
+            try await service.trash([parent, child], progressHandler: nil)
+        }
+    }
+
+    func testPermanentDeleteRejectsParentAndChildSourcesBeforeMutation() async throws {
+        try await assertOverlappingSelectionIsRejected { service, parent, child, _ in
+            try await service.delete([parent, child], progressHandler: nil)
+        }
+    }
+
     func testRenameUsesNoOverwriteValidation() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Old.txt")
@@ -1016,6 +1054,30 @@ final class FileOperationServiceTests: XCTestCase {
             return Fixture(root: sandbox.root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: policy), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: failingFileManager)
         }
         return Fixture(root: sandbox.root, left: left, right: right, service: sandbox.fileOperationService(), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: nil)
+    }
+
+    private func assertOverlappingSelectionIsRejected(
+        operation: (FileOperationService, URL, URL, URL) async throws -> FileOperationResult
+    ) async throws {
+        let fixture = try makeFixture()
+        let parent = fixture.left.appendingPathComponent("Folder", isDirectory: true)
+        let child = parent.appendingPathComponent("Child.txt")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        try "child contents".write(to: child, atomically: true, encoding: .utf8)
+
+        do {
+            _ = try await operation(fixture.service, parent, child, fixture.right)
+            XCTFail("Expected overlapping source rejection")
+        } catch FileOperationError.overlappingSources(let ancestor, let descendant) {
+            XCTAssertEqual(ancestor, parent)
+            XCTAssertEqual(descendant, child)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: parent.path))
+        XCTAssertEqual(try String(contentsOf: child), "child contents")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(parent.lastPathComponent).path))
     }
 
     private func makeTemporaryDirectory() throws -> URL {
