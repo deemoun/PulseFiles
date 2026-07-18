@@ -1623,8 +1623,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         view.window?.title = "\(operationName): \(progress.currentItemName)"
     }
 
-    private func showOperationResult(_ result: FileOperationResult, operationName: String) {
-        guard !result.succeededCompletely else { return }
+    static func operationResultPresentation(_ result: FileOperationResult, operationName: String) -> (message: String, detail: String, style: NSAlert.Style)? {
+        guard !result.succeededCompletely else { return nil }
         var details = [
             "Completed: %d".localized(with: result.completedItems.count),
             "Skipped: %d".localized(with: result.skippedItems.count),
@@ -1642,7 +1642,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         let message = onlyCancelled
             ? "%@ Cancelled".localized(with: operationName)
             : "%@ Finished With Issues".localized(with: operationName)
-        showAlert(message: message, detail: details.joined(separator: "\n"), style: onlyCancelled ? .informational : .warning)
+        return (message, details.joined(separator: "\n"), onlyCancelled ? .informational : .warning)
+    }
+
+    private func showOperationResult(_ result: FileOperationResult, operationName: String) {
+        guard let presentation = Self.operationResultPresentation(result, operationName: operationName) else { return }
+        showAlert(message: presentation.message, detail: presentation.detail, style: presentation.style)
     }
 
     private func setConflictingFileActionsEnabled(_ isEnabled: Bool) {

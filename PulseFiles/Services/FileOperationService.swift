@@ -211,6 +211,11 @@ extension FileManager: FileOperationFileManaging {
 }
 
 final class FileOperationService: FileOperationServicing {
+    private struct TransferFailure: Error {
+        let underlyingError: Error
+        let cleanupWarnings: [FileOperationCleanupWarning]
+    }
+
     private enum TransferKind {
         case copy
         case move
@@ -504,6 +509,23 @@ final class FileOperationService: FileOperationServicing {
                     cleanupWarnings.append(contentsOf: warnings)
                 }
                 completedItems.append(plan.source)
+            } catch let failure as TransferFailure where failure.underlyingError is CancellationError {
+                cleanupWarnings.append(contentsOf: failure.cleanupWarnings)
+                DiagnosticLogger.log(.info, category: "FileOperation", "Transfer operation cancelled by task check: completedCount=\(completedItems.count); skippedCount=\(skippedItems.count); failedCount=\(failedItems.count); cleanupWarningCount=\(cleanupWarnings.count)")
+                return FileOperationResult(
+                    completedItems: completedItems,
+                    skippedItems: skippedItems,
+                    failedItems: failedItems,
+                    cleanupWarnings: cleanupWarnings,
+                    wasCancelled: true
+                )
+            } catch let failure as TransferFailure {
+                cleanupWarnings.append(contentsOf: failure.cleanupWarnings)
+                DiagnosticLogger.log(.error, category: "FileOperation", "Transfer item failed: source=\(DiagnosticLogger.sanitizedPath(plan.source)); destination=\(DiagnosticLogger.sanitizedPath(plan.destination)); reason=\(failure.underlyingError.localizedDescription)")
+                failedItems.append(FileOperationItemFailure(url: plan.source, error: failure.underlyingError))
+                if isUnavailableVolumeError(failure.underlyingError) {
+                    break
+                }
             } catch is CancellationError {
                 DiagnosticLogger.log(.info, category: "FileOperation", "Transfer operation cancelled by task check: completedCount=\(completedItems.count); skippedCount=\(skippedItems.count); failedCount=\(failedItems.count); cleanupWarningCount=\(cleanupWarnings.count)")
                 return FileOperationResult(
@@ -568,8 +590,8 @@ final class FileOperationService: FileOperationServicing {
             )
             return try placeStagedItem(tempURL, at: destination)
         } catch {
-            try? removeIfExists(tempURL)
-            throw error
+            let cleanupWarnings = cleanupWarningsAfterFailedStagingRemoval(at: tempURL)
+            throw TransferFailure(underlyingError: error, cleanupWarnings: cleanupWarnings)
         }
     }
 
@@ -653,8 +675,21 @@ final class FileOperationService: FileOperationServicing {
             }
             return warnings
         } catch {
-            try? removeIfExists(tempURL)
-            throw error
+            let cleanupWarnings = cleanupWarningsAfterFailedStagingRemoval(at: tempURL)
+            throw TransferFailure(underlyingError: error, cleanupWarnings: cleanupWarnings)
+        }
+    }
+
+    private func cleanupWarningsAfterFailedStagingRemoval(at temporaryURL: URL) -> [FileOperationCleanupWarning] {
+        do {
+            try removeIfExists(temporaryURL)
+            return []
+        } catch {
+            DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove temporary item at \(DiagnosticLogger.sanitizedPath(temporaryURL)); reason=\(error.localizedDescription)")
+            return [FileOperationCleanupWarning(
+                url: temporaryURL,
+                message: "PulseFiles could not remove the temporary item at %@. Review it and remove it manually after confirming it is no longer needed.".localized(with: temporaryURL.path)
+            )]
         }
     }
 
