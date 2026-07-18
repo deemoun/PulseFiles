@@ -111,6 +111,7 @@ final class MainWindowViewController: NSViewController {
     private var terminalHeightConstraint: NSLayoutConstraint?
     private var isSinglePaneMode = false
     private var activeOperationTask: Task<Void, Never>?
+    private var undoRecovery: FileOperationRecovery?
     private var quickLookPreviewURL: NSURL?
     private var isFileOperationActive = false {
         didSet { setConflictingFileActionsEnabled(!isFileOperationActive) }
@@ -364,6 +365,8 @@ final class MainWindowViewController: NSViewController {
             promptForNewFolder()
         case .rename:
             promptForRename()
+        case .undo:
+            undoLastOperation()
         case .copy:
             copySelectedItems()
         case .move:
@@ -1241,7 +1244,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func rename(item: FileItem, to rawName: String) {
-        startFileOperation(named: "Rename".localized) { [fileOperations] progressHandler in
+        startFileOperation(named: "Rename".localized, captureRecovery: true) { [fileOperations] progressHandler in
             try await fileOperations.rename(item.url, to: rawName, progressHandler: progressHandler)
         }
     }
@@ -1302,7 +1305,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func moveSelectedItems() {
-        performFileTransfer(kind: "Move".localized, shouldConfirm: settings.confirmMoveOperations) { [fileOperations] request, conflictHandler, progressHandler in
+        performFileTransfer(kind: "Move".localized, shouldConfirm: settings.confirmMoveOperations, captureRecovery: true) { [fileOperations] request, conflictHandler, progressHandler in
             try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
@@ -1310,6 +1313,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func performFileTransfer(
         kind: String,
         shouldConfirm: Bool,
+        captureRecovery: Bool = false,
         operation: @escaping (FileOperationRequest, @escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult
     ) {
         let sources = targetPane().selectedItems.map(\.url)
@@ -1322,6 +1326,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             sources: sources,
             destinationDirectory: targetPane(useInactive: true).currentDirectory,
             shouldConfirm: shouldConfirm,
+            captureRecovery: captureRecovery,
             operation: operation
         )
     }
@@ -1331,6 +1336,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         sources: [URL],
         destinationDirectory: URL,
         shouldConfirm: Bool,
+        captureRecovery: Bool = false,
         operation: @escaping (FileOperationRequest, @escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult
     ) {
         guard FilePathComparison.firstDirectoryContaining(destinationDirectory, among: sources) == nil else {
@@ -1343,7 +1349,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
         let request = FileOperationRequest(sources: sources, destinationDirectory: destinationDirectory)
         let start: () -> Void = { [weak self] in
-            self?.startFileOperation(named: kind) { [weak self] progressHandler in
+            self?.startFileOperation(named: kind, captureRecovery: captureRecovery) { [weak self] progressHandler in
                 try await operation(request, { destination in
                     guard let self else { return .cancel }
                     return await self.promptForConflict(destination: destination, operationName: kind)
@@ -1390,7 +1396,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             kind: kind,
             sources: payload.urls,
             destinationDirectory: targetPane().currentDirectory,
-            shouldConfirm: shouldConfirm
+            shouldConfirm: shouldConfirm,
+            captureRecovery: payload.operation == .move
         ) { [fileOperations] request, conflictHandler, progressHandler in
             switch payload.operation {
             case .copy:
@@ -1460,7 +1467,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         let kind = copy ? "Copy".localized : "Move".localized
         let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
         let start: () -> Void = { [weak self, fileOperations] in
-            self?.startFileOperation(named: kind) { [weak self] progressHandler in
+            self?.startFileOperation(named: kind, captureRecovery: !copy) { [weak self] progressHandler in
                 if copy {
                     return try await fileOperations.copy(request, conflictHandler: { destination in
                         guard let self else { return .cancel }
@@ -1582,13 +1589,24 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         return lines.joined(separator: "\n")
     }
 
+    private func undoLastOperation() {
+        guard let recovery = undoRecovery else {
+            showError(message: "Undo Unavailable".localized, detail: "The last operation cannot be safely undone.".localized)
+            return
+        }
+        undoRecovery = nil
+        startFileOperation(named: "Undo".localized) { [fileOperations] progressHandler in
+            try await fileOperations.undo(recovery, progressHandler: progressHandler)
+        }
+    }
+
     private func cancelActiveFileOperation() {
         guard isFileOperationActive else { return }
         activeOperationTask?.cancel()
         commandBar.setOperationStatus("Cancelling operation…".localized)
     }
 
-    private func startFileOperation(named operationName: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
+    private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
         guard !isFileOperationActive else { return }
         let previousWindowTitle = view.window?.title
         isFileOperationActive = true
@@ -1613,6 +1631,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                         self?.updateFileOperationProgress(progress, operationName: operationName)
                     }
                 }
+                if captureRecovery { self.undoRecovery = result.succeededCompletely ? result.recovery : nil }
                 self.clearClipboardFeedback()
                 self.refreshBothPanes()
                 self.showOperationResult(result, operationName: operationName)
@@ -1798,6 +1817,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
+    @objc func menuUndo(_ sender: Any?) { performCommand(.undo) }
     @objc func menuOpenWith(_ sender: Any?) { performCommand(.openWith) }
     @objc func menuCopy(_ sender: Any?) { performCommand(.copy) }
     @objc func menuMove(_ sender: Any?) { performCommand(.move) }
@@ -1918,7 +1938,8 @@ extension MainWindowViewController: NSMenuItemValidation {
                 focusedURL: rightFocusedURL
             ),
             isFileOperationActive: isFileOperationActive,
-            sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs
+            sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs,
+            hasUndoRecovery: undoRecovery != nil
         )
     }
 }
@@ -1930,6 +1951,7 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuNewFile(_:)): self = .newFile
         case #selector(MainWindowViewController.menuNewFolder(_:)): self = .newFolder
         case #selector(MainWindowViewController.menuRename(_:)): self = .rename
+        case #selector(MainWindowViewController.menuUndo(_:)): self = .undo
         case #selector(MainWindowViewController.menuOpenWith(_:)): self = .openWith
         case #selector(MainWindowViewController.menuCopy(_:)): self = .copy
         case #selector(MainWindowViewController.menuMove(_:)): self = .move

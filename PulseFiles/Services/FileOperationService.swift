@@ -22,6 +22,7 @@ enum FileOperationError: LocalizedError, Equatable {
     case iCloudItemNotDownloaded(URL)
     case readOnlyVolume(URL)
     case volumeUnavailable(URL)
+    case undoUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -57,6 +58,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "%@ is on a read-only volume.".localized(with: url.lastPathComponent)
         case .volumeUnavailable(let url):
             return "The volume containing %@ is no longer available.".localized(with: url.lastPathComponent)
+        case .undoUnavailable:
+            return "This operation can no longer be safely undone.".localized
         }
     }
 
@@ -98,6 +101,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "Choose a writable destination or eject the read-only media before modifying %@.".localized(with: url.path)
         case .volumeUnavailable(let url):
             return "Reconnect or remount the volume containing %@, then try again.".localized(with: url.path)
+        case .undoUnavailable:
+            return "The operation was partial, cancelled, or did not retain a complete safe reversal path.".localized
         }
     }
 }
@@ -177,19 +182,22 @@ struct FileOperationResult {
     let failedItems: [FileOperationItemFailure]
     let cleanupWarnings: [FileOperationCleanupWarning]
     let wasCancelled: Bool
+    let recovery: FileOperationRecovery?
 
     init(
         completedItems: [URL],
         skippedItems: [URL],
         failedItems: [FileOperationItemFailure],
         cleanupWarnings: [FileOperationCleanupWarning] = [],
-        wasCancelled: Bool
+        wasCancelled: Bool,
+        recovery: FileOperationRecovery? = nil
     ) {
         self.completedItems = completedItems
         self.skippedItems = skippedItems
         self.failedItems = failedItems
         self.cleanupWarnings = cleanupWarnings
         self.wasCancelled = wasCancelled
+        self.recovery = recovery
     }
 
     var succeededCompletely: Bool {
@@ -205,6 +213,7 @@ protocol FileOperationServicing {
     func copy(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func move(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func createFolder(named rawName: String, in directory: URL) throws -> URL
     func createFile(named rawName: String, in directory: URL) throws -> URL
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
@@ -476,7 +485,7 @@ final class FileOperationService: FileOperationServicing {
                 try fileManager.moveItem(at: source, to: destination)
             }
             await progressHandler?(FileOperationProgress(currentItemName: destination.lastPathComponent, completedCount: 1, totalCount: 1))
-            let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false)
+            let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false, recovery: FileOperationRecovery(kind: .rename, items: [.init(originalURL: source, destinationURL: destination)]))
             logCompletion(operation: "rename", result: result)
             return result
         } catch {
@@ -484,6 +493,30 @@ final class FileOperationService: FileOperationServicing {
             let result = FileOperationResult(completedItems: [], skippedItems: [], failedItems: [FileOperationItemFailure(url: source, error: error)], wasCancelled: false)
             logCompletion(operation: "rename", result: result)
             return result
+        }
+    }
+
+    func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+        guard !recovery.items.isEmpty else { throw FileOperationError.undoUnavailable }
+        for item in recovery.items {
+            try validateExistingSource(item.destinationURL)
+            try validateAvailableSource(item.destinationURL)
+            try validateExistingDirectory(item.originalURL.deletingLastPathComponent())
+            try validateWritableMutationTarget(item.destinationURL.deletingLastPathComponent())
+            try validateWritableMutationTarget(item.originalURL.deletingLastPathComponent())
+            try accessPolicy.validateAccess(to: item.destinationURL)
+            try accessPolicy.validateDestinationAccess(to: item.originalURL)
+            if fileManager.fileExists(atPath: item.originalURL.path) { throw FileOperationError.destinationExists(item.originalURL) }
+        }
+        return try await accessPolicy.withAccess(to: recovery.items.flatMap { [$0.destinationURL, $0.originalURL.deletingLastPathComponent()] }) {
+            var completed: [URL] = []
+            for (index, item) in recovery.items.enumerated() {
+                try Task.checkCancellation()
+                await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
+                try fileManager.moveItem(at: item.destinationURL, to: item.originalURL)
+                completed.append(item.originalURL)
+            }
+            return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: [], wasCancelled: false)
         }
     }
 
@@ -720,12 +753,16 @@ final class FileOperationService: FileOperationServicing {
             )
         }
 
+        let recovery: FileOperationRecovery? = kind == .move && skippedItems.isEmpty && failedItems.isEmpty && cleanupWarnings.isEmpty && completedItems.count == activePlans.count && !activePlans.contains(where: \.replacesExistingDestination)
+            ? FileOperationRecovery(kind: .move, items: activePlans.map { .init(originalURL: $0.source, destinationURL: $0.destination) })
+            : nil
         return FileOperationResult(
             completedItems: completedItems,
             skippedItems: skippedItems,
             failedItems: failedItems,
             cleanupWarnings: cleanupWarnings,
-            wasCancelled: false
+            wasCancelled: false,
+            recovery: recovery
         )
     }
 

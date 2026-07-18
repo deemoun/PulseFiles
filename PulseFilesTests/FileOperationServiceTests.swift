@@ -1290,6 +1290,50 @@ final class FileOperationServiceTests: XCTestCase {
         }
     }
 
+    func testUndoReversesSuccessfulMove() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Undo.txt")
+        try Data("undo".utf8).write(to: source)
+        let move = try await fixture.service.move(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        let recovery = try XCTUnwrap(move.recovery)
+        let result = try await fixture.service.undo(recovery, progressHandler: nil)
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    func testUndoRejectsOriginalPathConflict() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Conflict.txt")
+        try Data("source".utf8).write(to: source)
+        let move = try await fixture.service.move(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        try Data("replacement".utf8).write(to: source)
+        do { _ = try await fixture.service.undo(try XCTUnwrap(move.recovery), progressHandler: nil); XCTFail("Expected conflict") }
+        catch FileOperationError.destinationExists(let url) { XCTAssertEqual(url, source) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Conflict.txt").path))
+    }
+
+    func testUndoRejectsRemovedDestinationVolume() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Volume.txt")
+        let destination = fixture.right.appendingPathComponent("Volume.txt")
+        try Data("source".utf8).write(to: source)
+        let recovery = FileOperationRecovery(kind: .move, items: [.init(originalURL: source, destinationURL: destination)])
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, pathSafetyStateProvider: { url in url == destination ? .init(isAvailable: false) : .init() })
+        do { _ = try await service.undo(recovery, progressHandler: nil); XCTFail("Expected volume error") }
+        catch FileOperationError.volumeUnavailable(let url) { XCTAssertEqual(url, destination) }
+    }
+
+    func testUndoRejectsDeniedAccess() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Denied.txt")
+        let destination = fixture.right.appendingPathComponent("Denied.txt")
+        try Data("destination".utf8).write(to: destination)
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.left)
+        let service = FileOperationService(fileManager: .default, accessPolicy: policy)
+        do { _ = try await service.undo(.init(kind: .move, items: [.init(originalURL: source, destinationURL: destination)]), progressHandler: nil); XCTFail("Expected access denial") }
+        catch SandboxAccessError.outsideExperimentalSandbox(let url) { XCTAssertEqual(url, destination) }
+    }
+
     private struct Fixture {
         let root: URL
         let left: URL

@@ -93,6 +93,12 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.route(.debugLogs, in: makeState(activePaneID: .left)), .enabled(command: .debugLogs))
     }
 
+    func testUndoRoutesOnlyWithRecoveryAndIsDisabledDuringActiveOperation() {
+        XCTAssertEqual(router.route(.undo, in: makeState(activePaneID: .left)), .disabled(command: .undo, reason: .noUndoRecovery))
+        XCTAssertEqual(router.route(.undo, in: makeState(activePaneID: .left, isFileOperationActive: true, hasUndoRecovery: true)), .disabled(command: .undo, reason: .fileOperationInProgress))
+        XCTAssertEqual(router.route(.undo, in: makeState(activePaneID: .left, hasUndoRecovery: true)), .enabled(command: .undo))
+    }
+
     func testCancelOperationRoutesOnlyDuringActiveFileOperation() {
         XCTAssertEqual(router.commandForKeyDown(keyCode: 47, command: true), .cancelOperation)
         XCTAssertEqual(
@@ -162,7 +168,8 @@ final class MainCommandRoutingTests: XCTestCase {
         leftFocusedURL: URL?? = nil,
         rightFocusedURL: URL?? = nil,
         isFileOperationActive: Bool = false,
-        sandboxAllowsSelectedURLs: Bool = true
+        sandboxAllowsSelectedURLs: Bool = true,
+        hasUndoRecovery: Bool = false
     ) -> MainCommandRoutingState {
         MainCommandRoutingState(
             activePaneID: activePaneID,
@@ -179,7 +186,8 @@ final class MainCommandRoutingTests: XCTestCase {
                 focusedURL: rightFocusedURL ?? rightSelection.first
             ),
             isFileOperationActive: isFileOperationActive,
-            sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs
+            sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs,
+            hasUndoRecovery: hasUndoRecovery
         )
     }
 }
