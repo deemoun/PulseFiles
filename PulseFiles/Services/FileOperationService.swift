@@ -226,7 +226,7 @@ final class FileOperationService: FileOperationServicing {
             DiagnosticLogger.log(.info, category: "FileOperation", "Copy operation cancelled during conflict resolution: skippedCount=\(plans.filter { $0.conflictResolution == .skip }.count)")
             return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
         }
-        return try await accessPolicy.withAccess(to: request.sources + [request.destinationDirectory]) {
+        return await accessPolicy.withAccess(to: request.sources + [request.destinationDirectory]) {
             let result = await performTransfer(plans, kind: .copy, progressHandler: progressHandler)
             logCompletion(operation: "copy", result: result)
             return result
@@ -250,7 +250,7 @@ final class FileOperationService: FileOperationServicing {
             DiagnosticLogger.log(.info, category: "FileOperation", "Move operation cancelled during conflict resolution: skippedCount=\(plans.filter { $0.conflictResolution == .skip }.count)")
             return FileOperationResult(completedItems: [], skippedItems: plans.filter { $0.conflictResolution == .skip }.map(\.source), failedItems: [], wasCancelled: true)
         }
-        return try await accessPolicy.withAccess(to: request.sources + [request.destinationDirectory]) {
+        return await accessPolicy.withAccess(to: request.sources + [request.destinationDirectory]) {
             let result = await performTransfer(plans, kind: .move, progressHandler: progressHandler)
             logCompletion(operation: "move", result: result)
             return result
@@ -323,7 +323,7 @@ final class FileOperationService: FileOperationServicing {
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Trash operation starting: itemCount=\(urls.count)")
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "trash", error: error); throw error }
-        let result = try await accessPolicy.withAccess(to: urls) {
+        let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
                 #if os(macOS)
                 var resultingURL: NSURL?
@@ -340,7 +340,7 @@ final class FileOperationService: FileOperationServicing {
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Delete operation starting: itemCount=\(urls.count)")
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "delete", error: error); throw error }
-        let result = try await accessPolicy.withAccess(to: urls) {
+        let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
                 try fileManager.removeItem(at: url)
             }
