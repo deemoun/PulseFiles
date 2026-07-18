@@ -7,6 +7,7 @@ enum MainCommand: Equatable {
     case newFile
     case newFolder
     case rename
+    case undo
     case copy
     case move
     case copyToClipboard

@@ -20,19 +20,22 @@ struct MainCommandRoutingState: Equatable {
     var rightPane: MainCommandRoutingPane
     var isFileOperationActive: Bool
     var sandboxAllowsSelectedURLs: Bool
+    var hasUndoRecovery: Bool
 
     init(
         activePaneID: PaneID = .left,
         leftPane: MainCommandRoutingPane,
         rightPane: MainCommandRoutingPane,
         isFileOperationActive: Bool = false,
-        sandboxAllowsSelectedURLs: Bool = true
+        sandboxAllowsSelectedURLs: Bool = true,
+        hasUndoRecovery: Bool = false
     ) {
         self.activePaneID = activePaneID
         self.leftPane = leftPane
         self.rightPane = rightPane
         self.isFileOperationActive = isFileOperationActive
         self.sandboxAllowsSelectedURLs = sandboxAllowsSelectedURLs
+        self.hasUndoRecovery = hasUndoRecovery
     }
 
     var activePane: MainCommandRoutingPane {
@@ -50,6 +53,7 @@ enum MainCommandRoutingDisabledReason: Equatable {
     case sandboxRejectedSelection
     case fileOperationInProgress
     case noActiveFileOperation
+    case noUndoRecovery
 }
 
 enum MainCommandRoute: Equatable {
@@ -65,6 +69,7 @@ struct MainCommandRouter {
         if state.isFileOperationActive, command.conflictsWithFileOperation {
             return .disabled(command: command, reason: .fileOperationInProgress)
         }
+        if command == .undo { return state.hasUndoRecovery ? .enabled(command: command) : .disabled(command: command, reason: .noUndoRecovery) }
         if command == .cancelOperation {
             return state.isFileOperationActive ? .enabled(command: command) : .disabled(command: command, reason: .noActiveFileOperation)
         }
@@ -163,7 +168,7 @@ struct MainCommandRouter {
 extension MainCommand {
     var conflictsWithFileOperation: Bool {
         switch self {
-        case .newFile, .newFolder, .rename, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
+        case .newFile, .newFolder, .rename, .undo, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
             return true
         default:
             return false

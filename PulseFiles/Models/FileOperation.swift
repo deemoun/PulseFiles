@@ -15,3 +15,15 @@ struct FileOperation {
     let sources: [URL]
     let destination: URL?
 }
+
+
+/// Complete before/after state retained only for operations that can be reversed safely.
+struct FileOperationRecovery: Equatable {
+    enum Kind: Equatable { case rename, move }
+    struct Item: Equatable {
+        let originalURL: URL
+        let destinationURL: URL
+    }
+    let kind: Kind
+    let items: [Item]
+}

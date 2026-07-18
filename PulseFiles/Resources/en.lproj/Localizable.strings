@@ -265,3 +265,9 @@
 "%@/%@" = "%@/%@";
 "%d/%d items" = "%d/%d items";
 "Choose another folder" = "Choose another folder";
+
+"Undo" = "Undo";
+"Undo Unavailable" = "Undo Unavailable";
+"The last operation cannot be safely undone." = "The last operation cannot be safely undone.";
+"This operation can no longer be safely undone." = "This operation can no longer be safely undone.";
+"The operation was partial, cancelled, or did not retain a complete safe reversal path." = "The operation was partial, cancelled, or did not retain a complete safe reversal path.";
