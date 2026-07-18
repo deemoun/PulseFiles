@@ -18,6 +18,7 @@ enum FileOperationError: LocalizedError, Equatable {
     case unsafeReplacement(destination: URL, backup: URL)
     case sourceCleanupFailed(source: URL, destination: URL)
     case temporarySiblingUnavailable(destination: URL, prefix: String)
+    case insufficientDestinationCapacity(required: Int64, available: Int64)
 
     var errorDescription: String? {
         switch self {
@@ -45,7 +46,13 @@ enum FileOperationError: LocalizedError, Equatable {
             return "The item was copied, but the original could not be removed.".localized
         case .temporarySiblingUnavailable:
             return "Could not create a safe temporary file name.".localized
+        case .insufficientDestinationCapacity:
+            return "The destination does not have enough available space.".localized
         }
+    }
+
+    private static func formattedByteCount(_ count: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 
     var failureReason: String? {
@@ -74,6 +81,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "%@ now exists, but the original remains at %@.".localized(with: destination.path, source.path)
         case .temporarySiblingUnavailable(let destination, let prefix):
             return "PulseFiles tried multiple %@ staging names beside %@, but each candidate already existed.".localized(with: prefix, destination.path)
+        case .insufficientDestinationCapacity(let required, let available):
+            return "This operation requires %@, but the destination volume has only %@ available.".localized(with: Self.formattedByteCount(required), Self.formattedByteCount(available))
         }
     }
 }
@@ -86,6 +95,13 @@ enum FileConflictResolution: Equatable {
     case applyToRemainingReplace
     case applyToRemainingSkip
     case applyToRemainingKeepBoth
+}
+
+enum FileTransferCapacityPreflight: Equatable {
+    case notRequired
+    case sufficient(required: Int64, available: Int64)
+    case insufficient(required: Int64, available: Int64)
+    case cannotVerify(required: Int64?)
 }
 
 struct FileOperationRequest {
@@ -161,6 +177,7 @@ typealias FileOperationProgressHandler = @MainActor (FileOperationProgress) -> V
 typealias FileConflictHandler = (URL) async -> FileConflictResolution
 
 protocol FileOperationServicing {
+    func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight
     func copy(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func move(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
@@ -271,17 +288,52 @@ final class FileOperationService: FileOperationServicing {
     private let fileManager: FileOperationFileManaging
     private let accessPolicy: SandboxFileAccessPolicy
     private let streamingCopier: FileOperationStreamingCopying
+    private let destinationCapacityProvider: (URL) -> Int64?
+    private let volumeIdentifierProvider: (URL) -> String?
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier()) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
+        self.destinationCapacityProvider = destinationCapacityProvider
+        self.volumeIdentifierProvider = volumeIdentifierProvider
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier()) {
+    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
+        self.destinationCapacityProvider = destinationCapacityProvider
+        self.volumeIdentifierProvider = volumeIdentifierProvider
+    }
+
+    func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {
+        try preflightTransferRequest(request)
+        let hasReplacement = request.sources.contains { fileManager.fileExists(atPath: request.destinationDirectory.appendingPathComponent($0.lastPathComponent).path) }
+        let requiresCopy = !isMove || hasReplacement || request.sources.contains { source in
+            guard let sourceVolume = volumeIdentifierProvider(source), let destinationVolume = volumeIdentifierProvider(request.destinationDirectory) else { return true }
+            return sourceVolume != destinationVolume
+        }
+        guard requiresCopy else { return .notRequired }
+        guard let required = (await calculateTransferMetadata(for: request.sources))?.byteCount else { return .cannotVerify(required: nil) }
+        guard let available = destinationCapacityProvider(request.destinationDirectory) else { return .cannotVerify(required: required) }
+        return available >= required ? .sufficient(required: required, available: available) : .insufficient(required: required, available: available)
+    }
+
+    private func enforceTransferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws {
+        if case .insufficient(let required, let available) = try await transferCapacityPreflight(for: request, isMove: isMove) {
+            throw FileOperationError.insufficientDestinationCapacity(required: required, available: available)
+        }
+    }
+
+    private static func defaultDestinationCapacity(for url: URL) -> Int64? {
+        guard let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]) else { return nil }
+        return values.volumeAvailableCapacityForImportantUsage ?? values.volumeAvailableCapacity
+    }
+
+    private static func defaultVolumeIdentifier(for url: URL) -> String? {
+        guard let values = try? url.resourceValues(forKeys: [.volumeIdentifierKey]), let identifier = values.volumeIdentifier else { return nil }
+        return identifier.uuidString
     }
 
     func copy(
@@ -292,6 +344,7 @@ final class FileOperationService: FileOperationServicing {
         DiagnosticLogger.log(.info, category: "FileOperation", "Copy operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
         do {
             try preflightTransferRequest(request)
+            try await enforceTransferCapacityPreflight(for: request, isMove: false)
         } catch {
             logPreflightFailure(operation: "copy", error: error)
             throw error
@@ -316,6 +369,7 @@ final class FileOperationService: FileOperationServicing {
         DiagnosticLogger.log(.info, category: "FileOperation", "Move operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
         do {
             try preflightTransferRequest(request)
+            try await enforceTransferCapacityPreflight(for: request, isMove: true)
         } catch {
             logPreflightFailure(operation: "move", error: error)
             throw error
