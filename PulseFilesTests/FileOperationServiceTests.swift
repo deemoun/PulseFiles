@@ -1030,11 +1030,50 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Folder/Empty.bin").path))
     }
 
-    func testStreamingCopyCancellationLeavesNoStagedDestination() async throws {
+    func testTransferReportsIndeterminatePreparingProgressBeforeMetadataDiscovery() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Data.bin")
         try Data(repeating: 1, count: 4).write(to: source)
-        let copier = ScriptedStreamingCopier(chunkSize: 2, cancelsAfterFirstChunk: true)
+        var progressEvents: [FileOperationProgress] = []
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: { progressEvents.append($0) }
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertTrue(progressEvents.first?.isPreparingTransfer == true)
+        XCTAssertEqual(progressEvents.first?.currentItemName, "Preparing transfer")
+    }
+
+    func testCancellationDuringPrescanReturnsCancelledWithoutCreatingDestination() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        for index in 0 ..< 100 {
+            try Data(repeating: UInt8(index), count: 1_024).write(to: source.appendingPathComponent("\(index).bin"))
+        }
+
+        let task = Task {
+            try await fixture.service.copy(
+                FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+                conflictHandler: { _ in .replace },
+                progressHandler: { _ in }
+            )
+        }
+        task.cancel()
+        let result = try await task.value
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Folder").path))
+    }
+
+    func testStreamingCopyCancellationLeavesNoStagedDestination() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Data.bin")
+        try Data(repeating: 1, count: 3 * 1_048_576).write(to: source)
+        let copier = ScriptedStreamingCopier(chunkSize: 1_048_576, cancelsAfterFirstChunk: true)
         let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: copier)
 
         let result = try await service.copy(
@@ -1045,6 +1084,29 @@ final class FileOperationServiceTests: XCTestCase {
 
         XCTAssertTrue(result.wasCancelled)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Data.bin").path))
+    }
+
+    func testCancellationInNestedDirectoryPreservesCompletedTopLevelItems() async throws {
+        let fixture = try makeFixture()
+        let completed = fixture.left.appendingPathComponent("Completed.txt")
+        let folder = fixture.left.appendingPathComponent("Folder", isDirectory: true)
+        let nested = folder.appendingPathComponent("Nested.bin")
+        try "complete".write(to: completed, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 8).write(to: nested)
+        let copier = CancellingOnSourceStreamingCopier(sourceToCancel: nested)
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: copier)
+
+        let result = try await service.copy(
+            FileOperationRequest(sources: [completed, folder], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: { _ in }
+        )
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertEqual(result.completedItems, [completed])
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Completed.txt")), "complete")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Folder").path))
     }
 
     func testBlockingStreamingCopyDoesNotBlockMainActorProgressCallbacks() async throws {
@@ -1466,6 +1528,25 @@ private final class ScriptedStreamingCopier: FileOperationStreamingCopying {
             offset = end
         }
         try copied.write(to: destination)
+    }
+}
+
+private final class CancellingOnSourceStreamingCopier: FileOperationStreamingCopying {
+    private let sourceToCancel: URL
+
+    init(sourceToCancel: URL) {
+        self.sourceToCancel = sourceToCancel.standardizedFileURL
+    }
+
+    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        let data = try Data(contentsOf: source)
+        if source.standardizedFileURL == sourceToCancel {
+            try data.prefix(1).write(to: destination)
+            try await progress(1)
+            throw CancellationError()
+        }
+        try data.write(to: destination)
+        try await progress(data.count)
     }
 }
 
