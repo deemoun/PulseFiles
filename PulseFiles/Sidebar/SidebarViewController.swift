@@ -23,21 +23,23 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    fileprivate struct SidebarItem {
+    struct SidebarItem {
         let title: String
         let subtitle: String?
         let url: URL
         let symbol: String
         let group: String
         let badge: Int?
+        let isAvailable: Bool
 
-        init(title: String, subtitle: String? = nil, url: URL, symbol: String, group: String, badge: Int? = nil) {
+        init(title: String, subtitle: String? = nil, url: URL, symbol: String, group: String, badge: Int? = nil, isAvailable: Bool = true) {
             self.title = title
             self.subtitle = subtitle
             self.url = url
             self.symbol = symbol
             self.group = group
             self.badge = badge
+            self.isAvailable = isAvailable
         }
     }
 
@@ -137,6 +139,7 @@ final class SidebarViewController: NSViewController {
 
     private let recentLocations: RecentLocationService
     private let accessPolicy: SandboxFileAccessPolicy
+    private let volumeDiscovery: any VolumeDiscovering
     private let scrollView = NSScrollView()
     private let modeControl = NSSegmentedControl()
     private let stack = NSStackView()
@@ -146,9 +149,14 @@ final class SidebarViewController: NSViewController {
     private var sizeTask: Task<Void, Never>?
     private var representedSelectionID = UUID()
 
-    init(recentLocations: RecentLocationService, accessPolicy: SandboxFileAccessPolicy = .current) {
+    init(
+        recentLocations: RecentLocationService,
+        accessPolicy: SandboxFileAccessPolicy = .current,
+        volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService()
+    ) {
         self.recentLocations = recentLocations
         self.accessPolicy = accessPolicy
+        self.volumeDiscovery = volumeDiscovery
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -311,11 +319,41 @@ final class SidebarViewController: NSViewController {
         ])
     }
 
-    private func deviceItems() -> [SidebarItem] {
-        let root = URL(fileURLWithPath: "/", isDirectory: true)
-        return accessibleItems([
-            SidebarItem(title: "Macintosh HD", subtitle: "/", url: root, symbol: "internaldrive", group: "Devices")
-        ])
+    func deviceItems() -> [SidebarItem] {
+        Self.deviceItems(volumes: volumeDiscovery.mountedVolumes(), accessPolicy: accessPolicy)
+    }
+
+    static func deviceItems(volumes: [Volume], accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
+        VolumeDiscoveryService.sortedVolumes(volumes)
+            .filter { !$0.displayName.isEmpty }
+            .map { volume in
+                let isAvailable = accessPolicy.canAccess(volume.url)
+                return SidebarItem(
+                    title: volume.displayName,
+                    subtitle: volumeSubtitle(for: volume, isAvailable: isAvailable),
+                    url: volume.url,
+                    symbol: volumeSymbol(for: volume),
+                    group: "Devices",
+                    isAvailable: isAvailable
+                )
+            }
+    }
+
+    static func volumeSymbol(for volume: Volume) -> String {
+        if volume.isNetwork { return "network" }
+        if volume.isRemovable { return "externaldrive" }
+        if volume.url.path == "/" { return "internaldrive" }
+        return "opticaldiscdrive"
+    }
+
+    static func volumeSubtitle(for volume: Volume, isAvailable: Bool) -> String {
+        var parts = [String]()
+        if !isAvailable { parts.append("Permission required") }
+        if let available = volume.availableCapacity, let total = volume.totalCapacity {
+            parts.append("\(FileSizeFormatter.string(fromByteCount: available)) available of \(FileSizeFormatter.string(fromByteCount: total))")
+        }
+        if volume.isReadOnly { parts.append("Read-only") }
+        return parts.isEmpty ? volume.url.path : parts.joined(separator: " • ")
     }
 
     private func recentItems() -> [SidebarItem] {
@@ -604,6 +642,7 @@ final class SidebarViewController: NSViewController {
 
     private func addLocation(_ item: SidebarItem) {
         let row = SidebarRowView(item: item)
+        row.isEnabled = item.isAvailable
         row.target = self
         row.action = #selector(openLocation(_:))
         row.identifier = NSUserInterfaceItemIdentifier(item.url.path)
@@ -614,8 +653,10 @@ final class SidebarViewController: NSViewController {
     private func displayPath(for url: URL) -> String { url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
 
     @objc private func openLocation(_ sender: NSControl) {
-        guard let path = sender.identifier?.rawValue else { return }
-        onOpenLocation?(URL(fileURLWithPath: path), NSEvent.modifierFlags.contains(.option))
+        guard sender.isEnabled, let path = sender.identifier?.rawValue else { return }
+        let url = URL(fileURLWithPath: path)
+        guard accessPolicy.canAccess(url) else { return }
+        onOpenLocation?(url, NSEvent.modifierFlags.contains(.option))
     }
 
     @objc private func copySelectionPaths(_ sender: NSControl) {
@@ -737,10 +778,12 @@ private final class SidebarRowView: NSControl {
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
         highlight(true)
     }
 
     override func mouseUp(with event: NSEvent) {
+        guard isEnabled else { return }
         let shouldOpen = bounds.contains(convert(event.locationInWindow, from: nil))
         highlight(false)
         if shouldOpen {
