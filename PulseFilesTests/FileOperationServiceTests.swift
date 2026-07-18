@@ -5,6 +5,97 @@ import Darwin
 @testable import PulseFiles
 
 final class FileOperationServiceTests: XCTestCase {
+    func testICloudPlaceholderIsRejectedBeforeConflictResolution() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Cloud-only.txt")
+        try Data("placeholder".utf8).write(to: source)
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            pathSafetyStateProvider: { url in
+                url == source ? FileOperationPathSafetyState(isICloudPlaceholder: true) : FileOperationPathSafetyState()
+            }
+        )
+
+        do {
+            _ = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in
+                XCTFail("A cloud-only item must be rejected before conflict handling")
+                return .cancel
+            }, progressHandler: nil)
+            XCTFail("Expected an iCloud placeholder error")
+        } catch FileOperationError.iCloudItemNotDownloaded(let rejectedURL) {
+            XCTAssertEqual(rejectedURL, source)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(source.lastPathComponent).path))
+    }
+
+    func testReadOnlyDestinationIsRejectedBeforeCopy() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Source.txt")
+        try Data("source".utf8).write(to: source)
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            pathSafetyStateProvider: { url in
+                url == fixture.right ? FileOperationPathSafetyState(isReadOnlyVolume: true) : FileOperationPathSafetyState()
+            }
+        )
+
+        do {
+            _ = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .replace }, progressHandler: nil)
+            XCTFail("Expected a read-only volume error")
+        } catch FileOperationError.readOnlyVolume(let rejectedURL) {
+            XCTAssertEqual(rejectedURL, fixture.right)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    func testUnavailableSourceVolumeIsRejectedBeforeMove() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Disconnected.txt")
+        try Data("source".utf8).write(to: source)
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            pathSafetyStateProvider: { url in
+                url == source ? FileOperationPathSafetyState(isAvailable: false) : FileOperationPathSafetyState()
+            }
+        )
+
+        do {
+            _ = try await service.move(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .replace }, progressHandler: nil)
+            XCTFail("Expected an unavailable-volume error")
+        } catch FileOperationError.volumeUnavailable(let rejectedURL) {
+            XCTAssertEqual(rejectedURL, source)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    func testCopyPreservesPackageDirectoryAndSymbolicLinkWithoutResolvingLink() async throws {
+        let fixture = try makeFixture()
+        let package = fixture.left.appendingPathComponent("Example.bundle", isDirectory: true)
+        let packageContents = package.appendingPathComponent("Contents", isDirectory: true)
+        let target = fixture.left.appendingPathComponent("Target.txt")
+        let link = fixture.left.appendingPathComponent("Target Alias")
+        try FileManager.default.createDirectory(at: packageContents, withIntermediateDirectories: true)
+        try Data("package data".utf8).write(to: packageContents.appendingPathComponent("Info.txt"))
+        try Data("target data".utf8).write(to: target)
+        try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: target.path)
+
+        let result = try await fixture.service.copy(
+            FileOperationRequest(sources: [package, link], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .cancel },
+            progressHandler: nil
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Example.bundle/Contents/Info.txt").path))
+        XCTAssertEqual(
+            try FileManager.default.destinationOfSymbolicLink(atPath: fixture.right.appendingPathComponent("Target Alias").path),
+            target.path
+        )
+    }
+
     func testDropTransferPolicyDefaultsInternalSameVolumeDragToMove() throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Report.txt")

@@ -142,8 +142,8 @@ final class MainWindowViewController: NSViewController {
         volumeChangeMonitor.onVolumesChanged = { [weak self] _ in
             guard let self else { return }
             self.sidebar.refreshDevices()
-            self.leftPane.fallBackIfCurrentDirectoryIsUnavailable()
-            self.rightPane.fallBackIfCurrentDirectoryIsUnavailable()
+            self.leftPane.refreshAfterVolumeChange()
+            self.rightPane.refreshAfterVolumeChange()
         }
         updateActivePane()
         leftPane.loadDirectory()

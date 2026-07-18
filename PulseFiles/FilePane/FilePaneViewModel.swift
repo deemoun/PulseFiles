@@ -113,6 +113,22 @@ final class FilePaneViewModel {
         return true
     }
 
+    /// A mount change can leave a network share reachable at the same path but
+    /// with stale contents. Refresh every pane, while falling back immediately
+    /// when its current directory disappeared (for example after ejecting
+    /// removable media).
+    func refreshAfterVolumeChange(
+        directoryExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
+        preferredFallback: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) {
+        if !fallBackIfCurrentDirectoryIsUnavailable(
+            directoryExists: directoryExists,
+            preferredFallback: preferredFallback
+        ) {
+            reloadAfterExternalDirectoryChange()
+        }
+    }
+
     func goParent() {
         let parent = state.currentDirectory.deletingLastPathComponent()
         guard parent != state.currentDirectory else {

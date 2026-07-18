@@ -19,6 +19,9 @@ enum FileOperationError: LocalizedError, Equatable {
     case sourceCleanupFailed(source: URL, destination: URL)
     case temporarySiblingUnavailable(destination: URL, prefix: String)
     case insufficientDestinationCapacity(required: Int64, available: Int64)
+    case iCloudItemNotDownloaded(URL)
+    case readOnlyVolume(URL)
+    case volumeUnavailable(URL)
 
     var errorDescription: String? {
         switch self {
@@ -48,6 +51,12 @@ enum FileOperationError: LocalizedError, Equatable {
             return "Could not create a safe temporary file name.".localized
         case .insufficientDestinationCapacity:
             return "The destination does not have enough available space.".localized
+        case .iCloudItemNotDownloaded(let url):
+            return "%@ is stored in iCloud and has not finished downloading.".localized(with: url.lastPathComponent)
+        case .readOnlyVolume(let url):
+            return "%@ is on a read-only volume.".localized(with: url.lastPathComponent)
+        case .volumeUnavailable(let url):
+            return "The volume containing %@ is no longer available.".localized(with: url.lastPathComponent)
         }
     }
 
@@ -83,8 +92,23 @@ enum FileOperationError: LocalizedError, Equatable {
             return "PulseFiles tried multiple %@ staging names beside %@, but each candidate already existed.".localized(with: prefix, destination.path)
         case .insufficientDestinationCapacity(let required, let available):
             return "This operation requires %@, but the destination volume has only %@ available.".localized(with: Self.formattedByteCount(required), Self.formattedByteCount(available))
+        case .iCloudItemNotDownloaded(let url):
+            return "Download %@ in Finder, then try again. PulseFiles did not change any files.".localized(with: url.path)
+        case .readOnlyVolume(let url):
+            return "Choose a writable destination or eject the read-only media before modifying %@.".localized(with: url.path)
+        case .volumeUnavailable(let url):
+            return "Reconnect or remount the volume containing %@, then try again.".localized(with: url.path)
         }
     }
+}
+
+/// Snapshot used to reject states that cannot safely be mutated.  It is
+/// injectable so tests can cover removable, network, and iCloud conditions
+/// without depending on the machine running the tests.
+struct FileOperationPathSafetyState: Equatable {
+    var isAvailable = true
+    var isReadOnlyVolume = false
+    var isICloudPlaceholder = false
 }
 
 enum FileConflictResolution: Equatable {
@@ -300,25 +324,28 @@ final class FileOperationService: FileOperationServicing {
     private let streamingCopier: FileOperationStreamingCopying
     private let destinationCapacityProvider: (URL) -> Int64?
     private let volumeIdentifierProvider: (URL) -> String?
+    private let pathSafetyStateProvider: (URL) -> FileOperationPathSafetyState
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
         self.destinationCapacityProvider = destinationCapacityProvider
         self.volumeIdentifierProvider = volumeIdentifierProvider
+        self.pathSafetyStateProvider = pathSafetyStateProvider
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier) {
+    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
         self.destinationCapacityProvider = destinationCapacityProvider
         self.volumeIdentifierProvider = volumeIdentifierProvider
+        self.pathSafetyStateProvider = pathSafetyStateProvider
     }
 
     func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {
-        try preflightTransferRequest(request)
+        try preflightTransferRequest(request, isMove: isMove)
         let hasReplacement = request.sources.contains { fileManager.fileExists(atPath: request.destinationDirectory.appendingPathComponent($0.lastPathComponent).path) }
         let requiresCopy = !isMove || hasReplacement || request.sources.contains { source in
             guard let sourceVolume = volumeIdentifierProvider(source), let destinationVolume = volumeIdentifierProvider(request.destinationDirectory) else { return true }
@@ -344,6 +371,17 @@ final class FileOperationService: FileOperationServicing {
     private static func defaultVolumeIdentifier(for url: URL) -> String? {
         guard let values = try? url.resourceValues(forKeys: [.volumeIdentifierKey]), let identifier = values.volumeIdentifier else { return nil }
         return identifier.uuidString
+    }
+
+    private static func defaultPathSafetyState(for url: URL) -> FileOperationPathSafetyState {
+        guard let values = try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .ubiquitousItemIsDownloadedKey, .isUbiquitousItemKey]) else {
+            return FileOperationPathSafetyState(isAvailable: false)
+        }
+        return FileOperationPathSafetyState(
+            isAvailable: true,
+            isReadOnlyVolume: values.volumeIsReadOnly == true,
+            isICloudPlaceholder: values.isUbiquitousItem == true && values.ubiquitousItemIsDownloaded == false
+        )
     }
 
     func copy(
@@ -396,7 +434,7 @@ final class FileOperationService: FileOperationServicing {
     ) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Move operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
         do {
-            try preflightTransferRequest(request)
+            try preflightTransferRequest(request, isMove: true)
             try await enforceTransferCapacityPreflight(for: request, isMove: true)
         } catch {
             logPreflightFailure(operation: "move", error: error)
@@ -527,6 +565,13 @@ final class FileOperationService: FileOperationServicing {
                 break
             }
             do {
+                try validateAvailableSource(url)
+                try validateWritableMutationTarget(url.deletingLastPathComponent())
+            } catch {
+                failedItems.append(FileOperationItemFailure(url: url, error: error))
+                break
+            }
+            do {
                 try operation(fileManager, url)
                 completedItems.append(url)
             } catch {
@@ -588,6 +633,16 @@ final class FileOperationService: FileOperationServicing {
             // mutating and stop the request so later items are never touched.
             guard fileManager.fileExists(atPath: plan.source.path) else {
                 failedItems.append(FileOperationItemFailure(url: plan.source, error: FileOperationError.sourceMissing(plan.source)))
+                break
+            }
+            do {
+                try validateAvailableSource(plan.source)
+                try validateWritableMutationTarget(plan.destination.deletingLastPathComponent())
+                if kind == .move {
+                    try validateWritableMutationTarget(plan.source.deletingLastPathComponent())
+                }
+            } catch {
+                failedItems.append(FileOperationItemFailure(url: plan.source, error: error))
                 break
             }
             guard fileManager.fileExists(atPath: plan.destination.deletingLastPathComponent().path) else {
@@ -1145,6 +1200,7 @@ final class FileOperationService: FileOperationServicing {
 
     private func preflightCreation(rawName: String, in directory: URL, isDirectory: Bool) throws -> URL {
         try validateExistingDirectory(directory)
+        try validateWritableMutationTarget(directory)
         try accessPolicy.validateAccess(to: directory)
         let name = try FileNameValidator.validate(rawName, in: directory)
         let destination = directory.appendingPathComponent(name, isDirectory: isDirectory)
@@ -1155,11 +1211,17 @@ final class FileOperationService: FileOperationServicing {
         return destination
     }
 
-    private func preflightTransferRequest(_ request: FileOperationRequest) throws {
+    private func preflightTransferRequest(_ request: FileOperationRequest, isMove: Bool = false) throws {
         try validateExistingDirectory(request.destinationDirectory)
+        try validateWritableMutationTarget(request.destinationDirectory)
         try accessPolicy.validateAccess(to: request.destinationDirectory)
 
         try preflightMultiSourceSelection(request.sources)
+        if isMove {
+            for source in request.sources {
+                try validateWritableMutationTarget(source.deletingLastPathComponent())
+            }
+        }
 
         var normalizedDestinations = Set<String>()
         for source in request.sources {
@@ -1175,9 +1237,11 @@ final class FileOperationService: FileOperationServicing {
 
     private func preflightRename(source: URL, destination: URL) throws {
         try validateExistingSource(source)
+        try validateAvailableSource(source)
         try validateSourceAccess(source)
         try accessPolicy.validateDestinationAccess(to: destination)
         try validateExistingDirectory(source.deletingLastPathComponent())
+        try validateWritableMutationTarget(source.deletingLastPathComponent())
         try validateDestination(destination, for: source)
         if fileManager.fileExists(atPath: destination.path), FilePathComparison.normalizedPath(source) != FilePathComparison.normalizedPath(destination) {
             throw FileOperationError.destinationExists(destination)
@@ -1186,6 +1250,9 @@ final class FileOperationService: FileOperationServicing {
 
     private func preflightDelete(_ urls: [URL]) throws {
         try preflightMultiSourceSelection(urls)
+        for url in urls {
+            try validateWritableMutationTarget(url.deletingLastPathComponent())
+        }
     }
 
     /// Reject a parent and one of its descendants in the same request. This is
@@ -1197,6 +1264,7 @@ final class FileOperationService: FileOperationServicing {
         var normalizedSources = Set<String>()
         for url in urls {
             try validateExistingSource(url)
+            try validateAvailableSource(url)
             try validateSourceAccess(url)
             guard normalizedSources.insert(FilePathComparison.normalizedPath(url)).inserted else {
                 throw FileOperationError.duplicateSource(url)
@@ -1219,6 +1287,18 @@ final class FileOperationService: FileOperationServicing {
         guard fileManager.fileExists(atPath: url.path) else {
             throw FileOperationError.sourceMissing(url)
         }
+    }
+
+    private func validateAvailableSource(_ url: URL) throws {
+        let state = pathSafetyStateProvider(url)
+        guard state.isAvailable else { throw FileOperationError.volumeUnavailable(url) }
+        guard !state.isICloudPlaceholder else { throw FileOperationError.iCloudItemNotDownloaded(url) }
+    }
+
+    private func validateWritableMutationTarget(_ url: URL) throws {
+        let state = pathSafetyStateProvider(url)
+        guard state.isAvailable else { throw FileOperationError.volumeUnavailable(url) }
+        guard !state.isReadOnlyVolume else { throw FileOperationError.readOnlyVolume(url) }
     }
 
     private func validateSourceAccess(_ source: URL) throws {

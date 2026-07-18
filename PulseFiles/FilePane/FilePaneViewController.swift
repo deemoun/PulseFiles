@@ -158,6 +158,13 @@ final class FilePaneViewController: NSViewController {
         return true
     }
 
+    /// Refreshes stale network/removable-volume contents and clears selection
+    /// if the view model had to leave an unmounted directory.
+    func refreshAfterVolumeChange() {
+        if fallBackIfCurrentDirectoryIsUnavailable() { return }
+        viewModel.loadCurrentDirectory()
+    }
+
     func goBack() {
         viewModel.goBack()
     }
