@@ -459,6 +459,98 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: secondSource.path))
     }
 
+    func testCopyFailureRetainsTemporaryCleanupWarning() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failStagingRemoval = true
+        let service = FileOperationService(
+            fileManager: fixture.failingFileManager!,
+            accessPolicy: fixture.unrestrictedPolicy,
+            streamingCopier: PartialFailureStreamingCopier(error: CocoaError(.fileWriteNoPermission))
+        )
+
+        let result = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .replace }, progressHandler: nil)
+
+        XCTAssertEqual(result.failedItems.map(\.url), [source])
+        XCTAssertEqual(result.cleanupWarnings.count, 1)
+        XCTAssertTrue(result.cleanupWarnings[0].url.lastPathComponent.hasPrefix(".pulsefiles-copy"))
+        XCTAssertTrue(result.cleanupWarnings[0].message.contains(result.cleanupWarnings[0].url.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Report.txt").path))
+    }
+
+    func testFallbackMoveFailureRetainsTemporaryCleanupWarning() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failMoveToURL = destination
+        fixture.failingFileManager?.moveFailureError = NSError(domain: NSPOSIXErrorDomain, code: Int(POSIXErrorCode.EXDEV.rawValue))
+        fixture.failingFileManager?.failStagingRemoval = true
+        let service = FileOperationService(fileManager: fixture.failingFileManager!, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: PartialFailureStreamingCopier(error: CocoaError(.fileWriteNoPermission)))
+
+        let result = try await service.move(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .replace }, progressHandler: nil)
+
+        XCTAssertEqual(result.failedItems.map(\.url), [source])
+        XCTAssertEqual(result.cleanupWarnings.count, 1)
+        XCTAssertTrue(result.cleanupWarnings[0].url.lastPathComponent.hasPrefix(".pulsefiles-move"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    func testCancelledCopyRetainsTemporaryCleanupWarningWithoutMarkingDestinationComplete() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failStagingRemoval = true
+        let service = FileOperationService(fileManager: fixture.failingFileManager!, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: PartialFailureStreamingCopier(error: CancellationError()))
+
+        let result = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .replace }, progressHandler: nil)
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertTrue(result.completedItems.isEmpty)
+        XCTAssertTrue(result.failedItems.isEmpty)
+        XCTAssertEqual(result.cleanupWarnings.count, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Report.txt").path))
+    }
+
+    func testUnavailableVolumeFailureRetainsTemporaryCleanupWarningAndStopsTransfer() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let unavailableSource = fixture.left.appendingPathComponent("Unavailable.txt")
+        let laterSource = fixture.left.appendingPathComponent("Later.txt")
+        try "unavailable".write(to: unavailableSource, atomically: true, encoding: .utf8)
+        try "later".write(to: laterSource, atomically: true, encoding: .utf8)
+        fixture.failingFileManager?.failStagingRemoval = true
+        let unavailableVolumeError = NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT))
+        let service = FileOperationService(fileManager: fixture.failingFileManager!, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: PartialFailureStreamingCopier(error: unavailableVolumeError))
+
+        let result = try await service.copy(FileOperationRequest(sources: [unavailableSource, laterSource], destinationDirectory: fixture.right), conflictHandler: { _ in .replace }, progressHandler: nil)
+
+        XCTAssertEqual(result.failedItems.map(\.url), [unavailableSource])
+        XCTAssertEqual(result.cleanupWarnings.count, 1)
+        XCTAssertTrue(result.completedItems.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Unavailable.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Later.txt").path))
+    }
+
+    @MainActor
+    func testOperationResultPresentationDisplaysCleanupWarnings() {
+        let temporaryURL = URL(fileURLWithPath: "/tmp/.pulsefiles-copy-report")
+        let result = FileOperationResult(
+            completedItems: [],
+            skippedItems: [],
+            failedItems: [FileOperationItemFailure(url: URL(fileURLWithPath: "/tmp/Report.txt"), error: CocoaError(.fileWriteNoPermission))],
+            cleanupWarnings: [FileOperationCleanupWarning(url: temporaryURL, message: "Remove the temporary item manually.")],
+            wasCancelled: false
+        )
+
+        let presentation = MainWindowViewController.operationResultPresentation(result, operationName: "Copy")
+
+        XCTAssertEqual(presentation?.message, "Copy Finished With Issues")
+        XCTAssertTrue(presentation?.detail.contains("Cleanup warnings: 1") == true)
+        XCTAssertTrue(presentation?.detail.contains(".pulsefiles-copy-report: Remove the temporary item manually.") == true)
+    }
+
     func testMoveReportsWarningWhenOriginalCannotBeRemovedAfterFallbackCopy() async throws {
         let fixture = try makeFixture(useFailingManager: true)
         let source = fixture.left.appendingPathComponent("Report.txt")
@@ -869,12 +961,28 @@ private final class FailingStreamingCopier: FileOperationStreamingCopying {
     }
 }
 
+private final class PartialFailureStreamingCopier: FileOperationStreamingCopying {
+    private let error: Error
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        let data = try Data(contentsOf: source)
+        try data.write(to: destination)
+        try await progress(data.count)
+        throw error
+    }
+}
+
 private final class FailingFileManager: FileOperationFileManaging {
     var failCopyFromURL: URL?
     var failMoveToURL: URL?
     var moveFailureError: Error = CocoaError(.fileWriteUnknown)
     var failRemoveURL: URL?
     var failBackupRemoval = false
+    var failStagingRemoval = false
     private var simulatedExistingStagingPrefix: String?
     private var simulatedExistingStagingDestinationLastPathComponent: String?
     private(set) var simulatedExistingStagingLastPathComponent: String?
@@ -932,6 +1040,9 @@ private final class FailingFileManager: FileOperationFileManaging {
             throw CocoaError(.fileWriteNoPermission)
         }
         if failBackupRemoval, URL.lastPathComponent.hasPrefix(".pulsefiles-backup") {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        if failStagingRemoval, URL.lastPathComponent.hasPrefix(".pulsefiles-copy") || URL.lastPathComponent.hasPrefix(".pulsefiles-move") {
             throw CocoaError(.fileWriteNoPermission)
         }
         try FileManager.default.removeItem(at: URL)
