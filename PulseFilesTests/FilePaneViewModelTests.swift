@@ -182,6 +182,28 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.visibleItems.isEmpty)
     }
 
+    func testUnavailableCurrentDirectoryFallsBackToAccessibleDirectory() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let removedDirectory = sandbox.allowedDirectory.appendingPathComponent("RemovedVolume", isDirectory: true)
+        let fileSystem = TestFileSystem()
+        let viewModel = FilePaneViewModel(
+            initialDirectory: removedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.policy
+        )
+
+        let didFallBack = viewModel.fallBackIfCurrentDirectoryIsUnavailable(
+            directoryExists: { $0 != removedDirectory },
+            preferredFallback: sandbox.allowedDirectory
+        )
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertTrue(didFallBack)
+        XCTAssertEqual(viewModel.currentDirectory, sandbox.allowedDirectory)
+        XCTAssertTrue(viewModel.visibleItems.isEmpty)
+        XCTAssertEqual(fileSystem.requests.last?.url, sandbox.allowedDirectory)
+    }
+
     private func load(_ viewModel: FilePaneViewModel) async {
         await withCheckedContinuation { continuation in
             viewModel.loadCurrentDirectory {

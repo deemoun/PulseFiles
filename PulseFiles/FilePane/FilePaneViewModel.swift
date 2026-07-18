@@ -94,6 +94,25 @@ final class FilePaneViewModel {
         load(directory: validatedURL, addToHistory: true)
     }
 
+    /// Leaves a directory whose volume was removed before a stale file descriptor can
+    /// generate further directory events. The fallback is always policy-validated.
+    @discardableResult
+    func fallBackIfCurrentDirectoryIsUnavailable(
+        directoryExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
+        preferredFallback: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
+        guard !directoryExists(state.currentDirectory) else { return false }
+        directoryMonitor.stop()
+        loadTask?.cancel()
+        let fallback = accessPolicy.validatedDirectory(preferredFallback, fallback: accessPolicy.rootURL)
+        items = []
+        searchQuery = ""
+        state.currentDirectory = fallback
+        state.history.visit(fallback)
+        load(directory: fallback, addToHistory: false)
+        return true
+    }
+
     func goParent() {
         let parent = state.currentDirectory.deletingLastPathComponent()
         guard parent != state.currentDirectory else {

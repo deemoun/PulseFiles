@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// A mounted filesystem that can be presented in the sidebar without granting access to it.
@@ -34,6 +35,40 @@ struct Volume: Equatable, Sendable {
 
 protocol VolumeDiscovering {
   func mountedVolumes() -> [Volume]
+}
+
+/// Publishes a fresh mounted-volume snapshot after Finder reports a mount change.
+/// NSWorkspace delivers these notifications on its own notification center; hopping
+/// through the main actor keeps consumers safe to update AppKit directly.
+@MainActor
+final class VolumeChangeMonitor {
+  var onVolumesChanged: (([Volume]) -> Void)?
+
+  private let discovery: any VolumeDiscovering
+  private let notificationCenter: NotificationCenter
+  private var observers: [NSObjectProtocol] = []
+
+  init(
+    discovery: any VolumeDiscovering = VolumeDiscoveryService(),
+    notificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter
+  ) {
+    self.discovery = discovery
+    self.notificationCenter = notificationCenter
+    let names: [Notification.Name] = [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification]
+    observers = names.map { name in
+      notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        Task { @MainActor in self?.publishRefresh() }
+      }
+    }
+  }
+
+  func publishRefresh() {
+    onVolumesChanged?(discovery.mountedVolumes())
+  }
+
+  deinit {
+    observers.forEach(notificationCenter.removeObserver)
+  }
 }
 
 /// Discovers mounted volumes through FileManager's mounted-volume API.

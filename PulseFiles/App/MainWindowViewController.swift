@@ -63,6 +63,7 @@ final class MainWindowViewController: NSViewController {
     private let accessPolicy = SandboxFileAccessPolicy.current
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy)
     private lazy var fileOperations = FileOperationService(accessPolicy: accessPolicy)
+    private lazy var volumeChangeMonitor = VolumeChangeMonitor()
     private let recentLocations = RecentLocationService()
 
     private lazy var leftPane = FilePaneViewController(
@@ -138,6 +139,12 @@ final class MainWindowViewController: NSViewController {
         #endif
         buildLayout()
         bindPaneCallbacks()
+        volumeChangeMonitor.onVolumesChanged = { [weak self] _ in
+            guard let self else { return }
+            self.sidebar.refreshDevices()
+            self.leftPane.fallBackIfCurrentDirectoryIsUnavailable()
+            self.rightPane.fallBackIfCurrentDirectoryIsUnavailable()
+        }
         updateActivePane()
         leftPane.loadDirectory()
         rightPane.loadDirectory()
