@@ -9,6 +9,11 @@ final class FilePaneViewModel {
     private var loadTask: Task<Void, Never>?
     private var nextLoadID = 0
     private var activeLoadID = 0
+    /// Monotonically increases for each filesystem notification received for the
+    /// displayed directory. A load records the value it started with so an event
+    /// that arrives while it is running cannot be lost.
+    private var directoryChangeGeneration = 0
+    private var pendingRefreshGeneration: Int?
 
     private(set) var state: PaneState
     private(set) var items: [FileItem] = []
@@ -82,10 +87,11 @@ final class FilePaneViewModel {
         load(directory: state.currentDirectory, addToHistory: false, forceRefresh: forceRefresh, onLoaded: onLoaded)
     }
 
-    private func reloadAfterExternalDirectoryChange() {
+    func reloadAfterExternalDirectoryChange() {
         snapshotCache.invalidate(directory: state.currentDirectory)
-        guard !isLoading else { return }
-        load(directory: state.currentDirectory, addToHistory: false, forceRefresh: true)
+        directoryChangeGeneration += 1
+        pendingRefreshGeneration = directoryChangeGeneration
+        startPendingExternalRefreshIfNeeded()
     }
 
     func invalidateCurrentDirectorySnapshot() {
@@ -215,11 +221,32 @@ final class FilePaneViewModel {
         onDisplayPreferencesChanged?(state.showsHiddenFiles, state.sort)
     }
 
-    private func load(directory: URL, addToHistory: Bool, forceRefresh: Bool = false, onLoaded: (() -> Void)? = nil) {
+    private func startPendingExternalRefreshIfNeeded() {
+        guard !isLoading, let generation = pendingRefreshGeneration else { return }
+
+        // Clearing happens only as the refresh is actually started. Events that
+        // arrive after this point receive a newer generation and remain pending.
+        pendingRefreshGeneration = nil
+        load(
+            directory: state.currentDirectory,
+            addToHistory: false,
+            forceRefresh: true,
+            changeGeneration: generation
+        )
+    }
+
+    private func load(
+        directory: URL,
+        addToHistory: Bool,
+        forceRefresh: Bool = false,
+        changeGeneration: Int? = nil,
+        onLoaded: (() -> Void)? = nil
+    ) {
         loadTask?.cancel()
         nextLoadID += 1
         let loadID = nextLoadID
         activeLoadID = loadID
+        let loadChangeGeneration = changeGeneration ?? directoryChangeGeneration
         DiagnosticLogger.log(.info, category: "FilePane", "Directory load started: path=\(DiagnosticLogger.sanitizedPath(directory)); includeHidden=\(state.showsHiddenFiles); sort=\(state.sort.key.rawValue); ascending=\(state.sort.ascending)")
         isLoading = true
         errorMessage = nil
@@ -239,7 +266,7 @@ final class FilePaneViewModel {
                 if !forceRefresh, let snapshot = snapshotCache.snapshot(for: snapshotKey) {
                     let metadata = try await fileSystem.directorySnapshotMetadata(at: directory)
                     guard !Task.isCancelled else {
-                        finishCancelledLoad(loadID: loadID)
+                        finishCancelledLoad(loadID: loadID, changeGeneration: loadChangeGeneration)
                         return
                     }
                     guard isCurrentLoad(loadID) else { return }
@@ -258,7 +285,7 @@ final class FilePaneViewModel {
                     snapshotCache.store(loadedItems, metadata: metadata, for: snapshotKey)
                 }
                 guard !Task.isCancelled else {
-                    finishCancelledLoad(loadID: loadID)
+                    finishCancelledLoad(loadID: loadID, changeGeneration: loadChangeGeneration)
                     return
                 }
                 guard isCurrentLoad(loadID) else { return }
@@ -273,9 +300,10 @@ final class FilePaneViewModel {
                 isLoading = false
                 onChange?()
                 onLoaded?()
+                resolvePendingRefresh(afterLoadGeneration: loadChangeGeneration)
             } catch {
                 if error is CancellationError || Task.isCancelled {
-                    finishCancelledLoad(loadID: loadID)
+                    finishCancelledLoad(loadID: loadID, changeGeneration: loadChangeGeneration)
                     return
                 }
                 guard isCurrentLoad(loadID) else { return }
@@ -286,6 +314,7 @@ final class FilePaneViewModel {
                 errorMessage = error.localizedDescription
                 isLoading = false
                 onChange?()
+                resolvePendingRefresh(afterLoadGeneration: loadChangeGeneration)
             }
         }
     }
@@ -294,9 +323,21 @@ final class FilePaneViewModel {
         activeLoadID == loadID
     }
 
-    private func finishCancelledLoad(loadID: Int) {
+    private func resolvePendingRefresh(afterLoadGeneration loadGeneration: Int) {
+        guard let pendingRefreshGeneration else { return }
+        if pendingRefreshGeneration <= loadGeneration {
+            // This load observed the pending generation, so its completion is
+            // the corresponding refresh even when it failed or was cancelled.
+            self.pendingRefreshGeneration = nil
+        } else {
+            startPendingExternalRefreshIfNeeded()
+        }
+    }
+
+    private func finishCancelledLoad(loadID: Int, changeGeneration: Int) {
         guard isCurrentLoad(loadID) else { return }
         isLoading = false
         onChange?()
+        resolvePendingRefresh(afterLoadGeneration: changeGeneration)
     }
 }
