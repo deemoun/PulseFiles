@@ -321,6 +321,46 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Stale.txt"])
     }
 
+    func testTimedOutReadRetainsCompleteListingAndCanRetry() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = NeverCompletingFileSystem()
+        let retained = TestFileSystem.item(named: "Retained.txt", in: sandbox.allowedDirectory)
+        let recovered = TestFileSystem.item(named: "Recovered.txt", in: sandbox.allowedDirectory)
+        fileSystem.items = [retained]
+        let viewModel = FilePaneViewModel(
+            initialDirectory: sandbox.allowedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.policy,
+            directoryLoadTimeout: 0.01
+        )
+
+        await load(viewModel)
+        fileSystem.neverCompletes = true
+        viewModel.loadCurrentDirectory(forceRefresh: true)
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Retained.txt"])
+        XCTAssertTrue(viewModel.loadFailure?.isTimedOut == true)
+        XCTAssertTrue(viewModel.loadFailure?.isRetryable == true)
+        XCTAssertTrue(viewModel.loadFailure?.error is DirectoryLoadTimeoutError)
+        XCTAssertEqual(viewModel.currentDirectory, sandbox.allowedDirectory)
+        XCTAssertFalse(viewModel.isLoading)
+
+        fileSystem.neverCompletes = false
+        fileSystem.items = [recovered]
+        viewModel.retryFailedDirectoryLoad()
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Recovered.txt"])
+        XCTAssertNil(viewModel.loadFailure)
+        XCTAssertFalse(viewModel.isLoading)
+
+        fileSystem.completeTimedOutReads()
+        await Task.yield()
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Recovered.txt"])
+        XCTAssertNil(viewModel.loadFailure)
+    }
+
     private func load(_ viewModel: FilePaneViewModel) async {
         await withCheckedContinuation { continuation in
             viewModel.loadCurrentDirectory {
@@ -366,6 +406,29 @@ private final class DelayedFileSystem: FileSystemServicing {
         }
         let visibleItems = includingHidden ? response.items : response.items.filter { !$0.isHidden }
         return DirectoryContentsResult(items: FileSystemService.sorted(visibleItems, descriptor: sort), itemReadFailures: [])
+    }
+
+    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
+        DirectorySnapshotMetadata(resourceIdentifier: url.path, changeDate: .distantPast)
+    }
+}
+
+private final class NeverCompletingFileSystem: FileSystemServicing {
+    var items: [FileItem] = []
+    var neverCompletes = false
+    private var pendingReadContinuations: [CheckedContinuation<Void, Never>] = []
+
+    func completeTimedOutReads() {
+        let continuations = pendingReadContinuations
+        pendingReadContinuations.removeAll()
+        continuations.forEach { $0.resume() }
+    }
+
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
+        if neverCompletes {
+            await withCheckedContinuation { pendingReadContinuations.append($0) }
+        }
+        return DirectoryContentsResult(items: FileSystemService.sorted(items, descriptor: sort), itemReadFailures: [])
     }
 
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {

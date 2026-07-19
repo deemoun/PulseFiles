@@ -15,6 +15,17 @@ struct DirectoryContentsReadError: LocalizedError {
     }
 }
 
+/// Indicates that a directory read did not finish before the pane's load deadline.
+/// This is intentionally distinct from filesystem errors so callers can offer a
+/// retry without presenting the folder as unreadable.
+struct DirectoryLoadTimeoutError: LocalizedError, Equatable {
+    let timeout: TimeInterval
+
+    var errorDescription: String? {
+        "Folder is taking too long to respond. Try again."
+    }
+}
+
 /// The outcome of enumerating a directory. Metadata failures are reported rather
 /// than silently removing the affected children from the listing.
 struct DirectoryContentsResult {

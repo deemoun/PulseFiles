@@ -486,6 +486,15 @@ final class FilePaneViewController: NSViewController {
                 )
             ]
         }
+        if loadFailure.isRetryable {
+            return [
+                PaneStatusView.Action(
+                    title: "Retry".localized,
+                    accessibilityLabel: "Retry loading this folder".localized,
+                    handler: { [weak self] in self?.viewModel.retryFailedDirectoryLoad() }
+                )
+            ]
+        }
         return []
     }
 
