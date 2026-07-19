@@ -182,6 +182,33 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.visibleItems.isEmpty)
     }
 
+    func testExternalChangesDuringLoadCoalesceIntoOneNewestRefresh() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = DelayedFileSystem()
+        let initialItems = [TestFileSystem.item(named: "Before.txt", in: sandbox.allowedDirectory)]
+        let newestItems = [TestFileSystem.item(named: "Newest.txt", in: sandbox.allowedDirectory)]
+        fileSystem.setItems(initialItems, for: sandbox.allowedDirectory, delay: 100_000_000)
+        let viewModel = FilePaneViewModel(
+            initialDirectory: sandbox.allowedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.policy
+        )
+
+        viewModel.loadCurrentDirectory()
+        await waitUntilRequestCount(fileSystem, isAtLeast: 1)
+        fileSystem.setItems(newestItems, for: sandbox.allowedDirectory, delay: 10_000_000)
+
+        viewModel.reloadAfterExternalDirectoryChange()
+        viewModel.reloadAfterExternalDirectoryChange()
+        viewModel.reloadAfterExternalDirectoryChange()
+
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Newest.txt"])
+        XCTAssertEqual(fileSystem.requestCount, 2)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
     func testUnavailableCurrentDirectoryFallsBackToAccessibleDirectory() async throws {
         let sandbox = try SandboxFixture(testCase: self)
         let removedDirectory = sandbox.allowedDirectory.appendingPathComponent("RemovedVolume", isDirectory: true)
@@ -284,11 +311,18 @@ final class FilePaneViewModelTests: XCTestCase {
             await Task.yield()
         }
     }
+
+    private func waitUntilRequestCount(_ fileSystem: DelayedFileSystem, isAtLeast count: Int) async {
+        while fileSystem.requestCount < count {
+            await Task.yield()
+        }
+    }
 }
 
 
 private final class DelayedFileSystem: FileSystemServicing {
     private var responses: [URL: (items: [FileItem], error: Error?, delay: UInt64)] = [:]
+    private(set) var requestCount = 0
 
     func setItems(_ items: [FileItem], for directory: URL, delay: UInt64) {
         responses[directory] = (items: items, error: nil, delay: delay)
@@ -299,6 +333,7 @@ private final class DelayedFileSystem: FileSystemServicing {
     }
 
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem] {
+        requestCount += 1
         let response = responses[url] ?? (items: [], error: nil, delay: 0)
         if response.delay > 0 {
             try? await Task.sleep(nanoseconds: response.delay)
