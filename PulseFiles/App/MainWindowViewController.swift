@@ -90,6 +90,9 @@ final class MainWindowViewController: NSViewController {
     private let terminal = TerminalViewController()
     private let terminalService = TerminalService()
     private let commandBar = CommandBarView()
+    private lazy var fileOperationProgressWindowController = FileOperationProgressWindowController { [weak self] in
+        self?.cancelActiveFileOperation()
+    }
     private let fileClipboard = FileClipboard()
 
     private let rootSplitView = NSSplitView()
@@ -1603,20 +1606,21 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func cancelActiveFileOperation() {
         guard isFileOperationActive else { return }
         activeOperationTask?.cancel()
-        commandBar.setOperationStatus("Cancelling operation…".localized)
+        fileOperationProgressWindowController.showCancellationPending()
     }
 
     private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
         guard !isFileOperationActive else { return }
         let previousWindowTitle = view.window?.title
         isFileOperationActive = true
+        fileOperationProgressWindowController.show(operationName: operationName, parentWindow: view.window)
         activeOperationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 if let previousWindowTitle {
                     self.view.window?.title = previousWindowTitle
                 }
-                self.commandBar.clearOperationStatus()
+                self.fileOperationProgressWindowController.dismiss()
                 self.isFileOperationActive = false
                 self.activeOperationTask = nil
             }
@@ -1655,7 +1659,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
-        commandBar.setOperationProgress(progress, operationName: operationName)
+        fileOperationProgressWindowController.update(operationName: operationName, progress: progress)
         view.window?.title = "\(operationName): \(progress.currentItemName)"
     }
 

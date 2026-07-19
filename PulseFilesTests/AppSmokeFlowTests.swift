@@ -62,6 +62,29 @@ final class AppSmokeFlowTests: XCTestCase {
             .expectEnabled(false)
             .expectVisibleByDefault(false)
 
+        let progressDialog = FileOperationProgressRobot()
+        progressDialog.start(operationName: "Copying")
+        progressDialog.update(
+            operationName: "Copying",
+            progress: FileOperationProgress(
+                currentItemName: "alpha.txt",
+                completedCount: 1,
+                totalCount: 2,
+                completedByteCount: 512,
+                totalByteCount: 1024
+            )
+        )
+        XCTAssertEqual(progressDialog.dialogAccessibilityIdentifier, AccessibilityIdentifiers.FileOperationProgress.dialog)
+        XCTAssertEqual(progressDialog.progressAccessibilityIdentifier, AccessibilityIdentifiers.FileOperationProgress.indicator)
+        XCTAssertEqual(progressDialog.currentItemAccessibilityIdentifier, AccessibilityIdentifiers.FileOperationProgress.currentItemLabel)
+        XCTAssertEqual(progressDialog.detailAccessibilityIdentifier, AccessibilityIdentifiers.FileOperationProgress.detailLabel)
+        XCTAssertEqual(progressDialog.cancelAccessibilityIdentifier, AccessibilityIdentifiers.FileOperationProgress.cancelButton)
+        XCTAssertFalse(progressDialog.presentation?.isIndeterminate ?? true)
+        progressDialog.cancel()
+        progressDialog.expectVisible(true).expectCancellationPending()
+        progressDialog.finish()
+        progressDialog.expectVisible(false)
+
         app.leftPane.select([leftDirectory.appendingPathComponent("alpha.txt")])
         app.requestDestructiveCommand(.trash)
             .expectPendingDestructiveConfirmation(.trash)
