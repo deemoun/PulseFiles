@@ -9,14 +9,14 @@ enum PaneID: Equatable {
     }
 }
 
-enum FileSortKey: String, Codable {
+enum FileSortKey: String, Codable, Hashable {
     case name
     case kind
     case size
     case modified
 }
 
-struct FileSortDescriptor: Codable, Equatable {
+struct FileSortDescriptor: Codable, Equatable, Hashable {
     var key: FileSortKey = .name
     var ascending: Bool = true
 }
