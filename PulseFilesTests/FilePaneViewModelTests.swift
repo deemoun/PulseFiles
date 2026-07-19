@@ -231,7 +231,7 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertEqual(fileSystem.requests.last?.url, sandbox.allowedDirectory)
     }
 
-    func testVolumeChangeRefreshesReachableCurrentDirectory() async throws {
+    func testExternalRevalidationRefreshesReachableCurrentDirectory() async throws {
         let sandbox = try SandboxFixture(testCase: self)
         let fileSystem = TestFileSystem()
         let viewModel = FilePaneViewModel(
@@ -240,10 +240,7 @@ final class FilePaneViewModelTests: XCTestCase {
             accessPolicy: sandbox.policy
         )
 
-        viewModel.refreshAfterVolumeChange(
-            directoryExists: { $0 == sandbox.allowedDirectory },
-            preferredFallback: sandbox.root
-        )
+        viewModel.reloadAfterExternalDirectoryChange()
         await waitUntilLoaded(viewModel)
 
         XCTAssertEqual(viewModel.currentDirectory, sandbox.allowedDirectory)

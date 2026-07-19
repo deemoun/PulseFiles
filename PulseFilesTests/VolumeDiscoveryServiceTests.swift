@@ -57,21 +57,68 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
     }
 
     @MainActor
-    func testVolumeChangeMonitorPublishesFreshMountedVolumeList() {
+    func testVolumeChangeMonitorPublishesPreviousAndCurrentMountedVolumeLists() {
         let discovery = MutableVolumeDiscovery()
+        discovery.volumes = [volume(name: "Existing", path: "/")]
         let center = NotificationCenter()
         let monitor = VolumeChangeMonitor(discovery: discovery, notificationCenter: center)
-        var published: [[String]] = []
-        monitor.onVolumesChanged = { published.append($0.map(\.displayName)) }
+        var published: [VolumeChange] = []
+        monitor.onVolumesChanged = { published.append($0) }
 
-        discovery.volumes = [volume(name: "Mounted", path: "/Volumes/Mounted")]
+        discovery.volumes = [volume(name: "Existing", path: "/"), volume(name: "Mounted", path: "/Volumes/Mounted")]
         center.post(name: NSWorkspace.didMountNotification, object: nil)
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         discovery.volumes = []
         center.post(name: NSWorkspace.didUnmountNotification, object: nil)
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 
-        XCTAssertEqual(published, [["Mounted"], []])
+        XCTAssertEqual(published.map { $0.previous.map(\.displayName) }, [["Existing"], ["Existing", "Mounted"]])
+        XCTAssertEqual(published.map { $0.current.map(\.displayName) }, [["Existing", "Mounted"], []])
+    }
+
+    func testPaneRouterIgnoresUnrelatedMountEvents() {
+        let change = VolumeChange(
+            previous: [volume(name: "System", path: "/")],
+            current: [volume(name: "System", path: "/"), volume(name: "Backup", path: "/Volumes/Backup")]
+        )
+
+        let actions = VolumeChangePaneRefreshRouter.actions(
+            for: [URL(fileURLWithPath: "/Users/example", isDirectory: true)],
+            change: change,
+            isReachable: { _ in true }
+        )
+
+        XCTAssertEqual(actions, [.none])
+    }
+
+    func testPaneRouterFallsBackForEjectedActiveVolume() {
+        let removedRoot = URL(fileURLWithPath: "/Volumes/Backup", isDirectory: true)
+        let activeDirectory = removedRoot.appendingPathComponent("Projects", isDirectory: true)
+        let change = VolumeChange(previous: [volume(name: "Backup", path: removedRoot.path)], current: [])
+
+        let actions = VolumeChangePaneRefreshRouter.actions(
+            for: [activeDirectory],
+            change: change,
+            isReachable: { $0 != activeDirectory }
+        )
+
+        XCTAssertEqual(actions, [.fallBack])
+    }
+
+    func testPaneRouterRevalidatesChangedNetworkVolume() {
+        let networkRoot = "/Volumes/Share"
+        let change = VolumeChange(
+            previous: [volume(name: "Share", path: networkRoot, local: false, readOnly: true)],
+            current: [volume(name: "Share", path: networkRoot, local: false, readOnly: false)]
+        )
+
+        let actions = VolumeChangePaneRefreshRouter.actions(
+            for: [URL(fileURLWithPath: networkRoot, isDirectory: true).appendingPathComponent("Team", isDirectory: true)],
+            change: change,
+            isReachable: { _ in true }
+        )
+
+        XCTAssertEqual(actions, [.revalidate])
     }
 
     private func volume(name: String, path: String, removable: Bool = false, local: Bool = true, readOnly: Bool = false, total: Int64? = nil, available: Int64? = nil) -> Volume {
