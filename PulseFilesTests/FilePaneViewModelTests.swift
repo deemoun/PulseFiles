@@ -279,6 +279,32 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["After.txt"])
     }
 
+    func testPartialMetadataRefreshRetainsCompleteListingAndSchedulesRetry() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = TestFileSystem()
+        let retained = TestFileSystem.item(named: "Retained.txt", in: sandbox.allowedDirectory)
+        let unreadable = TestFileSystem.item(named: "Unreadable.txt", in: sandbox.allowedDirectory)
+        fileSystem.setItems([retained, unreadable], for: sandbox.allowedDirectory)
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+
+        await load(viewModel)
+        fileSystem.setItems([retained], for: sandbox.allowedDirectory)
+        fileSystem.setItemReadFailures([
+            DirectoryItemReadFailure(
+                url: unreadable.url,
+                error: NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError)
+            )
+        ], for: sandbox.allowedDirectory)
+
+        viewModel.reloadAfterExternalDirectoryChange()
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Retained.txt", "Unreadable.txt"])
+        XCTAssertEqual(viewModel.partialRefreshFailure?.failures.map(\.url), [unreadable.url])
+        XCTAssertTrue(viewModel.isPartialRefreshRetryScheduled)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testFailedSnapshotValidationDoesNotReportStaleContentsAsCurrent() async throws {
         let sandbox = try SandboxFixture(testCase: self)
         let fileSystem = TestFileSystem()
@@ -332,7 +358,7 @@ private final class DelayedFileSystem: FileSystemServicing {
         responses[directory] = (items: [], error: error, delay: delay)
     }
 
-    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem] {
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
         requestCount += 1
         let response = responses[url] ?? (items: [], error: nil, delay: 0)
         if response.delay > 0 {
@@ -342,7 +368,7 @@ private final class DelayedFileSystem: FileSystemServicing {
             throw error
         }
         let visibleItems = includingHidden ? response.items : response.items.filter { !$0.isHidden }
-        return FileSystemService.sorted(visibleItems, descriptor: sort)
+        return DirectoryContentsResult(items: FileSystemService.sorted(visibleItems, descriptor: sort), itemReadFailures: [])
     }
 
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {

@@ -2,8 +2,30 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
+struct DirectoryItemReadFailure {
+    let url: URL
+    let error: Error
+}
+
+struct DirectoryContentsReadError: LocalizedError {
+    let failures: [DirectoryItemReadFailure]
+
+    var errorDescription: String? {
+        "Could not read metadata for \(failures.count) item(s)."
+    }
+}
+
+/// The outcome of enumerating a directory. Metadata failures are reported rather
+/// than silently removing the affected children from the listing.
+struct DirectoryContentsResult {
+    let items: [FileItem]
+    let itemReadFailures: [DirectoryItemReadFailure]
+
+    var isComplete: Bool { itemReadFailures.isEmpty }
+}
+
 protocol FileSystemServicing {
-    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem]
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
 }
 
@@ -16,7 +38,7 @@ final class FileSystemService: FileSystemServicing {
         self.accessPolicy = accessPolicy
     }
 
-    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem] {
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
         try accessPolicy.validateAccess(to: url)
         return try await accessPolicy.withAccess(to: [url]) {
             try await Task.detached(priority: .userInitiated) {
@@ -42,16 +64,21 @@ final class FileSystemService: FileSystemServicing {
                 options: includingHidden ? [] : [.skipsHiddenFiles]
             )
 
-            let items = urls.compactMap { child -> FileItem? in
-                guard !Task.isCancelled else { return nil }
+            var items: [FileItem] = []
+            var itemReadFailures: [DirectoryItemReadFailure] = []
+            for child in urls {
+                try Task.checkCancellation()
                 do {
-                    return try self.fileItem(for: child)
+                    items.append(try self.fileItem(for: child))
                 } catch {
-                    return nil
+                    itemReadFailures.append(DirectoryItemReadFailure(url: child, error: error))
                 }
             }
 
-                return Self.sorted(items, descriptor: sort)
+                return DirectoryContentsResult(
+                    items: Self.sorted(items, descriptor: sort),
+                    itemReadFailures: itemReadFailures
+                )
             }.value
         }
     }
