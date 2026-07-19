@@ -333,10 +333,18 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private final class RecursiveProgressState {
+        /// Progress is rendered on the main actor.  A copy can produce an
+        /// update for every byte chunk (and every item in a large folder), so
+        /// publishing each one can starve unrelated windows of event-loop
+        /// time.  Keep the most recent state and publish at a display-friendly
+        /// cadence instead.
+        private static let minimumUpdateInterval: TimeInterval = 1.0 / 15.0
+
         let totalItemCount: Int?
         var completedItemCount: Int
         let totalByteCount: Int64?
         var completedByteCount: Int64
+        private var lastProgressUpdate = Date.distantPast
 
         init(
             totalItemCount: Int?,
@@ -348,6 +356,15 @@ final class FileOperationService: FileOperationServicing {
             self.completedItemCount = completedItemCount
             self.totalByteCount = totalByteCount
             self.completedByteCount = completedByteCount
+        }
+
+        func shouldPublishProgress(force: Bool) -> Bool {
+            let now = Date()
+            guard force || now.timeIntervalSince(lastProgressUpdate) >= Self.minimumUpdateInterval else {
+                return false
+            }
+            lastProgressUpdate = now
+            return true
         }
     }
 
@@ -1147,8 +1164,16 @@ final class FileOperationService: FileOperationServicing {
         completedCount: Int,
         totalCount: Int,
         recursiveProgress: RecursiveProgressState,
-        progressHandler: FileOperationProgressHandler?
+        progressHandler: FileOperationProgressHandler?,
+        force: Bool = false
     ) async {
+        let isFinalRecursiveUpdate = recursiveProgress.totalItemCount.map {
+            recursiveProgress.completedItemCount >= $0
+        } ?? false
+        let isFinalTopLevelUpdate = completedCount >= totalCount
+        guard recursiveProgress.shouldPublishProgress(force: force || isFinalRecursiveUpdate || isFinalTopLevelUpdate) else {
+            return
+        }
         await progressHandler?(FileOperationProgress(
             currentItemName: currentItem.lastPathComponent,
             completedCount: completedCount,
