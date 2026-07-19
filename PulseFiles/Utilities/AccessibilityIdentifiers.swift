@@ -67,6 +67,14 @@ enum AccessibilityIdentifiers {
         static let field = "pulsefiles.commandBar.field"
     }
 
+    enum FileOperationProgress {
+        static let dialog = "pulsefiles.fileOperationProgress.dialog"
+        static let indicator = "pulsefiles.fileOperationProgress.indicator"
+        static let currentItemLabel = "pulsefiles.fileOperationProgress.currentItem"
+        static let detailLabel = "pulsefiles.fileOperationProgress.detail"
+        static let cancelButton = "pulsefiles.fileOperationProgress.cancel"
+    }
+
     enum Terminal {
         static let panel = "pulsefiles.terminal.panel"
         static let textView = "pulsefiles.terminal.textView"
