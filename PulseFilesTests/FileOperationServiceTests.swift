@@ -1030,6 +1030,25 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Folder/Empty.bin").path))
     }
 
+    func testStreamingCopyCoalescesFrequentProgressUpdates() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Large.bin")
+        try Data(repeating: 7, count: 200).write(to: source)
+        let copier = ScriptedStreamingCopier(chunkSize: 1)
+        let service = FileOperationService(fileManager: FileManager.default, accessPolicy: fixture.unrestrictedPolicy, streamingCopier: copier)
+        var progressEvents: [FileOperationProgress] = []
+
+        let result = try await service.copy(
+            FileOperationRequest(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace },
+            progressHandler: { progressEvents.append($0) }
+        )
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertLessThan(progressEvents.count, 10, "Chunk-level progress should not flood the main actor.")
+        XCTAssertEqual(progressEvents.compactMap(\.completedByteCount).max(), 200)
+    }
+
     func testTransferReportsIndeterminatePreparingProgressBeforeMetadataDiscovery() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Data.bin")
