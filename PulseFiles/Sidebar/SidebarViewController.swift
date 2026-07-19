@@ -567,6 +567,7 @@ final class SidebarViewController: NSViewController {
         container.addSubview(textStack)
         container.addSubview(button)
         stack.addArrangedSubview(container)
+        pinToSidebarContentWidth(container)
         NSLayoutConstraint.activate([
             container.heightAnchor.constraint(greaterThanOrEqualToConstant: 82),
             imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
@@ -577,6 +578,7 @@ final class SidebarViewController: NSViewController {
             textStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
             textStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
             button.leadingAnchor.constraint(equalTo: textStack.leadingAnchor),
+            button.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
             button.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: 8),
             button.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -10)
         ])
