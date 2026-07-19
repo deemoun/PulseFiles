@@ -7,6 +7,7 @@ final class FilePaneViewModel {
     private let snapshotCache = DirectorySnapshotCache()
     private let directoryMonitor = DirectoryMonitor()
     private var loadTask: Task<Void, Never>?
+    private var loadWatchdogTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var partialRefreshRetryCount = 0
     private let maximumPartialRefreshRetries = 2
@@ -48,6 +49,14 @@ final class FilePaneViewModel {
             return nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoSuchFileError
                 || nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
         }
+
+        var isTimedOut: Bool {
+            error is DirectoryLoadTimeoutError
+        }
+
+        var isRetryable: Bool {
+            isTimedOut
+        }
     }
 
     init(
@@ -55,10 +64,13 @@ final class FilePaneViewModel {
         showsHiddenFiles: Bool = false,
         sort: FileSortDescriptor = FileSortDescriptor(),
         fileSystem: FileSystemServicing,
-        accessPolicy: SandboxFileAccessPolicy = .current
+        accessPolicy: SandboxFileAccessPolicy = .current,
+        directoryLoadTimeout: TimeInterval = 15
     ) {
+        precondition(directoryLoadTimeout > 0 && directoryLoadTimeout.isFinite)
         self.fileSystem = fileSystem
         self.accessPolicy = accessPolicy
+        self.directoryLoadTimeout = directoryLoadTimeout
         let validatedDirectory = accessPolicy.validatedDirectory(initialDirectory)
         state = PaneState(
             currentDirectory: validatedDirectory,
@@ -71,6 +83,8 @@ final class FilePaneViewModel {
             self.reloadAfterExternalDirectoryChange()
         }
     }
+
+    private let directoryLoadTimeout: TimeInterval
 
     var currentDirectory: URL { state.currentDirectory }
     var isAccessRestrictedToExperimentalSandbox: Bool { accessPolicy.isEnabled }
@@ -92,6 +106,11 @@ final class FilePaneViewModel {
 
     func loadCurrentDirectory(forceRefresh: Bool = false, onLoaded: (() -> Void)? = nil) {
         load(directory: state.currentDirectory, addToHistory: false, forceRefresh: forceRefresh, onLoaded: onLoaded)
+    }
+
+    func retryFailedDirectoryLoad() {
+        guard loadFailure?.isRetryable == true else { return }
+        load(directory: state.currentDirectory, addToHistory: false, forceRefresh: true)
     }
 
     func reloadAfterExternalDirectoryChange() {
@@ -123,6 +142,7 @@ final class FilePaneViewModel {
         guard !directoryExists(state.currentDirectory) else { return false }
         directoryMonitor.stop()
         loadTask?.cancel()
+        loadWatchdogTask?.cancel()
         retryTask?.cancel()
         let fallback = accessPolicy.validatedDirectory(preferredFallback, fallback: accessPolicy.rootURL)
         items = []
@@ -235,6 +255,7 @@ final class FilePaneViewModel {
         onLoaded: (() -> Void)? = nil
     ) {
         loadTask?.cancel()
+        loadWatchdogTask?.cancel()
         retryTask?.cancel()
         retryTask = nil
         isPartialRefreshRetryScheduled = false
@@ -259,6 +280,23 @@ final class FilePaneViewModel {
         let includeHidden = state.showsHiddenFiles
         let sort = state.sort
         let snapshotKey = DirectorySnapshotCache.Key(directory: directory, includesHiddenFiles: includeHidden, sort: sort)
+        // This single deadline covers snapshot metadata validation and directory
+        // enumeration, including the metadata read used to cache a new listing.
+        loadWatchdogTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(nanoseconds: UInt64(directoryLoadTimeout * 1_000_000_000))
+            } catch {
+                return
+            }
+            finishTimedOutLoad(
+                loadID: loadID,
+                directory: directory,
+                previousDirectory: previousDirectory,
+                previousItems: previousItems,
+                changeGeneration: loadChangeGeneration
+            )
+        }
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -293,6 +331,7 @@ final class FilePaneViewModel {
                     return
                 }
                 guard isCurrentLoad(loadID) else { return }
+                completeLoadWatchdog(for: loadID)
                 DiagnosticLogger.log(.info, category: "FilePane", "Directory load completed: path=\(DiagnosticLogger.sanitizedPath(directory)); itemCount=\(directoryContents.items.count); metadataFailures=\(directoryContents.itemReadFailures.count)")
                 let partialFailure = directoryContents.isComplete
                     ? nil
@@ -329,6 +368,7 @@ final class FilePaneViewModel {
                     return
                 }
                 guard isCurrentLoad(loadID) else { return }
+                completeLoadWatchdog(for: loadID)
                 DiagnosticLogger.log(.error, category: "FilePane", "Directory load failed: path=\(DiagnosticLogger.sanitizedPath(directory)); reason=\(error.localizedDescription)")
                 state.currentDirectory = previousDirectory
                 items = previousItems
@@ -363,6 +403,37 @@ final class FilePaneViewModel {
         activeLoadID == loadID
     }
 
+    private func completeLoadWatchdog(for loadID: Int) {
+        guard isCurrentLoad(loadID) else { return }
+        loadWatchdogTask?.cancel()
+        loadWatchdogTask = nil
+    }
+
+    private func finishTimedOutLoad(
+        loadID: Int,
+        directory: URL,
+        previousDirectory: URL,
+        previousItems: [FileItem],
+        changeGeneration: Int
+    ) {
+        guard isCurrentLoad(loadID) else { return }
+        DiagnosticLogger.log(.error, category: "FilePane", "Directory load timed out: path=\(DiagnosticLogger.sanitizedPath(directory)); timeout=\(directoryLoadTimeout)s")
+        // Invalidate this load before cancelling it. A filesystem implementation
+        // may not cooperate with cancellation, so its eventual result must never
+        // replace this failure or a newer navigation result.
+        activeLoadID = 0
+        loadTask?.cancel()
+        loadWatchdogTask = nil
+        state.currentDirectory = previousDirectory
+        items = previousItems
+        let timeoutError = DirectoryLoadTimeoutError(timeout: directoryLoadTimeout)
+        loadFailure = DirectoryLoadFailure(directory: directory, error: timeoutError)
+        errorMessage = timeoutError.localizedDescription
+        isLoading = false
+        onChange?()
+        resolvePendingRefresh(afterLoadGeneration: changeGeneration)
+    }
+
     private func resolvePendingRefresh(afterLoadGeneration loadGeneration: Int) {
         guard let pendingRefreshGeneration else { return }
         if pendingRefreshGeneration <= loadGeneration {
@@ -376,6 +447,7 @@ final class FilePaneViewModel {
 
     private func finishCancelledLoad(loadID: Int, changeGeneration: Int) {
         guard isCurrentLoad(loadID) else { return }
+        completeLoadWatchdog(for: loadID)
         isLoading = false
         onChange?()
         resolvePendingRefresh(afterLoadGeneration: changeGeneration)
