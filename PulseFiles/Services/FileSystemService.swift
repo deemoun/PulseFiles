@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 protocol FileSystemServicing {
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem]
+    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
 }
 
 final class FileSystemService: FileSystemServicing {
@@ -51,6 +52,21 @@ final class FileSystemService: FileSystemServicing {
             }
 
                 return Self.sorted(items, descriptor: sort)
+            }.value
+        }
+    }
+
+    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
+        try accessPolicy.validateAccess(to: url)
+        return try await accessPolicy.withAccess(to: [url]) {
+            try await Task.detached(priority: .userInitiated) {
+                try self.accessPolicy.validateAccess(to: url)
+                let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey, .contentModificationDateKey])
+                let identifier = values.fileResourceIdentifier.map { String(describing: $0) }
+                return DirectorySnapshotMetadata(
+                    resourceIdentifier: identifier,
+                    changeDate: values.contentModificationDate
+                )
             }.value
         }
     }

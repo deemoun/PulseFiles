@@ -4,6 +4,7 @@ import Foundation
 final class FilePaneViewModel {
     private let fileSystem: FileSystemServicing
     private let accessPolicy: SandboxFileAccessPolicy
+    private let snapshotCache = DirectorySnapshotCache()
     private let directoryMonitor = DirectoryMonitor()
     private var loadTask: Task<Void, Never>?
     private var nextLoadID = 0
@@ -77,13 +78,18 @@ final class FilePaneViewModel {
         try accessPolicy.validateAccess(to: url)
     }
 
-    func loadCurrentDirectory(onLoaded: (() -> Void)? = nil) {
-        load(directory: state.currentDirectory, addToHistory: false, onLoaded: onLoaded)
+    func loadCurrentDirectory(forceRefresh: Bool = false, onLoaded: (() -> Void)? = nil) {
+        load(directory: state.currentDirectory, addToHistory: false, forceRefresh: forceRefresh, onLoaded: onLoaded)
     }
 
     private func reloadAfterExternalDirectoryChange() {
+        snapshotCache.invalidate(directory: state.currentDirectory)
         guard !isLoading else { return }
-        load(directory: state.currentDirectory, addToHistory: false)
+        load(directory: state.currentDirectory, addToHistory: false, forceRefresh: true)
+    }
+
+    func invalidateCurrentDirectorySnapshot() {
+        snapshotCache.invalidate(directory: state.currentDirectory)
     }
 
     func navigate(to url: URL) {
@@ -209,7 +215,7 @@ final class FilePaneViewModel {
         onDisplayPreferencesChanged?(state.showsHiddenFiles, state.sort)
     }
 
-    private func load(directory: URL, addToHistory: Bool, onLoaded: (() -> Void)? = nil) {
+    private func load(directory: URL, addToHistory: Bool, forceRefresh: Bool = false, onLoaded: (() -> Void)? = nil) {
         loadTask?.cancel()
         nextLoadID += 1
         let loadID = nextLoadID
@@ -225,10 +231,32 @@ final class FilePaneViewModel {
 
         let includeHidden = state.showsHiddenFiles
         let sort = state.sort
+        let snapshotKey = DirectorySnapshotCache.Key(directory: directory, includesHiddenFiles: includeHidden, sort: sort)
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let loadedItems = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
+                let loadedItems: [FileItem]
+                if !forceRefresh, let snapshot = snapshotCache.snapshot(for: snapshotKey) {
+                    let metadata = try await fileSystem.directorySnapshotMetadata(at: directory)
+                    guard !Task.isCancelled else {
+                        finishCancelledLoad(loadID: loadID)
+                        return
+                    }
+                    guard isCurrentLoad(loadID) else { return }
+
+                    if snapshot.metadata == metadata {
+                        loadedItems = snapshot.items
+                        DiagnosticLogger.log(.debug, category: "FilePane", "Directory snapshot validated: path=\(DiagnosticLogger.sanitizedPath(directory)); itemCount=\(loadedItems.count)")
+                    } else {
+                        loadedItems = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
+                        let refreshedMetadata = try await fileSystem.directorySnapshotMetadata(at: directory)
+                        snapshotCache.store(loadedItems, metadata: refreshedMetadata, for: snapshotKey)
+                    }
+                } else {
+                    loadedItems = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
+                    let metadata = try await fileSystem.directorySnapshotMetadata(at: directory)
+                    snapshotCache.store(loadedItems, metadata: metadata, for: snapshotKey)
+                }
                 guard !Task.isCancelled else {
                     finishCancelledLoad(loadID: loadID)
                     return
@@ -258,7 +286,6 @@ final class FilePaneViewModel {
                 errorMessage = error.localizedDescription
                 isLoading = false
                 onChange?()
-                onLoaded?()
             }
         }
     }

@@ -223,6 +223,54 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertEqual(fileSystem.requests.last?.url, sandbox.allowedDirectory)
     }
 
+    func testUnchangedRefreshValidatesSnapshotWithoutEnumeratingAgain() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = TestFileSystem()
+        fileSystem.setItems([TestFileSystem.item(named: "Cached.txt", in: sandbox.allowedDirectory)], for: sandbox.allowedDirectory)
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+
+        await load(viewModel)
+        await load(viewModel)
+
+        XCTAssertEqual(fileSystem.requests.count, 1)
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Cached.txt"])
+    }
+
+    func testDirectoryMetadataMutationInvalidatesSnapshotAndEnumeratesAgain() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = TestFileSystem()
+        fileSystem.setItems([TestFileSystem.item(named: "Before.txt", in: sandbox.allowedDirectory)], for: sandbox.allowedDirectory)
+        fileSystem.setMetadata(.init(resourceIdentifier: "directory", changeDate: Date(timeIntervalSinceReferenceDate: 1)), for: sandbox.allowedDirectory)
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+
+        await load(viewModel)
+        fileSystem.setItems([TestFileSystem.item(named: "After.txt", in: sandbox.allowedDirectory)], for: sandbox.allowedDirectory)
+        fileSystem.setMetadata(.init(resourceIdentifier: "directory", changeDate: Date(timeIntervalSinceReferenceDate: 2)), for: sandbox.allowedDirectory)
+        await load(viewModel)
+
+        XCTAssertEqual(fileSystem.requests.count, 2)
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["After.txt"])
+    }
+
+    func testFailedSnapshotValidationDoesNotReportStaleContentsAsCurrent() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = TestFileSystem()
+        fileSystem.setItems([TestFileSystem.item(named: "Stale.txt", in: sandbox.allowedDirectory)], for: sandbox.allowedDirectory)
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+
+        await load(viewModel)
+        fileSystem.setMetadataError(NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError), for: sandbox.allowedDirectory)
+        var didReportLoaded = false
+        viewModel.loadCurrentDirectory { didReportLoaded = true }
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(fileSystem.requests.count, 1)
+        XCTAssertFalse(didReportLoaded)
+        XCTAssertNotNil(viewModel.loadFailure)
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["Stale.txt"])
+    }
+
     private func load(_ viewModel: FilePaneViewModel) async {
         await withCheckedContinuation { continuation in
             viewModel.loadCurrentDirectory {
@@ -260,5 +308,9 @@ private final class DelayedFileSystem: FileSystemServicing {
         }
         let visibleItems = includingHidden ? response.items : response.items.filter { !$0.isHidden }
         return FileSystemService.sorted(visibleItems, descriptor: sort)
+    }
+
+    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
+        DirectorySnapshotMetadata(resourceIdentifier: url.path, changeDate: .distantPast)
     }
 }

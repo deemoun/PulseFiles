@@ -1062,6 +1062,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func createFolder(named rawName: String) {
         do {
             let destination = try fileOperations.createFolder(named: rawName, in: targetPane().currentDirectory)
+            targetPane().viewModel.invalidateCurrentDirectorySnapshot()
             targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
             showError(message: "Invalid Folder Name".localized, detail: error.localizedDescription)
@@ -1073,6 +1074,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func createFile(named rawName: String) {
         do {
             let destination = try fileOperations.createFile(named: rawName, in: targetPane().currentDirectory)
+            targetPane().viewModel.invalidateCurrentDirectorySnapshot()
             targetPane().loadDirectory(selecting: destination)
         } catch let error as FileNameValidator.ValidationError {
             showError(message: "Invalid File Name".localized, detail: error.localizedDescription)
@@ -1740,6 +1742,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func refreshBothPanes() {
+        leftPane.viewModel.invalidateCurrentDirectorySnapshot()
+        rightPane.viewModel.invalidateCurrentDirectorySnapshot()
         leftPane.loadDirectory()
         rightPane.loadDirectory()
     }
