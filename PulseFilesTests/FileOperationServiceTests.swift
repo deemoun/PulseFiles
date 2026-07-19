@@ -334,6 +334,69 @@ final class FileOperationServiceTests: XCTestCase {
         #endif
     }
 
+    func testIterativeCopyHandlesDeeplyNestedFixture() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Deep", isDirectory: true)
+        var leaf = source
+        for index in 0..<300 {
+            leaf.appendPathComponent("Level-\(index)", isDirectory: true)
+        }
+        try FileManager.default.createDirectory(at: leaf, withIntermediateDirectories: true)
+        let file = leaf.appendingPathComponent("Leaf.txt")
+        try "deep contents".write(to: file, atomically: true, encoding: .utf8)
+
+        let result = try await fixture.service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+
+        XCTAssertTrue(result.succeededCompletely)
+        let copiedLeaf = fixture.right.appendingPathComponent("Deep").appendingPathComponent(file.path.replacingOccurrences(of: source.path + "/", with: ""))
+        XCTAssertEqual(try String(contentsOf: copiedLeaf), "deep contents")
+    }
+
+    func testCancellationDuringMetadataPlanningStopsTransfer() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Many files", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        for index in 0..<256 {
+            try Data([UInt8(index % 255)]).write(to: source.appendingPathComponent("\(index).txt"))
+        }
+        let planningStarted = expectation(description: "metadata planning progress")
+        let task = Task {
+            try await fixture.service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: { progress in
+                if progress.isPreparingTransfer && progress.completedRecursiveItemCount == 1 {
+                    planningStarted.fulfill()
+                }
+            })
+        }
+        await fulfillment(of: [planningStarted], timeout: 5)
+        task.cancel()
+        let result = try await task.value
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Many files").path))
+    }
+
+    func testIterativeCopyRestoresNestedDirectoryMetadataPostOrder() async throws {
+        #if os(macOS)
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Parent", isDirectory: true)
+        let childDirectory = source.appendingPathComponent("Child", isDirectory: true)
+        try FileManager.default.createDirectory(at: childDirectory, withIntermediateDirectories: true)
+        try "contents".write(to: childDirectory.appendingPathComponent("Document.txt"), atomically: true, encoding: .utf8)
+        let parentDate = Date(timeIntervalSince1970: 1_700_000_001)
+        let childDate = Date(timeIntervalSince1970: 1_700_000_002)
+        try FileManager.default.setAttributes([.modificationDate: parentDate], ofItemAtPath: source.path)
+        try FileManager.default.setAttributes([.modificationDate: childDate], ofItemAtPath: childDirectory.path)
+
+        let result = try await fixture.service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        XCTAssertTrue(result.cleanupWarnings.isEmpty)
+        let copied = fixture.right.appendingPathComponent("Parent")
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: copied.path)[.modificationDate] as? Date, parentDate)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: copied.appendingPathComponent("Child").path)[.modificationDate] as? Date, childDate)
+        #else
+        throw XCTSkip("macOS metadata APIs are unavailable on this platform.")
+        #endif
+    }
+
     func testCrossVolumeFallbackMovePreservesMetadata() async throws {
         #if os(macOS)
         let fixture = try makeFixture(useFailingManager: true)

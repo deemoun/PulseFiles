@@ -23,6 +23,7 @@ enum FileOperationError: LocalizedError, Equatable {
     case finderAliasUnsupported(URL)
     case readOnlyVolume(URL)
     case volumeUnavailable(URL)
+    case traversalLimitExceeded(URL, maximumDepth: Int, maximumItems: Int)
     case undoUnavailable
 
     var errorDescription: String? {
@@ -61,6 +62,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "%@ is on a read-only volume.".localized(with: url.lastPathComponent)
         case .volumeUnavailable(let url):
             return "The volume containing %@ is no longer available.".localized(with: url.lastPathComponent)
+        case .traversalLimitExceeded(let url, _, _):
+            return "%@ is too deeply nested or contains too many items to transfer safely.".localized(with: url.lastPathComponent)
         case .undoUnavailable:
             return "This operation can no longer be safely undone.".localized
         }
@@ -106,6 +109,8 @@ enum FileOperationError: LocalizedError, Equatable {
             return "Choose a writable destination or eject the read-only media before modifying %@.".localized(with: url.path)
         case .volumeUnavailable(let url):
             return "Reconnect or remount the volume containing %@, then try again.".localized(with: url.path)
+        case .traversalLimitExceeded(let url, let maximumDepth, let maximumItems):
+            return "PulseFiles stopped before exhausting process resources while traversing %@. The safety limits are a depth of %@ and %@ items.".localized(with: url.path, String(maximumDepth), String(maximumItems))
         case .undoUnavailable:
             return "The operation was partial, cancelled, or did not retain a complete safe reversal path.".localized
         }
@@ -380,6 +385,18 @@ final class FileOperationService: FileOperationServicing {
         let byteCount: Int64?
     }
 
+    /// Bounds traversal work independently of filesystem recursion so hostile
+    /// or accidentally generated directory trees cannot exhaust the process.
+    struct TraversalLimits: Sendable {
+        let maximumDepth: Int
+        let maximumItems: Int
+
+        init(maximumDepth: Int = 10_000, maximumItems: Int = 1_000_000) {
+            self.maximumDepth = maximumDepth
+            self.maximumItems = maximumItems
+        }
+    }
+
     private final class RecursiveProgressState {
         /// Progress is rendered on the main actor.  A copy can produce an
         /// update for every byte chunk (and every item in a large folder), so
@@ -422,23 +439,26 @@ final class FileOperationService: FileOperationServicing {
     private let destinationCapacityProvider: (URL) -> Int64?
     private let volumeIdentifierProvider: (URL) -> String?
     private let pathSafetyStateProvider: (URL) -> FileOperationPathSafetyState
+    private let traversalLimits: TraversalLimits
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, traversalLimits: TraversalLimits = .init()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
         self.destinationCapacityProvider = destinationCapacityProvider
         self.volumeIdentifierProvider = volumeIdentifierProvider
         self.pathSafetyStateProvider = pathSafetyStateProvider
+        self.traversalLimits = traversalLimits
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState) {
+    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, traversalLimits: TraversalLimits = .init()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
         self.destinationCapacityProvider = destinationCapacityProvider
         self.volumeIdentifierProvider = volumeIdentifierProvider
         self.pathSafetyStateProvider = pathSafetyStateProvider
+        self.traversalLimits = traversalLimits
     }
 
     func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {
@@ -449,7 +469,16 @@ final class FileOperationService: FileOperationServicing {
             return sourceVolume != destinationVolume
         }
         guard requiresCopy else { return .notRequired }
-        guard let required = (try await calculateTransferMetadata(for: request.sources))?.byteCount else { return .cannotVerify(required: nil) }
+        let metadata: TransferMetadata?
+        do {
+            metadata = try await calculateTransferMetadata(for: request.sources)
+        } catch FileOperationError.traversalLimitExceeded {
+            // The transfer path will report a traversal-limit failure against
+            // the individual source rather than rejecting the whole request
+            // from this optional capacity estimate.
+            return .cannotVerify(required: nil)
+        }
+        guard let required = metadata?.byteCount else { return .cannotVerify(required: nil) }
         guard let available = destinationCapacityProvider(request.destinationDirectory) else { return .cannotVerify(required: required) }
         return available >= required ? .sufficient(required: required, available: available) : .insufficient(required: required, available: available)
     }
@@ -768,7 +797,16 @@ final class FileOperationService: FileOperationServicing {
         }
         let metadata: TransferMetadata?
         do {
-            metadata = progressHandler == nil ? nil : try await calculateTransferMetadata(for: activePlans.map(\.source))
+            metadata = progressHandler == nil ? nil : try await calculateTransferMetadata(for: activePlans.map(\.source)) { scannedItemCount, currentItem in
+                await progressHandler?(FileOperationProgress(
+                    currentItemName: currentItem.lastPathComponent,
+                    completedCount: 0,
+                    totalCount: totalCount,
+                    completedRecursiveItemCount: scannedItemCount,
+                    totalRecursiveItemCount: nil,
+                    isPreparingTransfer: true
+                ))
+            }
         } catch is CancellationError {
             return FileOperationResult(completedItems: completedItems, skippedItems: skippedItems, failedItems: failedItems, cleanupWarnings: cleanupWarnings, wasCancelled: true)
         } catch {
@@ -1030,8 +1068,12 @@ final class FileOperationService: FileOperationServicing {
 
     /// Directory enumeration and metadata reads can be expensive (and can
     /// block on network volumes), so plan them off the caller's actor.
-    private func calculateTransferMetadata(for urls: [URL]) async throws -> TransferMetadata? {
+    private func calculateTransferMetadata(
+        for urls: [URL],
+        preparationProgress: (@Sendable (Int, URL) async -> Void)? = nil
+    ) async throws -> TransferMetadata? {
         let fileManager = self.fileManager
+        let limits = traversalLimits
         let worker = Task.detached(priority: .utility) { () throws -> TransferMetadata? in
             func itemKind(at url: URL) throws -> SourceItemKind {
                 let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
@@ -1041,36 +1083,37 @@ final class FileOperationService: FileOperationServicing {
                 return values.isDirectory == true ? .directory : .file
             }
 
-            func metadata(for url: URL) throws -> TransferMetadata? {
-                try Task.checkCancellation()
-                guard let kind = try? itemKind(at: url) else { return TransferMetadata(itemCount: 1, byteCount: nil) }
-                guard case .directory = kind else {
-                    // Link metadata describes the link itself, not its target.
-                    guard case .file = kind else { return TransferMetadata(itemCount: 1, byteCount: 0) }
-                    let values = try? url.resourceValues(forKeys: [.fileSizeKey])
-                    return TransferMetadata(itemCount: 1, byteCount: values?.fileSize.map(Int64.init))
-                }
-                guard let children = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: []) else {
-                    return TransferMetadata(itemCount: 1, byteCount: nil)
-                }
-                var itemCount = 1
-                var byteCount: Int64 = 0
-                var hasUnknownByteCount = false
-                for child in children {
-                    guard let childMetadata = try metadata(for: child) else { return nil }
-                    itemCount += childMetadata.itemCount
-                    if let childBytes = childMetadata.byteCount { byteCount += childBytes } else { hasUnknownByteCount = true }
-                }
-                return TransferMetadata(itemCount: itemCount, byteCount: hasUnknownByteCount ? nil : byteCount)
-            }
-
             var itemCount = 0
             var byteCount: Int64 = 0
             var hasUnknownByteCount = false
-            for url in urls {
-                guard let result = try metadata(for: url) else { return nil }
-                itemCount += result.itemCount
-                if let bytes = result.byteCount { byteCount += bytes } else { hasUnknownByteCount = true }
+            var work = urls.reversed().map { (url: $0, depth: 0) }
+            while let item = work.popLast() {
+                try Task.checkCancellation()
+                guard item.depth <= limits.maximumDepth, itemCount < limits.maximumItems else {
+                    throw FileOperationError.traversalLimitExceeded(item.url, maximumDepth: limits.maximumDepth, maximumItems: limits.maximumItems)
+                }
+                itemCount += 1
+                if itemCount == 1 || itemCount.isMultiple(of: 128) {
+                    await preparationProgress?(itemCount, item.url)
+                }
+                guard let kind = try? itemKind(at: item.url) else { hasUnknownByteCount = true; continue }
+                switch kind {
+                case .file:
+                    let values = try? item.url.resourceValues(forKeys: [.fileSizeKey])
+                    if let size = values?.fileSize { byteCount += Int64(size) } else { hasUnknownByteCount = true }
+                case .symbolicLink:
+                    break // Link metadata describes the link itself, not its target.
+                case .directory:
+                    try Task.checkCancellation() // Check immediately before a potentially blocking read.
+                    guard let children = try? fileManager.contentsOfDirectory(at: item.url, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: []) else {
+                        hasUnknownByteCount = true
+                        continue
+                    }
+                    for child in children.reversed() {
+                        try Task.checkCancellation() // Check before queueing every child.
+                        work.append((child, item.depth + 1))
+                    }
+                }
             }
             return TransferMetadata(itemCount: itemCount, byteCount: hasUnknownByteCount ? nil : byteCount)
         }
@@ -1089,69 +1132,53 @@ final class FileOperationService: FileOperationServicing {
         recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
     ) async throws -> [FileOperationCleanupWarning] {
-        try Task.checkCancellation()
-        var warnings: [FileOperationCleanupWarning] = []
-        switch try sourceItemKind(at: source) {
-        case .symbolicLink(let linkDestination):
-            // Preserve the exact stored destination, including relative links,
-            // so staging cannot resolve or copy an external target.
-            try fileManager.createSymbolicLink(atPath: destination.path, withDestinationPath: linkDestination)
-            recursiveProgress.completedItemCount += 1
-            await emitProgress(
-                currentItem: source,
-                completedCount: topLevelCompletedCount,
-                totalCount: topLevelTotalCount,
-                recursiveProgress: recursiveProgress,
-                progressHandler: progressHandler
-            )
-            warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
-        case .directory:
-            try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
-            recursiveProgress.completedItemCount += 1
-            await emitProgress(
-                currentItem: source,
-                completedCount: topLevelCompletedCount,
-                totalCount: topLevelTotalCount,
-                recursiveProgress: recursiveProgress,
-                progressHandler: progressHandler
-            )
+        enum WorkItem {
+            case enter(source: URL, destination: URL, depth: Int)
+            case exitDirectory(source: URL, destination: URL)
+        }
 
-            let children = try fileManager.contentsOfDirectory(
-                at: source,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: []
-            )
-            for child in children {
-                try Task.checkCancellation()
-                warnings.append(contentsOf: try await recursivelyCopy(
-                    source: child, to: destination.appendingPathComponent(child.lastPathComponent),
-                    topLevelCompletedCount: topLevelCompletedCount, topLevelTotalCount: topLevelTotalCount,
-                    recursiveProgress: recursiveProgress, progressHandler: progressHandler
-                ))
+        var warnings: [FileOperationCleanupWarning] = []
+        var work: [WorkItem] = [.enter(source: source, destination: destination, depth: 0)]
+        var visitedItemCount = 0
+        while let item = work.popLast() {
+            try Task.checkCancellation()
+            switch item {
+            case .exitDirectory(let source, let destination):
+                // Child creation changes a directory's timestamps, so restore it post-order.
+                warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
+            case .enter(let source, let destination, let depth):
+                guard depth <= traversalLimits.maximumDepth, visitedItemCount < traversalLimits.maximumItems else {
+                    throw FileOperationError.traversalLimitExceeded(source, maximumDepth: traversalLimits.maximumDepth, maximumItems: traversalLimits.maximumItems)
+                }
+                visitedItemCount += 1
+                switch try sourceItemKind(at: source) {
+                case .symbolicLink(let linkDestination):
+                    try fileManager.createSymbolicLink(atPath: destination.path, withDestinationPath: linkDestination)
+                    recursiveProgress.completedItemCount += 1
+                    await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
+                    warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
+                case .directory:
+                    try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
+                    recursiveProgress.completedItemCount += 1
+                    await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
+                    try Task.checkCancellation() // Check immediately before directory read.
+                    let children = try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+                    work.append(.exitDirectory(source: source, destination: destination))
+                    for child in children.reversed() {
+                        try Task.checkCancellation() // Check before queueing every child.
+                        work.append(.enter(source: child, destination: destination.appendingPathComponent(child.lastPathComponent), depth: depth + 1))
+                    }
+                case .file:
+                    try await streamingCopier.copyFile(from: source, to: destination) { [source] byteCount in
+                        try Task.checkCancellation()
+                        recursiveProgress.completedByteCount += Int64(byteCount)
+                        await self.emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
+                    }
+                    recursiveProgress.completedItemCount += 1
+                    await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
+                    warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
+                }
             }
-            // Child creation changes a directory's timestamps, so restore its metadata last.
-            warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
-        case .file:
-            try await streamingCopier.copyFile(from: source, to: destination) { [source] byteCount in
-                try Task.checkCancellation()
-                recursiveProgress.completedByteCount += Int64(byteCount)
-                await self.emitProgress(
-                    currentItem: source,
-                    completedCount: topLevelCompletedCount,
-                    totalCount: topLevelTotalCount,
-                    recursiveProgress: recursiveProgress,
-                    progressHandler: progressHandler
-                )
-            }
-            recursiveProgress.completedItemCount += 1
-            await emitProgress(
-                currentItem: source,
-                completedCount: topLevelCompletedCount,
-                totalCount: topLevelTotalCount,
-                recursiveProgress: recursiveProgress,
-                progressHandler: progressHandler
-            )
-            warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
         }
         return warnings
     }
