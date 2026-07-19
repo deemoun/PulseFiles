@@ -143,11 +143,24 @@ final class MainWindowViewController: NSViewController {
         #endif
         buildLayout()
         bindPaneCallbacks()
-        volumeChangeMonitor.onVolumesChanged = { [weak self] _ in
+        volumeChangeMonitor.onVolumesChanged = { [weak self] change in
             guard let self else { return }
             self.sidebar.refreshDevices()
-            self.leftPane.refreshAfterVolumeChange()
-            self.rightPane.refreshAfterVolumeChange()
+            let panes = [self.leftPane, self.rightPane]
+            let actions = VolumeChangePaneRefreshRouter.actions(
+                for: panes.map(\.currentDirectory),
+                change: change,
+                isReachable: { FileManager.default.fileExists(atPath: $0.path) }
+            )
+
+            // Fall back before revalidating another pane so an ejected volume
+            // cannot leave a stale directory monitor running during this event.
+            for (pane, action) in zip(panes, actions) where action == .fallBack {
+                pane.fallBackIfCurrentDirectoryIsUnavailable()
+            }
+            for (pane, action) in zip(panes, actions) where action == .revalidate {
+                pane.revalidateAfterVolumeChange()
+            }
         }
         updateActivePane()
         leftPane.loadDirectory()

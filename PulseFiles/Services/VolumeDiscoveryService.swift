@@ -37,16 +37,64 @@ protocol VolumeDiscovering {
   func mountedVolumes() -> [Volume]
 }
 
+/// The before-and-after state reported for a filesystem mount notification.
+struct VolumeChange: Equatable, Sendable {
+  let previous: [Volume]
+  let current: [Volume]
+
+  /// Roots whose mount identity or relevant presentation/access properties changed.
+  var affectedRoots: [URL] {
+    let previousByRoot = Dictionary(uniqueKeysWithValues: previous.map { ($0.url.normalizedVolumeRoot, $0) })
+    let currentByRoot = Dictionary(uniqueKeysWithValues: current.map { ($0.url.normalizedVolumeRoot, $0) })
+    let roots = Set(previousByRoot.keys).union(currentByRoot.keys)
+    return roots.filter { previousByRoot[$0] != currentByRoot[$0] }.sorted { $0.path < $1.path }
+  }
+
+  /// Network roots that require validation after any mount notification. Network
+  /// shares can remain reachable at the same pathname while their backing
+  /// connection or remote contents change without a distinguishable local diff.
+  var networkRootsRequiringFreshnessValidation: [URL] {
+    Set((previous + current).filter(\.isNetwork).map { $0.url.normalizedVolumeRoot })
+      .sorted { $0.path < $1.path }
+  }
+}
+
+enum VolumeChangePaneRefreshAction: Equatable {
+  case fallBack
+  case revalidate
+  case none
+}
+
+/// Routes a mount change to panes without coupling the decision to AppKit.
+enum VolumeChangePaneRefreshRouter {
+  static func actions(
+    for directories: [URL],
+    change: VolumeChange,
+    isReachable: (URL) -> Bool
+  ) -> [VolumeChangePaneRefreshAction] {
+    directories.map { directory in
+      guard isReachable(directory) else { return .fallBack }
+      guard change.affectedRoots.contains(where: { directory.isDescendant(of: $0) })
+        || change.networkRootsRequiringFreshnessValidation.contains(where: { directory.isDescendant(of: $0) })
+      else {
+        return .none
+      }
+      return .revalidate
+    }
+  }
+}
+
 /// Publishes a fresh mounted-volume snapshot after Finder reports a mount change.
 /// NSWorkspace delivers these notifications on its own notification center; hopping
 /// through the main actor keeps consumers safe to update AppKit directly.
 @MainActor
 final class VolumeChangeMonitor {
-  var onVolumesChanged: (([Volume]) -> Void)?
+  var onVolumesChanged: ((VolumeChange) -> Void)?
 
   private let discovery: any VolumeDiscovering
   private let notificationCenter: NotificationCenter
   private var observers: [NSObjectProtocol] = []
+  private var lastKnownVolumes: [Volume]
 
   init(
     discovery: any VolumeDiscovering = VolumeDiscoveryService(),
@@ -54,6 +102,7 @@ final class VolumeChangeMonitor {
   ) {
     self.discovery = discovery
     self.notificationCenter = notificationCenter
+    self.lastKnownVolumes = discovery.mountedVolumes()
     let names: [Notification.Name] = [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification]
     observers = names.map { name in
       notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -63,11 +112,26 @@ final class VolumeChangeMonitor {
   }
 
   func publishRefresh() {
-    onVolumesChanged?(discovery.mountedVolumes())
+    let currentVolumes = discovery.mountedVolumes()
+    let change = VolumeChange(previous: lastKnownVolumes, current: currentVolumes)
+    lastKnownVolumes = currentVolumes
+    onVolumesChanged?(change)
   }
 
   deinit {
     observers.forEach(notificationCenter.removeObserver)
+  }
+}
+
+private extension URL {
+  var normalizedVolumeRoot: URL {
+    standardizedFileURL.resolvingSymlinksInPath()
+  }
+
+  func isDescendant(of root: URL) -> Bool {
+    let directoryComponents = standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    let rootComponents = root.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    return directoryComponents.starts(with: rootComponents)
   }
 }
 
