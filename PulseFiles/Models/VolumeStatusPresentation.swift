@@ -36,7 +36,7 @@ struct VolumeStatusPresentation: Equatable {
     static func resolve(for directory: URL) -> VolumeStatusPresentation {
         do {
             let directoryValues = try directory.resourceValues(forKeys: [.volumeURLKey])
-            guard let volumeURL = directoryValues.volumeURL else {
+            guard let volumeURL = directoryValues.allValues[.volumeURLKey] as? URL else {
                 return unavailable(for: directory, availability: .unavailable)
             }
             let values = try volumeURL.resourceValues(forKeys: [

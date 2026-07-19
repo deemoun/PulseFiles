@@ -337,6 +337,18 @@ final class FileOperationService: FileOperationServicing {
         var completedItemCount: Int
         let totalByteCount: Int64?
         var completedByteCount: Int64
+
+        init(
+            totalItemCount: Int?,
+            completedItemCount: Int,
+            totalByteCount: Int64?,
+            completedByteCount: Int64
+        ) {
+            self.totalItemCount = totalItemCount
+            self.completedItemCount = completedItemCount
+            self.totalByteCount = totalByteCount
+            self.completedByteCount = completedByteCount
+        }
     }
 
     private let fileManager: FileOperationFileManaging
@@ -385,22 +397,25 @@ final class FileOperationService: FileOperationServicing {
 
     private static func defaultDestinationCapacity(for url: URL) -> Int64? {
         guard let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]) else { return nil }
-        return values.volumeAvailableCapacityForImportantUsage ?? values.volumeAvailableCapacity
+        return values.volumeAvailableCapacityForImportantUsage ?? values.volumeAvailableCapacity.map(Int64.init)
     }
 
     private static func defaultVolumeIdentifier(for url: URL) -> String? {
         guard let values = try? url.resourceValues(forKeys: [.volumeIdentifierKey]), let identifier = values.volumeIdentifier else { return nil }
-        return identifier.uuidString
+        if let identifier = identifier as? UUID {
+            return identifier.uuidString
+        }
+        return String(describing: identifier)
     }
 
     private static func defaultPathSafetyState(for url: URL) -> FileOperationPathSafetyState {
-        guard let values = try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .ubiquitousItemIsDownloadedKey, .isUbiquitousItemKey, .isAliasFileKey]) else {
+        guard let values = try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .ubiquitousItemDownloadingStatusKey, .isUbiquitousItemKey, .isAliasFileKey]) else {
             return FileOperationPathSafetyState(isAvailable: false)
         }
         return FileOperationPathSafetyState(
             isAvailable: true,
             isReadOnlyVolume: values.volumeIsReadOnly == true,
-            isICloudPlaceholder: values.isUbiquitousItem == true && values.ubiquitousItemIsDownloaded == false,
+            isICloudPlaceholder: values.isUbiquitousItem == true && values.ubiquitousItemDownloadingStatus != .current,
             isFinderAlias: values.isAliasFile == true
         )
     }
@@ -936,7 +951,7 @@ final class FileOperationService: FileOperationServicing {
     /// block on network volumes), so plan them off the caller's actor.
     private func calculateTransferMetadata(for urls: [URL]) async throws -> TransferMetadata? {
         let fileManager = self.fileManager
-        let worker = Task.detached(priority: .utility) {
+        let worker = Task.detached(priority: .utility) { () throws -> TransferMetadata? in
             func itemKind(at url: URL) throws -> SourceItemKind {
                 let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
                 if values.isSymbolicLink == true {
@@ -1073,11 +1088,11 @@ final class FileOperationService: FileOperationServicing {
         }
         do {
             let sourceValues = try source.resourceValues(forKeys: [.tagNamesKey, .labelNumberKey])
-            if sourceValues.tagNames != nil || sourceValues.labelNumber != nil {
+            if sourceValues.labelNumber != nil {
                 var values = URLResourceValues()
-                values.tagNames = sourceValues.tagNames
                 values.labelNumber = sourceValues.labelNumber
-                try destination.setResourceValues(values)
+                var destinationURL = destination
+                try destinationURL.setResourceValues(values)
             }
         } catch {
             warnings.append(metadataWarning(for: destination, error: error))
@@ -1219,7 +1234,12 @@ final class FileOperationService: FileOperationServicing {
             let replacesExistingDestination = fileManager.fileExists(atPath: originalDestination.path)
             let resolution: FileConflictResolution
             if replacesExistingDestination {
-                let decision = resolutionForRemainingConflicts ?? await conflictHandler(originalDestination)
+                let decision: FileConflictResolution
+                if let resolutionForRemainingConflicts {
+                    decision = resolutionForRemainingConflicts
+                } else {
+                    decision = await conflictHandler(originalDestination)
+                }
                 if let appliedResolution = decision.resolutionAppliedToRemainingConflicts {
                     resolutionForRemainingConflicts = appliedResolution
                     resolution = appliedResolution
