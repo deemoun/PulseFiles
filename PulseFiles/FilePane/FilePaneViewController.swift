@@ -440,6 +440,8 @@ final class FilePaneViewController: NSViewController {
             selectedItems: selectedItems,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
+            partialRefreshFailure: viewModel.partialRefreshFailure,
+            isPartialRefreshRetryScheduled: viewModel.isPartialRefreshRetryScheduled,
             volumeStatus: VolumeStatusPresentation.resolve(for: viewModel.currentDirectory),
             actions: actions
         )

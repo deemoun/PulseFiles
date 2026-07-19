@@ -41,11 +41,19 @@ final class PaneStatusView: NSVisualEffectView {
         nil
     }
 
-    func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?, volumeStatus: VolumeStatusPresentation, actions: [Action] = []) {
+    func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?, partialRefreshFailure: DirectoryContentsReadError?, isPartialRefreshRetryScheduled: Bool, volumeStatus: VolumeStatusPresentation, actions: [Action] = []) {
         configureActions(actions)
         if isLoading {
-            label.stringValue = "Loading...".localized
-            label.textColor = LiquidGlassStyle.secondaryLabel
+            label.stringValue = partialRefreshFailure == nil
+                ? "Loading...".localized
+                : "Refreshing incomplete folder listing...".localized
+            label.textColor = partialRefreshFailure == nil ? LiquidGlassStyle.secondaryLabel : .systemOrange
+            return
+        }
+        if let partialRefreshFailure {
+            let retrySuffix = isPartialRefreshRetryScheduled ? " Retrying shortly.".localized : ""
+            label.stringValue = "Folder listing may be incomplete: %@%@".localized(with: partialRefreshFailure.localizedDescription, retrySuffix)
+            label.textColor = .systemOrange
             return
         }
         if let errorMessage {

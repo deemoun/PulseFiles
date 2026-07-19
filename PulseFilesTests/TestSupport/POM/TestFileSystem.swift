@@ -6,6 +6,7 @@ final class TestFileSystem: FileSystemServicing {
     private var itemsByDirectory: [URL: [FileItem]]
     private(set) var requests: [(url: URL, includingHidden: Bool, sort: FileSortDescriptor)] = []
     private var errorsByDirectory: [URL: Error] = [:]
+    private var itemReadFailuresByDirectory: [URL: [DirectoryItemReadFailure]] = [:]
     private var metadataByDirectory: [URL: DirectorySnapshotMetadata] = [:]
     private var metadataErrorsByDirectory: [URL: Error] = [:]
 
@@ -21,6 +22,10 @@ final class TestFileSystem: FileSystemServicing {
         errorsByDirectory[directory] = error
     }
 
+    func setItemReadFailures(_ failures: [DirectoryItemReadFailure], for directory: URL) {
+        itemReadFailuresByDirectory[directory] = failures
+    }
+
     func setMetadata(_ metadata: DirectorySnapshotMetadata, for directory: URL) {
         metadataByDirectory[directory] = metadata
     }
@@ -29,14 +34,17 @@ final class TestFileSystem: FileSystemServicing {
         metadataErrorsByDirectory[directory] = error
     }
 
-    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> [FileItem] {
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
         requests.append((url: url, includingHidden: includingHidden, sort: sort))
         if let error = errorsByDirectory[url] {
             throw error
         }
         let items = itemsByDirectory[url, default: []]
         let visibleItems = includingHidden ? items : items.filter { !$0.isHidden }
-        return FileSystemService.sorted(visibleItems, descriptor: sort)
+        return DirectoryContentsResult(
+            items: FileSystemService.sorted(visibleItems, descriptor: sort),
+            itemReadFailures: itemReadFailuresByDirectory[url, default: []]
+        )
     }
 
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
