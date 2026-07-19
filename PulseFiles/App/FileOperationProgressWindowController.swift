@@ -73,10 +73,20 @@ final class FileOperationProgressWindowController: NSWindowController {
     private let progressIndicator = NSProgressIndicator()
     private let cancelButton = NSButton(title: "Cancel".localized, target: nil, action: nil)
     private let onCancel: () -> Void
+    private let onStopWaiting: () -> Void
     private var operationName = ""
+    private var watchdog: Timer?
+    private var lastProgressDate = Date()
+    private let noProgressInterval: TimeInterval
 
-    init(onCancel: @escaping () -> Void) {
+    init(
+        noProgressInterval: TimeInterval = 20,
+        onCancel: @escaping () -> Void,
+        onStopWaiting: @escaping () -> Void
+    ) {
         self.onCancel = onCancel
+        self.onStopWaiting = onStopWaiting
+        self.noProgressInterval = noProgressInterval
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 390, height: 190),
             styleMask: [.titled, .utilityWindow],
@@ -96,6 +106,8 @@ final class FileOperationProgressWindowController: NSWindowController {
 
     func show(operationName: String, parentWindow: NSWindow?) {
         self.operationName = operationName
+        lastProgressDate = Date()
+        startWatchdog()
         update(operationName: operationName, progress: nil)
         guard let window else { return }
         if let parentWindow, window.parent !== parentWindow {
@@ -115,14 +127,18 @@ final class FileOperationProgressWindowController: NSWindowController {
     }
 
     func update(operationName: String, progress: FileOperationProgress) {
+        lastProgressDate = Date()
         apply(FileOperationProgressPresentation.make(operationName: operationName, progress: progress))
     }
 
     func showCancellationPending() {
         apply(FileOperationProgressPresentation.make(operationName: operationName, progress: nil, isCancellationPending: true))
+        offerStopWaiting()
     }
 
     func dismiss() {
+        watchdog?.invalidate()
+        watchdog = nil
         guard let window else { return }
         window.orderOut(nil)
         window.parent?.removeChildWindow(window)
@@ -179,8 +195,30 @@ final class FileOperationProgressWindowController: NSWindowController {
             progressIndicator.stopAnimation(nil)
             progressIndicator.doubleValue = presentation.progressValue * 100
         }
-        cancelButton.isEnabled = !presentation.isCancellationPending
+        cancelButton.isEnabled = true
+        cancelButton.title = presentation.isCancellationPending ? "Stop Waiting".localized : "Cancel".localized
+        cancelButton.setAccessibilityLabel(presentation.isCancellationPending ? "Stop waiting for file operation".localized : "Cancel file operation".localized)
     }
 
-    @objc private func cancel(_ sender: NSButton) { onCancel() }
+    private func startWatchdog() {
+        watchdog?.invalidate()
+        watchdog = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, Date().timeIntervalSince(self.lastProgressDate) >= self.noProgressInterval else { return }
+            self.offerStopWaiting()
+        }
+    }
+
+    private func offerStopWaiting() {
+        watchdog?.invalidate()
+        watchdog = nil
+        apply(FileOperationProgressPresentation.make(operationName: operationName, progress: nil, isCancellationPending: true))
+    }
+
+    @objc private func cancel(_ sender: NSButton) {
+        if cancelButton.title == "Stop Waiting".localized {
+            onStopWaiting()
+        } else {
+            onCancel()
+        }
+    }
 }

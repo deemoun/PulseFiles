@@ -92,6 +92,8 @@ final class MainWindowViewController: NSViewController {
     private let commandBar = CommandBarView()
     private lazy var fileOperationProgressWindowController = FileOperationProgressWindowController { [weak self] in
         self?.cancelActiveFileOperation()
+    } onStopWaiting: { [weak self] in
+        self?.detachActiveFileOperation()
     }
     private let fileClipboard = FileClipboard()
 
@@ -114,6 +116,11 @@ final class MainWindowViewController: NSViewController {
     private var terminalHeightConstraint: NSLayoutConstraint?
     private var isSinglePaneMode = false
     private var activeOperationTask: Task<Void, Never>?
+    /// A detached worker may still be inside an uninterruptible filesystem call.
+    /// Keep its task alive even after the progress UI has been released.
+    private var retainedOperationTasks: [Int: Task<Void, Never>] = [:]
+    private var fileOperationGeneration = 0
+    private var currentFileOperationGeneration: Int?
     private var undoRecovery: FileOperationRecovery?
     private var quickLookPreviewURL: NSURL?
     private var isFileOperationActive = false {
@@ -1624,20 +1631,50 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         fileOperationProgressWindowController.showCancellationPending()
     }
 
+    private func detachActiveFileOperation() {
+        guard let generation = currentFileOperationGeneration else { return }
+        activeOperationTask?.cancel()
+        // Incrementing the generation makes late progress and completion from
+        // this worker observational only. A blocking FileManager call cannot
+        // reliably be cancelled, so it would be unsafe to call it cancelled.
+        currentFileOperationGeneration = nil
+        fileOperationGeneration += 1
+        activeOperationTask = nil
+        isFileOperationActive = false
+        undoRecovery = nil
+        fileOperationProgressWindowController.dismiss()
+        refreshBothPanes()
+        showAlert(
+            message: "Operation Needs Verification".localized,
+            detail: "PulseFiles stopped waiting because the operation made no progress or did not finish after cancellation. Its final filesystem state is unknown; refresh and verify the affected items before trying another operation.".localized,
+            style: .warning
+        )
+        // The task stays in retainedOperationTasks until its worker actually
+        // returns, preventing a discarded worker from being deallocated while
+        // it still owns filesystem state.
+        _ = retainedOperationTasks[generation]
+    }
+
     private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
         guard !isFileOperationActive else { return }
+        fileOperationGeneration += 1
+        let generation = fileOperationGeneration
+        currentFileOperationGeneration = generation
         let previousWindowTitle = view.window?.title
         isFileOperationActive = true
         fileOperationProgressWindowController.show(operationName: operationName, parentWindow: view.window)
         activeOperationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
+                self.retainedOperationTasks[generation] = nil
+                guard self.currentFileOperationGeneration == generation else { return }
                 if let previousWindowTitle {
                     self.view.window?.title = previousWindowTitle
                 }
                 self.fileOperationProgressWindowController.dismiss()
                 self.isFileOperationActive = false
                 self.activeOperationTask = nil
+                self.currentFileOperationGeneration = nil
             }
 
             do {
@@ -1647,19 +1684,23 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 // first suspension point.
                 let result = try await runFileOperationOffMain {
                     try await operation { [weak self] progress in
+                        guard self?.currentFileOperationGeneration == generation else { return }
                         self?.updateFileOperationProgress(progress, operationName: operationName)
                     }
                 }
+                guard self.currentFileOperationGeneration == generation else { return }
                 if captureRecovery { self.undoRecovery = result.succeededCompletely ? result.recovery : nil }
                 self.clearClipboardFeedback()
                 self.refreshBothPanes()
                 self.showOperationResult(result, operationName: operationName)
             } catch {
+                guard self.currentFileOperationGeneration == generation else { return }
                 let localizedError = error as? LocalizedError
                 let detail = localizedError?.failureReason ?? error.localizedDescription
                 self.showError(message: "Could Not %@ Items".localized(with: operationName), detail: detail)
             }
         }
+        retainedOperationTasks[generation] = activeOperationTask
     }
 
     private func runFileOperationOffMain(
@@ -1686,6 +1727,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             "Failed: %d".localized(with: result.failedItems.count),
             "Cleanup warnings: %d".localized(with: result.cleanupWarnings.count)
         ]
+        if result.needsVerification {
+            details.append("The operation's final filesystem state is unknown. Refresh and verify the affected items before continuing.".localized)
+        }
         if result.wasCancelled { details.append("The whole operation was cancelled before all items completed.".localized) }
         if !result.failedItems.isEmpty {
             details.append("Partial failure: some selected items were not changed.".localized)
@@ -1693,8 +1737,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         details.append(contentsOf: result.failedItems.map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" })
         details.append(contentsOf: result.cleanupWarnings.map { "\($0.url.lastPathComponent): \($0.message)" })
 
-        let onlyCancelled = result.wasCancelled && result.failedItems.isEmpty && result.cleanupWarnings.isEmpty
-        let message = onlyCancelled
+        let onlyCancelled = result.wasCancelled && !result.needsVerification && result.failedItems.isEmpty && result.cleanupWarnings.isEmpty
+        let message = result.needsVerification
+            ? "%@ Needs Verification".localized(with: operationName)
+            : onlyCancelled
             ? "%@ Cancelled".localized(with: operationName)
             : "%@ Finished With Issues".localized(with: operationName)
         return (message, details.joined(separator: "\n"), onlyCancelled ? .informational : .warning)

@@ -193,6 +193,9 @@ struct FileOperationResult {
     let failedItems: [FileOperationItemFailure]
     let cleanupWarnings: [FileOperationCleanupWarning]
     let wasCancelled: Bool
+    /// `true` means the caller stopped waiting while a filesystem call could
+    /// still be running. The resulting paths must be verified before reuse.
+    let needsVerification: Bool
     let recovery: FileOperationRecovery?
 
     init(
@@ -201,6 +204,7 @@ struct FileOperationResult {
         failedItems: [FileOperationItemFailure],
         cleanupWarnings: [FileOperationCleanupWarning] = [],
         wasCancelled: Bool,
+        needsVerification: Bool = false,
         recovery: FileOperationRecovery? = nil
     ) {
         self.completedItems = completedItems
@@ -208,12 +212,56 @@ struct FileOperationResult {
         self.failedItems = failedItems
         self.cleanupWarnings = cleanupWarnings
         self.wasCancelled = wasCancelled
+        self.needsVerification = needsVerification
         self.recovery = recovery
     }
 
     var succeededCompletely: Bool {
-        !wasCancelled && skippedItems.isEmpty && failedItems.isEmpty && cleanupWarnings.isEmpty
+        !wasCancelled && !needsVerification && skippedItems.isEmpty && failedItems.isEmpty && cleanupWarnings.isEmpty
     }
+
+    static func unknownAfterAbandoning(currentItem: URL? = nil) -> Self {
+        Self(
+            completedItems: [],
+            skippedItems: [],
+            failedItems: [],
+            wasCancelled: false,
+            needsVerification: true
+        )
+    }
+}
+
+/// State shared by the operation coordinator and its blocking filesystem
+/// worker. It intentionally records facts rather than attempting to interrupt
+/// FileManager: many network and provider-backed calls are uninterruptible.
+final class FileOperationContext: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedCurrentItem: URL?
+    private var storedLastProgressDate = Date()
+    private var storedIsAbandoned = false
+
+    func beginBlockingCall(for item: URL) {
+        lock.lock(); defer { lock.unlock() }
+        storedCurrentItem = item
+    }
+
+    func recordProgress() {
+        lock.lock(); defer { lock.unlock() }
+        storedLastProgressDate = Date()
+    }
+
+    func abandon() {
+        lock.lock(); defer { lock.unlock() }
+        storedIsAbandoned = true
+    }
+
+    var needsVerification: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return storedIsAbandoned
+    }
+
+    var currentItem: URL? { lock.lock(); defer { lock.unlock() }; return storedCurrentItem }
+    var lastProgressDate: Date { lock.lock(); defer { lock.unlock() }; return storedLastProgressDate }
 }
 
 typealias FileOperationProgressHandler = @MainActor (FileOperationProgress) -> Void
@@ -442,17 +490,9 @@ final class FileOperationService: FileOperationServicing {
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
     ) async throws -> FileOperationResult {
-        let worker = Task.detached(priority: .utility) { [self] in
-            try await self.copyOnWorker(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
-        }
-        do {
-            return try await withTaskCancellationHandler {
-                try await worker.value
-            } onCancel: {
-                worker.cancel()
-            }
-        } catch is CancellationError {
-            return FileOperationResult(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true)
+        try await executeCancellableOperation(progressHandler: progressHandler) { context, progress in
+            context.beginBlockingCall(for: request.sources.first ?? request.destinationDirectory)
+            return try await self.copyOnWorker(request, conflictHandler: conflictHandler, progressHandler: progress)
         }
     }
 
@@ -489,17 +529,41 @@ final class FileOperationService: FileOperationServicing {
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
     ) async throws -> FileOperationResult {
-        let worker = Task.detached(priority: .utility) { [self] in
-            try await self.moveOnWorker(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+        try await executeCancellableOperation(progressHandler: progressHandler) { context, progress in
+            context.beginBlockingCall(for: request.sources.first ?? request.destinationDirectory)
+            return try await self.moveOnWorker(request, conflictHandler: conflictHandler, progressHandler: progress)
+        }
+    }
+
+    /// Runs potentially blocking worker code with a context that survives task
+    /// cancellation. The worker is retained by its Task until it exits; if a
+    /// cancellation arrived while it was blocked, its eventual result is never
+    /// represented as a safe completed/cancelled operation.
+    private func executeCancellableOperation(
+        progressHandler: FileOperationProgressHandler?,
+        operation: @escaping @Sendable (FileOperationContext, FileOperationProgressHandler?) async throws -> FileOperationResult
+    ) async throws -> FileOperationResult {
+        let context = FileOperationContext()
+        let trackedProgress: FileOperationProgressHandler? = { progress in
+            context.recordProgress()
+            progressHandler?(progress)
+        }
+        let worker = Task.detached(priority: .utility) {
+            let result = try await operation(context, trackedProgress)
+            guard context.needsVerification else { return result }
+            return FileOperationResult.unknownAfterAbandoning(currentItem: context.currentItem)
         }
         do {
             return try await withTaskCancellationHandler {
                 try await worker.value
             } onCancel: {
+                context.abandon()
                 worker.cancel()
             }
         } catch is CancellationError {
-            return FileOperationResult(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true)
+            return context.needsVerification
+                ? .unknownAfterAbandoning(currentItem: context.currentItem)
+                : FileOperationResult(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true)
         }
     }
 

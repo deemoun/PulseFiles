@@ -35,4 +35,15 @@ final class FileOperationProgressWindowControllerTests: XCTestCase {
         XCTAssertTrue(cancelling.isCancellationPending)
         XCTAssertEqual(cancelling.itemCountDetail, "Cancelling operation…")
     }
+
+    func testUnknownResultRequiresVerificationRatherThanReportingCancellation() {
+        let result = FileOperationResult.unknownAfterAbandoning()
+
+        XCTAssertTrue(result.needsVerification)
+        XCTAssertFalse(result.wasCancelled)
+        XCTAssertFalse(result.succeededCompletely)
+        let presentation = MainWindowViewController.operationResultPresentation(result, operationName: "Copy")
+        XCTAssertEqual(presentation?.message, "Copy Needs Verification")
+        XCTAssertTrue(presentation?.detail.contains("final filesystem state is unknown") == true)
+    }
 }
