@@ -5,6 +5,17 @@ import Darwin
 @testable import PulseFiles
 
 final class FileOperationServiceTests: XCTestCase {
+    func testOperationContextMarksBlockedCancellationAsUnknownUntilWorkerCanFinish() {
+        let context = FileOperationContext()
+        let item = URL(fileURLWithPath: "/tmp/blocked-item")
+        context.beginBlockingCall(for: item)
+        context.abandon()
+
+        XCTAssertEqual(context.currentItem, item)
+        XCTAssertTrue(context.needsVerification)
+        XCTAssertFalse(FileOperationResult.unknownAfterAbandoning(currentItem: context.currentItem).wasCancelled)
+    }
+
     func testICloudPlaceholderIsRejectedBeforeConflictResolution() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Cloud-only.txt")
