@@ -182,6 +182,50 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertTrue(process.didRun)
         XCTAssertEqual(process.currentDirectoryURL, sandboxFixture.externalDirectory)
     }
+
+    @MainActor
+    func testHighVolumeOutputIsBoundedAndReturnsToPromptAfterCompletion() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("noisy-command")
+        controller.receiveOutputForTesting(String(repeating: "output line\n", count: 30_000))
+        controller.flushOutputForTesting()
+        process.complete()
+
+        let completion = expectation(description: "terminal completion")
+        DispatchQueue.main.async { completion.fulfill() }
+        wait(for: [completion], timeout: 1)
+
+        let text = controller.terminalTextForTesting
+        XCTAssertLessThanOrEqual(text.utf8.count, TerminalViewController.maximumRetainedOutputBytes)
+        XCTAssertLessThanOrEqual(text.count, TerminalViewController.maximumRetainedOutputCharacters)
+        XCTAssertLessThanOrEqual(text.filter { $0 == "\n" }.count, TerminalViewController.maximumRetainedOutputLines)
+        XCTAssertTrue(text.contains("[Earlier terminal output truncated]"))
+        XCTAssertTrue(text.hasSuffix("$ "))
+    }
+
+    @MainActor
+    func testStoppingNoisyCommandClearsHandlersAndAccessScope() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("noisy-command")
+        controller.receiveOutputForTesting(String(repeating: "output\n", count: 10_000))
+        XCTAssertTrue(controller.hasRunningAccessScopeForTesting)
+
+        controller.stopRunningCommand()
+
+        XCTAssertNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
+        XCTAssertNil(process.terminationHandler)
+        XCTAssertFalse(controller.hasRunningAccessScopeForTesting)
+    }
 }
 
 private struct TerminalBehaviorFakeBookmarkResolver: FolderAccessBookmarkResolving {
@@ -226,5 +270,11 @@ private final class FakeTerminalProcess: TerminalProcess {
     func terminate() {
         didTerminate = true
         isRunning = false
+    }
+
+    func complete(status: Int32 = 0) {
+        terminationStatus = status
+        isRunning = false
+        terminationHandler?(self)
     }
 }
