@@ -1,6 +1,12 @@
 import AppKit
 
 final class TerminalViewController: NSViewController {
+    /// These bounds keep a noisy command from making the text view grow without limit.
+    static let maximumRetainedOutputBytes = 256 * 1024
+    static let maximumRetainedOutputCharacters = 128 * 1024
+    static let maximumRetainedOutputLines = 2_000
+
+    private static let truncationNotice = "[Earlier terminal output truncated]\n"
     private let terminalService = TerminalService()
     private let terminalView = TerminalTextView()
     private let scrollView = NSScrollView()
@@ -11,6 +17,9 @@ final class TerminalViewController: NSViewController {
     private var runningOutputHandle: FileHandle?
     private var runningAccessScope: FolderAccessScope?
     private var promptStartIndex = 0
+    private let outputLock = NSLock()
+    private var pendingOutput = ""
+    private var isOutputFlushScheduled = false
     var workingDirectoryProvider: (() -> URL)?
     var isShellInteractionAllowedProvider: (() -> Bool)?
 
@@ -71,6 +80,8 @@ final class TerminalViewController: NSViewController {
         let process = runningProcess
         runningOutputHandle?.readabilityHandler = nil
         runningOutputHandle = nil
+        process?.terminationHandler = nil
+        flushBufferedOutput()
 
         if process?.isRunning == true {
             process?.terminate()
@@ -87,6 +98,18 @@ final class TerminalViewController: NSViewController {
 
     var terminalTextForTesting: String {
         terminalView.string
+    }
+
+    var hasRunningAccessScopeForTesting: Bool {
+        runningAccessScope != nil
+    }
+
+    func receiveOutputForTesting(_ text: String) {
+        queueOutput(text)
+    }
+
+    func flushOutputForTesting() {
+        flushBufferedOutput()
     }
 
     private func buildLayout() {
@@ -169,19 +192,23 @@ final class TerminalViewController: NSViewController {
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            DispatchQueue.main.async {
-                self?.append(text)
-            }
+            self?.queueOutput(text)
         }
 
         process.terminationHandler = { [weak self] process in
             pipe.fileHandleForReading.readabilityHandler = nil
+            let remainingData = pipe.fileHandleForReading.availableData
+            if !remainingData.isEmpty, let remainingText = String(data: remainingData, encoding: .utf8) {
+                self?.queueOutput(remainingText)
+            }
             DispatchQueue.main.async {
                 guard self?.runningProcess === process else { return }
                 DiagnosticLogger.log(process.terminationStatus == 0 ? .info : .warning, category: "Terminal", "Terminal process exited: status=\(process.terminationStatus); reason=\(process.terminationReason.rawValue)")
                 self?.runningProcess = nil
                 self?.runningOutputHandle = nil
+                process.terminationHandler = nil
                 self?.endRunningAccessScope()
+                self?.flushBufferedOutput()
                 if process.terminationStatus != 0 {
                     self?.appendLine("[exit \(process.terminationStatus)]")
                 }
@@ -208,6 +235,56 @@ final class TerminalViewController: NSViewController {
         self.runningAccessScope = nil
     }
 
+    /// Called from the file handle's background callback. Chunks are coalesced so at
+    /// most one main-queue UI update is outstanding, which provides backpressure for
+    /// high-volume terminal output without blocking the pipe reader.
+    private func queueOutput(_ text: String) {
+        outputLock.lock()
+        pendingOutput.append(text)
+        pendingOutput = boundedPendingOutput(pendingOutput)
+        let shouldScheduleFlush = !isOutputFlushScheduled
+        isOutputFlushScheduled = true
+        outputLock.unlock()
+
+        guard shouldScheduleFlush else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.flushBufferedOutput()
+        }
+    }
+
+    /// Must run on the main thread.
+    private func flushBufferedOutput() {
+        outputLock.lock()
+        let output = pendingOutput
+        pendingOutput = ""
+        isOutputFlushScheduled = false
+        outputLock.unlock()
+
+        guard !output.isEmpty else { return }
+        append(output)
+    }
+
+    private func boundedPendingOutput(_ output: String) -> String {
+        guard exceedsRetainedOutputLimit(output) else { return output }
+
+        var retained = output
+        while exceedsRetainedOutputLimit(retained), let newline = retained.firstIndex(of: "\n") {
+            retained.removeSubrange(...newline)
+        }
+        if exceedsRetainedOutputLimit(retained) {
+            retained = String(retained.suffix(max(0, Self.maximumRetainedOutputCharacters - Self.truncationNotice.count)))
+            while retained.utf8.count + Self.truncationNotice.utf8.count > Self.maximumRetainedOutputBytes,
+                  !retained.isEmpty {
+                retained.removeFirst()
+            }
+        }
+
+        while exceedsRetainedOutputLimit(Self.truncationNotice + retained), let newline = retained.firstIndex(of: "\n") {
+            retained.removeSubrange(...newline)
+        }
+        return Self.truncationNotice + retained
+    }
+
     private func appendPrompt() {
         if let workingDirectoryProvider {
             suggestedWorkingDirectory = workingDirectoryProvider()
@@ -227,11 +304,59 @@ final class TerminalViewController: NSViewController {
             .foregroundColor: NSColor.systemGreen,
             .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         ]
-        terminalView.textStorage?.append(NSAttributedString(string: text, attributes: attributes))
+        let retainedText = boundedTerminalText(afterAppending: text)
+        terminalView.textStorage?.setAttributedString(NSAttributedString(string: retainedText, attributes: attributes))
         terminalView.currentPromptStart = promptStartIndex
         let end = terminalView.string.count
         terminalView.setSelectedRange(NSRange(location: end, length: 0))
         terminalView.scrollRangeToVisible(NSRange(location: end, length: 0))
+    }
+
+    private func boundedTerminalText(afterAppending text: String) -> String {
+        var retained = terminalView.string + text
+        var didTruncate = false
+
+        while exceedsRetainedOutputLimit(retained), let newline = retained.firstIndex(of: "\n") {
+            retained.removeSubrange(...newline)
+            didTruncate = true
+        }
+
+        if exceedsRetainedOutputLimit(retained) {
+            didTruncate = true
+            let targetCharacterCount = max(0, Self.maximumRetainedOutputCharacters - Self.truncationNotice.count)
+            if retained.count > targetCharacterCount {
+                retained = String(retained.suffix(targetCharacterCount))
+            }
+            while retained.utf8.count + Self.truncationNotice.utf8.count > Self.maximumRetainedOutputBytes,
+                  !retained.isEmpty {
+                retained.removeFirst()
+            }
+        }
+
+        if didTruncate {
+            while exceedsRetainedOutputLimit(Self.truncationNotice + retained), let newline = retained.firstIndex(of: "\n") {
+                retained.removeSubrange(...newline)
+            }
+            if exceedsRetainedOutputLimit(Self.truncationNotice + retained) {
+                retained = String(retained.suffix(max(0, Self.maximumRetainedOutputCharacters - Self.truncationNotice.count)))
+                while Self.truncationNotice.utf8.count + retained.utf8.count > Self.maximumRetainedOutputBytes,
+                      !retained.isEmpty {
+                    retained.removeFirst()
+                }
+            }
+            retained = Self.truncationNotice + retained
+        }
+
+        promptStartIndex = min(promptStartIndex, retained.count)
+        return retained
+    }
+
+    private func exceedsRetainedOutputLimit(_ text: String) -> Bool {
+        text.utf8.count > Self.maximumRetainedOutputBytes
+            || text.count > Self.maximumRetainedOutputCharacters
+            || text.reduce(into: 0) { count, character in
+                if character == "\n" { count += 1 }
+            } > Self.maximumRetainedOutputLines
     }
 }
 
@@ -269,6 +394,10 @@ private final class ProcessTerminalProcess: TerminalProcess {
 
     var terminationHandler: ((TerminalProcess) -> Void)? {
         didSet {
+            guard terminationHandler != nil else {
+                process.terminationHandler = nil
+                return
+            }
             process.terminationHandler = { [weak self] _ in
                 guard let self else { return }
                 self.terminationHandler?(self)
