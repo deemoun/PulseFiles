@@ -87,6 +87,8 @@ final class FilePaneViewModel {
     private let directoryLoadTimeout: TimeInterval
 
     var currentDirectory: URL { state.currentDirectory }
+    /// Identifies the directory load currently represented by the pane state.
+    var loadGeneration: Int { activeLoadID }
     var isAccessRestrictedToExperimentalSandbox: Bool { accessPolicy.isEnabled }
     var sortDescriptor: FileSortDescriptor { state.sort }
     var showsHiddenFiles: Bool { state.showsHiddenFiles }

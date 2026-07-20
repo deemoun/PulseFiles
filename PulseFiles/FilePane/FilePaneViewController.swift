@@ -61,6 +61,7 @@ final class FilePaneViewController: NSViewController {
     private var pendingSelectionURL: URL?
     private let dropTransferPolicy = DropTransferPolicy()
     private let accessGrantService = FolderAccessGrantService.shared
+    private lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
 
     init(paneID: PaneID, viewModel: FilePaneViewModel) {
         self.paneID = paneID
@@ -107,6 +108,7 @@ final class FilePaneViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        volumeStatusCache.onChange = { [weak self] in self?.configureStatusView() }
         buildHeader()
         buildTable()
         buildLayout()
@@ -433,6 +435,10 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func configureStatusView() {
+        volumeStatusCache.resolveIfNeeded(
+            for: viewModel.currentDirectory,
+            loadGeneration: viewModel.loadGeneration
+        )
         let actions = recoveryActions()
         statusView.configure(
             items: viewModel.visibleItems,
@@ -441,7 +447,7 @@ final class FilePaneViewController: NSViewController {
             errorMessage: viewModel.errorMessage,
             partialRefreshFailure: viewModel.partialRefreshFailure,
             isPartialRefreshRetryScheduled: viewModel.isPartialRefreshRetryScheduled,
-            volumeStatus: VolumeStatusPresentation.resolve(for: viewModel.currentDirectory),
+            volumeStatus: volumeStatusCache.status,
             actions: actions
         )
     }
