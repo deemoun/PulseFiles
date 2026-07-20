@@ -68,7 +68,7 @@ final class SidebarViewController: NSViewController {
                 return SelectionInspectorPresentation(
                     title: item.displayName,
                     subtitle: displayPath(for: item.url),
-                    icon: item.icon,
+                    icon: FileIconProvider.shared.image(for: item.iconKey),
                     rows: singleSelectionRows(for: item),
                     selectedURLs: [item.url]
                 )

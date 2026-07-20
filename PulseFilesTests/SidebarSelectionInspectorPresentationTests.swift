@@ -175,7 +175,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
             group: group,
             typeDescription: localizedType,
             localizedTypeDescription: localizedType,
-            icon: NSImage()
+            iconKey: FileIconKey(fileType: type, fileExtension: URL(fileURLWithPath: name).pathExtension)
         )
     }
 

@@ -233,8 +233,9 @@ private func item(
         posixPermissions: permissions,
         owner: nil,
         group: nil,
+        typeDescription: "File",
         localizedTypeDescription: "File",
-        icon: NSImage()
+        iconKey: FileIconKey(fileType: type, fileExtension: URL(fileURLWithPath: name).pathExtension)
     )
 }
 

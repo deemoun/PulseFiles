@@ -170,7 +170,12 @@ final class FileSystemService: FileSystemServicing {
             group: group,
             typeDescription: typeDescription,
             localizedTypeDescription: typeDescription,
-            icon: .fileIcon(for: url)
+            iconKey: FileIconKey(
+                fileType: type,
+                fileExtension: url.pathExtension,
+                contentTypeIdentifier: values.contentType?.identifier,
+                isAlias: values.isAliasFile == true
+            )
         )
     }
 

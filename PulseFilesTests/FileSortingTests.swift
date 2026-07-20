@@ -118,7 +118,7 @@ final class FileSortingTests: XCTestCase {
             group: nil,
             typeDescription: resolvedTypeDescription,
             localizedTypeDescription: resolvedTypeDescription,
-            icon: NSImage()
+            iconKey: FileIconKey(fileType: isDirectory ? .folder : .file, fileExtension: URL(fileURLWithPath: name).pathExtension)
         )
     }
 }
