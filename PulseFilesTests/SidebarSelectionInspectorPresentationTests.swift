@@ -89,6 +89,63 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         XCTAssertEqual(size, 192)
     }
 
+    @MainActor
+    func testStaleSelectionDoesNotReceiveLateMetadata() async throws {
+        let firstMetadataStarted = expectation(description: "first metadata read started")
+        let secondMetadataDisplayed = expectation(description: "second metadata displayed")
+        let firstMetadataMayFinish = DispatchSemaphore(value: 0)
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let sidebar = SidebarViewController(
+            recentLocations: RecentLocationService(defaults: defaults),
+            metadataReader: { url in
+                if url.lastPathComponent == "first.jpg" {
+                    firstMetadataStarted.fulfill()
+                    firstMetadataMayFinish.wait()
+                    return "first location"
+                }
+                return "second location"
+            }
+        )
+        var updates: [(String, String)] = []
+        sidebar.onInspectorDetailUpdate = { identifier, value in
+            updates.append((identifier, value))
+            if identifier == "gps-location", value == "second location" {
+                secondMetadataDisplayed.fulfill()
+            }
+        }
+
+        _ = sidebar.view
+        sidebar.showSelection([fileItem("first.jpg", size: 1)])
+        await fulfillment(of: [firstMetadataStarted], timeout: 1)
+
+        sidebar.showSelection([fileItem("second.jpg", size: 1)])
+        firstMetadataMayFinish.signal()
+        await fulfillment(of: [secondMetadataDisplayed], timeout: 1)
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertFalse(updates.contains { $0.1 == "first location" })
+    }
+
+    @MainActor
+    func testMetadataReaderFailureDisplaysNoGPSMetadata() async {
+        let missingMetadataDisplayed = expectation(description: "missing metadata displayed")
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let sidebar = SidebarViewController(
+            recentLocations: RecentLocationService(defaults: defaults),
+            metadataReader: { _ in throw MetadataReaderError.failed }
+        )
+        sidebar.onInspectorDetailUpdate = { identifier, value in
+            if identifier == "gps-location", value == "No GPS metadata" {
+                missingMetadataDisplayed.fulfill()
+            }
+        }
+
+        _ = sidebar.view
+        sidebar.showSelection([fileItem("image.jpg", size: 1)])
+
+        await fulfillment(of: [missingMetadataDisplayed], timeout: 1)
+    }
+
     private func fileItem(
         _ name: String,
         type: FileItemType = .file,
@@ -120,5 +177,9 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
             localizedTypeDescription: localizedType,
             icon: NSImage()
         )
+    }
+
+    private enum MetadataReaderError: Error {
+        case failed
     }
 }
