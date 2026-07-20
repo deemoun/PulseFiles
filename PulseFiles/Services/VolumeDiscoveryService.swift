@@ -84,6 +84,30 @@ enum VolumeChangePaneRefreshRouter {
       return .revalidate
     }
   }
+
+  /// Async variant for UI callers. A deadline/unavailable probe is deliberately
+  /// routed to fallback: keeping a pane attached to a possibly ejected volume is
+  /// less safe than returning it to an available folder.
+  static func actions(
+    for directories: [URL],
+    change: VolumeChange,
+    isReachable: @escaping @Sendable (URL) async -> FileSystemProbeAnswer<Bool>
+  ) async -> [VolumeChangePaneRefreshAction] {
+    await withTaskGroup(of: (Int, VolumeChangePaneRefreshAction).self) { group in
+      for (index, directory) in directories.enumerated() {
+        group.addTask {
+          let answer = await isReachable(directory)
+          guard case .value(true) = answer else { return (index, .fallBack) }
+          let affected = change.affectedRoots.contains { directory.isDescendant(of: $0) }
+            || change.networkRootsRequiringFreshnessValidation.contains { directory.isDescendant(of: $0) }
+          return (index, affected ? .revalidate : .none)
+        }
+      }
+      var actions = Array(repeating: VolumeChangePaneRefreshAction.fallBack, count: directories.count)
+      for await (index, action) in group { actions[index] = action }
+      return actions
+    }
+  }
 }
 
 /// Publishes a fresh mounted-volume snapshot after Finder reports a mount change.

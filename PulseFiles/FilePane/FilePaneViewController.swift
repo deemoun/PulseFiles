@@ -59,7 +59,12 @@ final class FilePaneViewController: NSViewController {
     private var dimmedFileURLs = Set<String>()
     private var previousSelectedRowIndexes = IndexSet()
     private var pendingSelectionURL: URL?
-    private let dropTransferPolicy = DropTransferPolicy()
+    private lazy var dropProbeCache = FileSystemProbeCache()
+    private lazy var dropTransferPolicy = DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
+        guard let self else { return nil }
+        self.dropProbeCache.requestVolumeIdentifier(url)
+        return self.dropProbeCache.volumeIdentifier(for: url)
+    })
     private let accessGrantService = FolderAccessGrantService.shared
     private lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
 
@@ -731,6 +736,13 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     private func canDrop(_ urls: [URL], into destination: URL, operation: DropTransferPolicy.Operation) -> Bool {
+        // NSTableView asks this synchronously on the main thread. Start probes,
+        // then wait for a later validation callback rather than blocking on a
+        // slow or disappearing volume.
+        dropProbeCache.requestDirectory(destination)
+        urls.forEach { dropProbeCache.requestDirectory($0) }
+        guard dropProbeCache.directoryValue(for: destination) == true else { return false }
+        guard urls.allSatisfy({ dropProbeCache.directoryValue(for: $0) != nil }) else { return false }
         guard !isDroppingInsideDraggedDirectory(urls, destination: destination) else { return false }
         guard operation == .copy || !isSameDirectoryMove(urls, destination: destination) else { return false }
         return true
@@ -750,8 +762,8 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     private func isDirectory(_ url: URL) -> Bool {
-        var isDirectory = ObjCBool(false)
-        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+        dropProbeCache.requestDirectory(url)
+        return dropProbeCache.directoryValue(for: url) == true
     }
 
     private func dropDestination(forRow row: Int, operation: NSTableView.DropOperation) -> URL? {
