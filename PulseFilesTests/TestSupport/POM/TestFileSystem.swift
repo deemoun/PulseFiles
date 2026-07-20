@@ -77,7 +77,7 @@ final class TestFileSystem: FileSystemServicing {
             group: nil,
             typeDescription: isDirectory ? "Folder" : "File",
             localizedTypeDescription: isDirectory ? "Folder" : "File",
-            icon: NSImage()
+            iconKey: FileIconKey(fileType: isDirectory ? .folder : .file, fileExtension: url.pathExtension)
         )
     }
 }

@@ -389,7 +389,7 @@ final class FilePaneViewController: NSViewController {
         isReloadingData = true
         defer { isReloadingData = false }
         breadcrumb.configure(url: viewModel.currentDirectory)
-        directoryIcon.image = .fileIcon(for: viewModel.currentDirectory)
+        directoryIcon.image = FileIconProvider.shared.image(for: FileIconKey(fileType: .folder, fileExtension: ""))
         tableView.reloadData()
         pruneInvalidSelection()
         restorePreviousSelectionIfPossible()
@@ -613,7 +613,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         cell.addSubview(text)
 
         if identifier == "name" {
-            let imageView = NSImageView(image: item.icon)
+            let imageView = NSImageView(image: FileIconProvider.shared.image(for: item.iconKey))
             imageView.imageScaling = .scaleProportionallyDown
             imageView.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(imageView)
