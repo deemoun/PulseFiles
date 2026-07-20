@@ -147,6 +147,9 @@ final class SidebarViewController: NSViewController {
     private var selectedMode: SidebarMode = .navigation
     private var userSelectedMode = false
     private var sizeTask: Task<Void, Never>?
+    private var deviceDiscoveryTask: Task<Void, Never>?
+    private var deviceDiscoveryGeneration = 0
+    private var lastSuccessfulDeviceVolumes: [Volume] = []
     private var representedSelectionID = UUID()
 
     init(
@@ -162,7 +165,10 @@ final class SidebarViewController: NSViewController {
 
     required init?(coder: NSCoder) { nil }
 
-    deinit { sizeTask?.cancel() }
+    deinit {
+        sizeTask?.cancel()
+        deviceDiscoveryTask?.cancel()
+    }
 
     override func loadView() {
         view = NSVisualEffectView()
@@ -251,7 +257,7 @@ final class SidebarViewController: NSViewController {
         ])
     }
 
-    private func rebuild() {
+    private func rebuild(refreshingDevices: Bool = true) {
         sizeTask?.cancel()
         representedSelectionID = UUID()
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
@@ -262,6 +268,9 @@ final class SidebarViewController: NSViewController {
             addNavigationContent()
         case .inspector:
             addFileInfo(for: selectedItems, selectionID: representedSelectionID)
+        }
+        if refreshingDevices {
+            refreshDeviceVolumesAsynchronously()
         }
     }
 
@@ -320,13 +329,30 @@ final class SidebarViewController: NSViewController {
     }
 
     func deviceItems() -> [SidebarItem] {
-        Self.deviceItems(volumes: volumeDiscovery.mountedVolumes(), accessPolicy: accessPolicy)
+        Self.deviceItems(volumes: lastSuccessfulDeviceVolumes, accessPolicy: accessPolicy)
     }
 
     /// Rebuilds navigation content after a mounted-volume change.
     func refreshDevices() {
         guard selectedMode == .navigation else { return }
         rebuild()
+    }
+
+    /// Keeps layout work independent from mounted-volume discovery, which can
+    /// block on unavailable removable or network volumes.
+    private func refreshDeviceVolumesAsynchronously() {
+        deviceDiscoveryGeneration += 1
+        let generation = deviceDiscoveryGeneration
+        deviceDiscoveryTask?.cancel()
+        let discovery = volumeDiscovery
+        deviceDiscoveryTask = Task { [weak self] in
+            let volumes = await discovery.mountedVolumes()
+            guard !Task.isCancelled else { return }
+            guard let self, self.deviceDiscoveryGeneration == generation else { return }
+            self.lastSuccessfulDeviceVolumes = volumes
+            guard self.selectedMode == .navigation else { return }
+            self.rebuild(refreshingDevices: false)
+        }
     }
 
     static func deviceItems(volumes: [Volume], accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
