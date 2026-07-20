@@ -278,8 +278,8 @@ protocol FileOperationServicing {
     func move(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func createFolder(named rawName: String, in directory: URL) throws -> URL
-    func createFile(named rawName: String, in directory: URL) throws -> URL
+    func createFolder(named rawName: String, in directory: URL) async throws -> FileOperationResult
+    func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
 }
@@ -679,31 +679,53 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-    func createFolder(named rawName: String, in directory: URL) throws -> URL {
-        let destination = try preflightCreation(rawName: rawName, in: directory, isDirectory: true)
-        DiagnosticLogger.log(.info, category: "FileOperation", "Create folder operation starting: destination=\(DiagnosticLogger.sanitizedPath(destination))")
-        do {
-            try accessPolicy.withAccess(to: [directory]) {
-                try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
-            }
-            return destination
-        } catch {
-            DiagnosticLogger.log(.error, category: "FileOperation", "Create folder operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
-            throw error
-        }
+    func createFolder(named rawName: String, in directory: URL) async throws -> FileOperationResult {
+        try await createItem(named: rawName, in: directory, isDirectory: true)
     }
 
-    func createFile(named rawName: String, in directory: URL) throws -> URL {
-        let destination = try preflightCreation(rawName: rawName, in: directory, isDirectory: false)
-        DiagnosticLogger.log(.info, category: "FileOperation", "Create file operation starting: destination=\(DiagnosticLogger.sanitizedPath(destination))")
-        do {
-            try accessPolicy.withAccess(to: [directory]) {
-                try fileManager.createEmptyFile(at: destination)
+    func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult {
+        try await createItem(named: rawName, in: directory, isDirectory: false)
+    }
+
+    /// Creation is a single blocking filesystem mutation, but its validation
+    /// and collision check can also be slow on provider-backed directories.
+    /// Keep all of it on a utility executor and report cancellation without
+    /// pretending that an already-started FileManager call was interrupted.
+    private func createItem(named rawName: String, in directory: URL, isDirectory: Bool) async throws -> FileOperationResult {
+        let context = FileOperationContext()
+        let operationName = isDirectory ? "folder" : "file"
+        let worker = Task.detached(priority: .utility) { [self] () throws -> FileOperationResult in
+            try Task.checkCancellation()
+            let destination = try preflightCreation(rawName: rawName, in: directory, isDirectory: isDirectory)
+            DiagnosticLogger.log(.info, category: "FileOperation", "Create \(operationName) operation starting: destination=\(DiagnosticLogger.sanitizedPath(destination))")
+            try Task.checkCancellation()
+            context.beginBlockingCall(for: destination)
+            do {
+                try accessPolicy.withAccess(to: [directory]) {
+                    if isDirectory {
+                        try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
+                    } else {
+                        try fileManager.createEmptyFile(at: destination)
+                    }
+                }
+            } catch {
+                DiagnosticLogger.log(.error, category: "FileOperation", "Create \(operationName) operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
+                throw error
             }
-            return destination
-        } catch {
-            DiagnosticLogger.log(.error, category: "FileOperation", "Create file operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
-            throw error
+            if context.needsVerification {
+                return FileOperationResult.unknownAfterAbandoning(currentItem: destination)
+            }
+            return FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false)
+        }
+        do {
+            return try await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: {
+                context.abandon()
+                worker.cancel()
+            }
+        } catch is CancellationError {
+            return FileOperationResult(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true)
         }
     }
 
