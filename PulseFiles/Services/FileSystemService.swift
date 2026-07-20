@@ -43,16 +43,18 @@ protocol FileSystemServicing {
 final class FileSystemService: FileSystemServicing {
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
+    private let scheduler: FileSystemOperationScheduler
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, scheduler: FileSystemOperationScheduler = .shared) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
+        self.scheduler = scheduler
     }
 
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
         try accessPolicy.validateAccess(to: url)
         return try await accessPolicy.withAccess(to: [url]) {
-            try await Task.detached(priority: .userInitiated) {
+            try await self.scheduler.submit(priority: .visiblePane) {
                 try self.accessPolicy.validateAccess(to: url)
                 let keys: Set<URLResourceKey> = [
                 .nameKey,
@@ -90,14 +92,14 @@ final class FileSystemService: FileSystemServicing {
                     items: Self.sorted(items, descriptor: sort),
                     itemReadFailures: itemReadFailures
                 )
-            }.value
+            }
         }
     }
 
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
         try accessPolicy.validateAccess(to: url)
         return try await accessPolicy.withAccess(to: [url]) {
-            try await Task.detached(priority: .userInitiated) {
+            try await self.scheduler.submit(priority: .visiblePane) {
                 try self.accessPolicy.validateAccess(to: url)
                 let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey, .contentModificationDateKey])
                 let identifier = values.fileResourceIdentifier.map { String(describing: $0) }
@@ -105,7 +107,7 @@ final class FileSystemService: FileSystemServicing {
                     resourceIdentifier: identifier,
                     changeDate: values.contentModificationDate
                 )
-            }.value
+            }
         }
     }
 
