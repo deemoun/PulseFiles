@@ -66,11 +66,17 @@ final class FilePaneViewController: NSViewController {
         return self.dropProbeCache.volumeIdentifier(for: url)
     })
     private let accessGrantService = FolderAccessGrantService.shared
+    private let openWithApplicationResolver: OpenWithMenuApplicationResolver
     private lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
 
-    init(paneID: PaneID, viewModel: FilePaneViewModel) {
+    init(
+        paneID: PaneID,
+        viewModel: FilePaneViewModel,
+        openWithApplicationResolver: OpenWithMenuApplicationResolver = OpenWithMenuApplicationResolver()
+    ) {
         self.paneID = paneID
         self.viewModel = viewModel
+        self.openWithApplicationResolver = openWithApplicationResolver
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -919,32 +925,28 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: "Open With")
 
-        let defaultItem = NSMenuItem(title: defaultApplicationMenuTitle(for: url), action: #selector(contextOpenWithDefault(_:)), keyEquivalent: "")
+        let defaultItem = NSMenuItem(title: "Default Application", action: #selector(contextOpenWithDefault(_:)), keyEquivalent: "")
         defaultItem.target = self
         defaultItem.representedObject = url
         submenu.addItem(defaultItem)
 
-        let applicationURLs = NSWorkspace.shared.urlsForApplications(toOpen: url)
-            .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
-        if !applicationURLs.isEmpty {
-            submenu.addItem(.separator())
-        }
-        for applicationURL in applicationURLs {
+        let loadingItem = NSMenuItem(title: "Loading Applications…", action: nil, keyEquivalent: "")
+        loadingItem.isEnabled = false
+        submenu.addItem(loadingItem)
+
+        item.submenu = submenu
+        openWithApplicationResolver.resolveApplications(
+            for: url,
+            menuItem: item,
+            submenu: submenu,
+            loadingItem: loadingItem
+        ) { [weak self] applicationURL in
             let applicationItem = NSMenuItem(title: applicationURL.deletingPathExtension().lastPathComponent, action: #selector(contextOpenWithApplication(_:)), keyEquivalent: "")
             applicationItem.target = self
             applicationItem.representedObject = OpenWithRequest(fileURL: url, applicationURL: applicationURL)
-            submenu.addItem(applicationItem)
+            return applicationItem
         }
-
-        item.submenu = submenu
         return item
-    }
-
-    private func defaultApplicationMenuTitle(for url: URL) -> String {
-        guard let applicationURL = NSWorkspace.shared.urlForApplication(toOpen: url) else {
-            return "Default Application"
-        }
-        return "Default: \(applicationURL.deletingPathExtension().lastPathComponent)"
     }
 
     @objc private func contextOpenParent() { onCommand?(.parent) }
