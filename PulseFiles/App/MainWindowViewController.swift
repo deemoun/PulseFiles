@@ -1015,15 +1015,18 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         alert.addButton(withTitle: "Create".localized)
         alert.addButton(withTitle: "Cancel".localized)
 
-        let textField = NSTextField(string: uniqueFolderName(in: targetPane().currentDirectory))
+        let directory = targetPane().currentDirectory
+        let defaultName = "Untitled Folder"
+        let textField = NSTextField(string: defaultName)
         textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
         alert.accessoryView = textField
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            self.createFolder(named: textField.stringValue)
+            self.createFolder(named: textField.stringValue, in: directory)
         }
 
+        populateSuggestedCreationName(in: directory, base: defaultName, isDirectory: true, textField: textField)
         if let window = view.window {
             alert.beginSheetModal(for: window, completionHandler: handleResponse)
         } else {
@@ -1039,15 +1042,18 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         alert.addButton(withTitle: "Create".localized)
         alert.addButton(withTitle: "Cancel".localized)
 
-        let textField = NSTextField(string: uniqueFileName(in: targetPane().currentDirectory))
+        let directory = targetPane().currentDirectory
+        let defaultName = "Untitled.txt"
+        let textField = NSTextField(string: defaultName)
         textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
         alert.accessoryView = textField
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            self.createFile(named: textField.stringValue)
+            self.createFile(named: textField.stringValue, in: directory)
         }
 
+        populateSuggestedCreationName(in: directory, base: defaultName, isDirectory: false, textField: textField)
         if let window = view.window {
             alert.beginSheetModal(for: window, completionHandler: handleResponse)
         } else {
@@ -1055,51 +1061,51 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
-    private func uniqueFolderName(in directory: URL) -> String {
-        let fileManager = FileManager.default
-        let base = "Untitled Folder"
-        var candidate = base
-        var index = 2
-        while fileManager.fileExists(atPath: directory.appendingPathComponent(candidate, isDirectory: true).path) {
-            candidate = "\(base) \(index)"
-            index += 1
-        }
-        return candidate
-    }
-
-    private func uniqueFileName(in directory: URL) -> String {
-        let fileManager = FileManager.default
-        let base = "Untitled.txt"
-        var candidate = base
-        var index = 2
-        while fileManager.fileExists(atPath: directory.appendingPathComponent(candidate).path) {
-            candidate = "Untitled \(index).txt"
-            index += 1
-        }
-        return candidate
-    }
-
-    private func createFolder(named rawName: String) {
-        do {
-            let destination = try fileOperations.createFolder(named: rawName, in: targetPane().currentDirectory)
-            targetPane().viewModel.invalidateCurrentDirectorySnapshot()
-            targetPane().loadDirectory(selecting: destination)
-        } catch let error as FileNameValidator.ValidationError {
-            showError(message: "Invalid Folder Name".localized, detail: error.localizedDescription)
-        } catch {
-            showError(message: "Could Not Create Folder".localized, detail: error.localizedDescription)
+    private func populateSuggestedCreationName(in directory: URL, base: String, isDirectory: Bool, textField: NSTextField) {
+        Task { [weak textField] in
+            let suggestion = await Self.uniqueCreationName(in: directory, base: base, isDirectory: isDirectory)
+            guard let textField, textField.stringValue == base else { return }
+            textField.stringValue = suggestion
         }
     }
 
-    private func createFile(named rawName: String) {
-        do {
-            let destination = try fileOperations.createFile(named: rawName, in: targetPane().currentDirectory)
-            targetPane().viewModel.invalidateCurrentDirectorySnapshot()
-            targetPane().loadDirectory(selecting: destination)
-        } catch let error as FileNameValidator.ValidationError {
-            showError(message: "Invalid File Name".localized, detail: error.localizedDescription)
-        } catch {
-            showError(message: "Could Not Create File".localized, detail: error.localizedDescription)
+    /// Avoid an unbounded existence-probe loop in a directory with many
+    /// similarly named items. This is advisory only; the operation service
+    /// performs the authoritative collision check immediately before creation.
+    private nonisolated static func uniqueCreationName(in directory: URL, base: String, isDirectory: Bool) async -> String {
+        await Task.detached(priority: .utility) {
+            let fileManager = FileManager.default
+            let fileExtension = isDirectory ? "" : ".txt"
+            let stem = isDirectory ? base : "Untitled"
+            for index in 1...10_000 {
+                if Task.isCancelled { return base }
+                let candidate = index == 1 ? base : "\(stem) \(index)\(fileExtension)"
+                if !fileManager.fileExists(atPath: directory.appendingPathComponent(candidate, isDirectory: isDirectory).path) {
+                    return candidate
+                }
+            }
+            return "\(stem) \(UUID().uuidString)\(fileExtension)"
+        }.value
+    }
+
+    private func createFolder(named rawName: String, in directory: URL) {
+        startCreationOperation(named: "Create Folder".localized, directory: directory) { [fileOperations] _ in
+            try await fileOperations.createFolder(named: rawName, in: directory)
+        }
+    }
+
+    private func createFile(named rawName: String, in directory: URL) {
+        startCreationOperation(named: "Create File".localized, directory: directory) { [fileOperations] _ in
+            try await fileOperations.createFile(named: rawName, in: directory)
+        }
+    }
+
+    private func startCreationOperation(named operationName: String, directory: URL, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
+        startFileOperation(named: operationName, operation: operation) { [weak self] result in
+            guard let self, let destination = result.completedItems.first else { return }
+            let pane = self.panes.first { $0.currentDirectory == directory } ?? self.targetPane()
+            pane.viewModel.invalidateCurrentDirectorySnapshot()
+            pane.loadDirectory(selecting: destination)
         }
     }
 
@@ -1655,7 +1661,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         _ = retainedOperationTasks[generation]
     }
 
-    private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
+    private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult, completion: ((FileOperationResult) -> Void)? = nil) {
         guard !isFileOperationActive else { return }
         fileOperationGeneration += 1
         let generation = fileOperationGeneration
@@ -1692,6 +1698,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 if captureRecovery { self.undoRecovery = result.succeededCompletely ? result.recovery : nil }
                 self.clearClipboardFeedback()
                 self.refreshBothPanes()
+                completion?(result)
                 self.showOperationResult(result, operationName: operationName)
             } catch {
                 guard self.currentFileOperationGeneration == generation else { return }

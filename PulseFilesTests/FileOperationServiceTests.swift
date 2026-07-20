@@ -1304,12 +1304,13 @@ final class FileOperationServiceTests: XCTestCase {
     }
 
 
-    func testCreateFileAllowsNonexistentDestinationWhenParentIsAccessibleInSandbox() throws {
+    func testCreateFileAllowsNonexistentDestinationWhenParentIsAccessibleInSandbox() async throws {
         let fixture = try makeFixture()
         let destination = fixture.left.appendingPathComponent("Brand New.txt")
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
 
-        let created = try fixture.service.createFile(named: "Brand New.txt", in: fixture.left)
+        let result = try await fixture.service.createFile(named: "Brand New.txt", in: fixture.left)
+        let created = try XCTUnwrap(result.completedItems.first)
 
         XCTAssertEqual(created, destination)
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
@@ -1350,23 +1351,25 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "move me")
     }
 
-    func testUnrestrictedModeAllowsCreationWhenNonexistentDestinationParentIsWritable() throws {
+    func testUnrestrictedModeAllowsCreationWhenNonexistentDestinationParentIsWritable() async throws {
         let fixture = try makeFixture()
         let externalDirectory = try makeTemporaryDirectory()
         let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy)
         let destination = externalDirectory.appendingPathComponent("External New.txt")
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
 
-        let created = try service.createFile(named: "External New.txt", in: externalDirectory)
+        let result = try await service.createFile(named: "External New.txt", in: externalDirectory)
+        let created = try XCTUnwrap(result.completedItems.first)
 
         XCTAssertEqual(created, destination)
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
     }
 
-    func testCreateFolderCreatesDirectoryInSandbox() throws {
+    func testCreateFolderCreatesDirectoryInSandbox() async throws {
         let fixture = try makeFixture()
 
-        let created = try fixture.service.createFolder(named: "New Folder", in: fixture.left)
+        let result = try await fixture.service.createFolder(named: "New Folder", in: fixture.left)
+        let created = try XCTUnwrap(result.completedItems.first)
 
         var isDirectory = ObjCBool(false)
         XCTAssertTrue(FileManager.default.fileExists(atPath: created.path, isDirectory: &isDirectory))
@@ -1374,10 +1377,11 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(created, fixture.left.appendingPathComponent("New Folder", isDirectory: true))
     }
 
-    func testCreateFileCreatesEmptyFileInSandbox() throws {
+    func testCreateFileCreatesEmptyFileInSandbox() async throws {
         let fixture = try makeFixture()
 
-        let created = try fixture.service.createFile(named: "Notes.txt", in: fixture.left)
+        let result = try await fixture.service.createFile(named: "Notes.txt", in: fixture.left)
+        let created = try XCTUnwrap(result.completedItems.first)
 
         var isDirectory = ObjCBool(true)
         XCTAssertTrue(FileManager.default.fileExists(atPath: created.path, isDirectory: &isDirectory))
@@ -1385,12 +1389,12 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: created), Data())
     }
 
-    func testCreateFolderRejectsDuplicateName() throws {
+    func testCreateFolderRejectsDuplicateName() async throws {
         let fixture = try makeFixture()
         try FileManager.default.createDirectory(at: fixture.left.appendingPathComponent("Existing"), withIntermediateDirectories: false)
 
         do {
-            _ = try fixture.service.createFolder(named: "Existing", in: fixture.left)
+            _ = try await fixture.service.createFolder(named: "Existing", in: fixture.left)
             XCTFail("Expected duplicate creation rejection")
         } catch FileNameValidator.ValidationError.duplicateName {
         } catch {
@@ -1398,13 +1402,13 @@ final class FileOperationServiceTests: XCTestCase {
         }
     }
 
-    func testCreateFileRejectsDuplicateName() throws {
+    func testCreateFileRejectsDuplicateName() async throws {
         let fixture = try makeFixture()
         let existing = fixture.left.appendingPathComponent("Existing.txt")
         try "existing".write(to: existing, atomically: true, encoding: .utf8)
 
         do {
-            _ = try fixture.service.createFile(named: "Existing.txt", in: fixture.left)
+            _ = try await fixture.service.createFile(named: "Existing.txt", in: fixture.left)
             XCTFail("Expected duplicate creation rejection")
         } catch FileNameValidator.ValidationError.duplicateName {
         } catch {
@@ -1412,11 +1416,11 @@ final class FileOperationServiceTests: XCTestCase {
         }
     }
 
-    func testCreateFileRejectsInvalidName() throws {
+    func testCreateFileRejectsInvalidName() async throws {
         let fixture = try makeFixture()
 
         do {
-            _ = try fixture.service.createFile(named: "../Bad.txt", in: fixture.left)
+            _ = try await fixture.service.createFile(named: "../Bad.txt", in: fixture.left)
             XCTFail("Expected invalid name rejection")
         } catch FileNameValidator.ValidationError.containsSlash {
         } catch {
@@ -1424,12 +1428,12 @@ final class FileOperationServiceTests: XCTestCase {
         }
     }
 
-    func testCreateFolderRejectsMissingDestinationDirectory() throws {
+    func testCreateFolderRejectsMissingDestinationDirectory() async throws {
         let fixture = try makeFixture()
         let missingDirectory = fixture.left.appendingPathComponent("Missing")
 
         do {
-            _ = try fixture.service.createFolder(named: "New Folder", in: missingDirectory)
+            _ = try await fixture.service.createFolder(named: "New Folder", in: missingDirectory)
             XCTFail("Expected missing destination directory rejection")
         } catch FileOperationError.destinationDirectoryMissing(let url) {
             XCTAssertEqual(url, missingDirectory)
@@ -1438,16 +1442,44 @@ final class FileOperationServiceTests: XCTestCase {
         }
     }
 
-    func testCreateFileRejectsOutsideSandbox() throws {
+    func testCreateFileRejectsOutsideSandbox() async throws {
         let fixture = try makeFixture()
         let outsideDirectory = try makeTemporaryDirectory()
 
         do {
-            _ = try fixture.service.createFile(named: "Outside.txt", in: outsideDirectory)
+            _ = try await fixture.service.createFile(named: "Outside.txt", in: outsideDirectory)
             XCTFail("Expected sandbox rejection")
         } catch SandboxAccessError.outsideExperimentalSandbox {
         } catch {
             XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testCreateFileReportsCancellationBeforePreflightMutation() async throws {
+        let fixture = try makeFixture()
+
+        let result = try await Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await fixture.service.createFile(named: "Cancelled.txt", in: fixture.left)
+        }.value
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertFalse(result.needsVerification)
+        XCTAssertTrue(result.completedItems.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.left.appendingPathComponent("Cancelled.txt").path))
+    }
+
+    func testCreateFolderReportsFileManagerError() async throws {
+        let fixture = try makeFixture()
+        let fileManager = FailingFileManager()
+        fileManager.creationFailure = CocoaError(.fileWriteNoPermission)
+        let service = FileOperationService(fileManager: fileManager, accessPolicy: fixture.unrestrictedPolicy)
+
+        do {
+            _ = try await service.createFolder(named: "Denied", in: fixture.left)
+            XCTFail("Expected creation error")
+        } catch {
+            XCTAssertEqual((error as NSError).code, CocoaError.fileWriteNoPermission.rawValue)
         }
     }
 
@@ -1710,6 +1742,7 @@ private final class FailingFileManager: FileOperationFileManaging {
     var failRemoveURL: URL?
     var failBackupRemoval = false
     var failStagingRemoval = false
+    var creationFailure: Error?
     private var simulatedExistingStagingPrefix: String?
     private var simulatedExistingStagingDestinationLastPathComponent: String?
     private(set) var simulatedExistingStagingLastPathComponent: String?
@@ -1776,10 +1809,12 @@ private final class FailingFileManager: FileOperationFileManaging {
     }
 
     func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
+        if let creationFailure { throw creationFailure }
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: createIntermediates)
     }
 
     func createEmptyFile(at url: URL) throws {
+        if let creationFailure { throw creationFailure }
         try Data().write(to: url, options: .withoutOverwriting)
     }
 
