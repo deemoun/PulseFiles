@@ -37,7 +37,8 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
         XCTAssertTrue(items[2].subtitle?.contains("available of") == true)
     }
 
-    func testSidebarUsesInjectedVolumeDiscoveryData() {
+    @MainActor
+    func testSidebarUsesInjectedVolumeDiscoveryData() async {
         let sandbox = URL(fileURLWithPath: "/sandbox", isDirectory: true)
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandbox)
         let discovery = FixtureVolumeDiscovery(volumes: [volume(name: "Injected", path: "/sandbox")])
@@ -48,6 +49,8 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
             volumeDiscovery: discovery
         )
 
+        _ = sidebar.view
+        await Task.yield()
         XCTAssertEqual(sidebar.deviceItems().map(\.title), ["Injected"])
     }
 
@@ -57,23 +60,23 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
     }
 
     @MainActor
-    func testVolumeChangeMonitorPublishesPreviousAndCurrentMountedVolumeLists() {
+    func testVolumeChangeMonitorPublishesFastSnapshotThenFreshMountedVolumeLists() async {
         let discovery = MutableVolumeDiscovery()
         discovery.volumes = [volume(name: "Existing", path: "/")]
         let center = NotificationCenter()
         let monitor = VolumeChangeMonitor(discovery: discovery, notificationCenter: center)
         var published: [VolumeChange] = []
         monitor.onVolumesChanged = { published.append($0) }
+        await Task.yield()
 
         discovery.volumes = [volume(name: "Existing", path: "/"), volume(name: "Mounted", path: "/Volumes/Mounted")]
         center.post(name: NSWorkspace.didMountNotification, object: nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        discovery.volumes = []
-        center.post(name: NSWorkspace.didUnmountNotification, object: nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(published.last?.previous.map(\.displayName), ["Existing"])
+        XCTAssertEqual(published.last?.current.map(\.displayName), ["Existing"])
+        await Task.yield()
 
-        XCTAssertEqual(published.map { $0.previous.map(\.displayName) }, [["Existing"], ["Existing", "Mounted"]])
-        XCTAssertEqual(published.map { $0.current.map(\.displayName) }, [["Existing", "Mounted"], []])
+        XCTAssertEqual(published.last?.previous.map(\.displayName), ["Existing"])
+        XCTAssertEqual(published.last?.current.map(\.displayName), ["Existing", "Mounted"])
     }
 
     func testPaneRouterIgnoresUnrelatedMountEvents() {
@@ -128,11 +131,11 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
     private struct FixtureVolumeDiscovery: VolumeDiscovering {
         let volumes: [Volume]
 
-        func mountedVolumes() -> [Volume] { volumes }
+        func mountedVolumes() async -> [Volume] { volumes }
     }
 
     private final class MutableVolumeDiscovery: VolumeDiscovering {
         var volumes: [Volume] = []
-        func mountedVolumes() -> [Volume] { volumes }
+        func mountedVolumes() async -> [Volume] { volumes }
     }
 }

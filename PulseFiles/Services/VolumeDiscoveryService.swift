@@ -34,7 +34,9 @@ struct Volume: Equatable, Sendable {
 }
 
 protocol VolumeDiscovering {
-  func mountedVolumes() -> [Volume]
+  /// Returns the currently mounted volumes without requiring callers to block
+  /// the main actor while the filesystem is queried.
+  func mountedVolumes() async -> [Volume]
 }
 
 /// The before-and-after state reported for a filesystem mount notification.
@@ -95,6 +97,8 @@ final class VolumeChangeMonitor {
   private let notificationCenter: NotificationCenter
   private var observers: [NSObjectProtocol] = []
   private var lastKnownVolumes: [Volume]
+  private var discoveryTask: Task<Void, Never>?
+  private var discoveryGeneration = 0
 
   init(
     discovery: any VolumeDiscovering = VolumeDiscoveryService(),
@@ -102,23 +106,41 @@ final class VolumeChangeMonitor {
   ) {
     self.discovery = discovery
     self.notificationCenter = notificationCenter
-    self.lastKnownVolumes = discovery.mountedVolumes()
+    self.lastKnownVolumes = []
     let names: [Notification.Name] = [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification]
     observers = names.map { name in
       notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         Task { @MainActor in self?.publishRefresh() }
       }
     }
+    refreshKnownVolumes(publishChange: false)
   }
 
   func publishRefresh() {
-    let currentVolumes = discovery.mountedVolumes()
-    let change = VolumeChange(previous: lastKnownVolumes, current: currentVolumes)
-    lastKnownVolumes = currentVolumes
-    onVolumesChanged?(change)
+    // A notification may arrive while querying a slow network volume. Publish
+    // the last safe snapshot immediately so AppKit clients can react without
+    // waiting for discovery; a second notification follows with fresh data.
+    onVolumesChanged?(VolumeChange(previous: lastKnownVolumes, current: lastKnownVolumes))
+    refreshKnownVolumes(publishChange: true)
+  }
+
+  private func refreshKnownVolumes(publishChange: Bool) {
+    discoveryGeneration += 1
+    let generation = discoveryGeneration
+    discoveryTask?.cancel()
+    let discovery = discovery
+    discoveryTask = Task { [weak self] in
+      let volumes = await discovery.mountedVolumes()
+      guard !Task.isCancelled else { return }
+      guard let self, self.discoveryGeneration == generation else { return }
+      let change = VolumeChange(previous: self.lastKnownVolumes, current: volumes)
+      self.lastKnownVolumes = volumes
+      if publishChange { self.onVolumesChanged?(change) }
+    }
   }
 
   deinit {
+    discoveryTask?.cancel()
     observers.forEach(notificationCenter.removeObserver)
   }
 }
@@ -143,7 +165,13 @@ final class VolumeDiscoveryService: VolumeDiscovering {
     self.fileManager = fileManager
   }
 
-  func mountedVolumes() -> [Volume] {
+  func mountedVolumes() async -> [Volume] {
+    await Task.detached(priority: .utility) { [fileManager] in
+      Self.discoverMountedVolumes(using: fileManager)
+    }.value
+  }
+
+  private static func discoverMountedVolumes(using fileManager: FileManager) -> [Volume] {
     let keys: Set<URLResourceKey> = [
       .volumeNameKey,
       .volumeIsRemovableKey,
@@ -158,7 +186,7 @@ final class VolumeDiscoveryService: VolumeDiscovering {
         includingResourceValuesForKeys: Array(keys), options: options
       ) ?? []
 
-    return Self.sortedVolumes(
+    return sortedVolumes(
       urls.compactMap { url in
         guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
         let isLocal = values.volumeIsLocal ?? false
