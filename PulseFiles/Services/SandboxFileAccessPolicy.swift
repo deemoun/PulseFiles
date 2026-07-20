@@ -2,6 +2,9 @@
 import AppKit
 #endif
 import Foundation
+#if os(macOS)
+import Darwin
+#endif
 
 enum SandboxAccessError: LocalizedError, Equatable {
     case outsideExperimentalSandbox(URL)
@@ -227,3 +230,74 @@ struct SandboxFileAccessPolicy {
         url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 }
+
+/// A directory capability used by filesystem mutations.  The descriptor is
+/// opened component-by-component without following links; callers must use
+/// `*at` APIs with its descriptor rather than reconstructing an absolute path.
+#if os(macOS)
+struct OpenDirectoryCapability {
+    struct Identity: Equatable {
+        let device: dev_t
+        let inode: ino_t
+    }
+
+    let fileDescriptor: Int32
+    let identity: Identity
+
+    init(directory url: URL) throws {
+        let components = url.standardizedFileURL.pathComponents
+        var descriptor = Darwin.open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        do {
+            for component in components where component != "/" {
+                guard component != ".", component != "..", !component.contains("/") else {
+                    throw CocoaError(.fileReadInvalidFileName)
+                }
+                let next = component.withCString { Darwin.openat(descriptor, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) }
+                guard next >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                Darwin.close(descriptor)
+                descriptor = next
+            }
+            var status = stat()
+            guard Darwin.fstat(descriptor, &status) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            guard (status.st_mode & S_IFMT) == S_IFDIR else { throw CocoaError(.fileReadNotDirectory) }
+            fileDescriptor = descriptor
+            identity = Identity(device: status.st_dev, inode: status.st_ino)
+        } catch {
+            Darwin.close(descriptor)
+            throw error
+        }
+    }
+
+    func revalidate() throws {
+        var status = stat()
+        guard Darwin.fstat(fileDescriptor, &status) == 0,
+              status.st_dev == identity.device, status.st_ino == identity.inode,
+              (status.st_mode & S_IFMT) == S_IFDIR else {
+            throw POSIXError(.ESTALE)
+        }
+    }
+
+    func itemIdentity(named name: String) throws -> Identity {
+        try Self.validateName(name)
+        var status = stat()
+        guard name.withCString({ Darwin.fstatat(fileDescriptor, $0, &status, AT_SYMLINK_NOFOLLOW) }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT)
+        }
+        guard (status.st_mode & S_IFMT) != S_IFLNK else { throw POSIXError(.ELOOP) }
+        return Identity(device: status.st_dev, inode: status.st_ino)
+    }
+
+    func requireItem(named name: String, identity expected: Identity? = nil) throws {
+        try revalidate()
+        let actual = try itemIdentity(named: name)
+        guard expected == nil || actual == expected else { throw POSIXError(.ESTALE) }
+    }
+
+    static func validateName(_ name: String) throws {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else { throw CocoaError(.fileReadInvalidFileName) }
+    }
+
+    func close() { Darwin.close(fileDescriptor) }
+}
+#endif
