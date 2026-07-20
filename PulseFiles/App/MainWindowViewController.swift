@@ -64,6 +64,7 @@ final class MainWindowViewController: NSViewController {
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy)
     private lazy var fileOperations = FileOperationService(accessPolicy: accessPolicy)
     private lazy var volumeChangeMonitor = VolumeChangeMonitor()
+    private let fileSystemProbe: any FileSystemProbing = FileSystemProbeService()
     private let recentLocations = RecentLocationService()
 
     private lazy var leftPane = FilePaneViewController(
@@ -123,6 +124,10 @@ final class MainWindowViewController: NSViewController {
     private var currentFileOperationGeneration: Int?
     private var undoRecovery: FileOperationRecovery?
     private var quickLookPreviewURL: NSURL?
+    private var quickLookProbeGeneration = 0
+    private var navigationProbeGeneration = 0
+    private var dropProbeGeneration = 0
+    private var volumeChangeProbeGeneration = 0
     private var isFileOperationActive = false {
         didSet { setConflictingFileActionsEnabled(!isFileOperationActive) }
     }
@@ -154,19 +159,27 @@ final class MainWindowViewController: NSViewController {
             guard let self else { return }
             self.sidebar.refreshDevices()
             let panes = [self.leftPane, self.rightPane]
-            let actions = VolumeChangePaneRefreshRouter.actions(
-                for: panes.map(\.currentDirectory),
-                change: change,
-                isReachable: { FileManager.default.fileExists(atPath: $0.path) }
-            )
-
-            // Fall back before revalidating another pane so an ejected volume
-            // cannot leave a stale directory monitor running during this event.
-            for (pane, action) in zip(panes, actions) where action == .fallBack {
-                pane.fallBackIfCurrentDirectoryIsUnavailable()
-            }
-            for (pane, action) in zip(panes, actions) where action == .revalidate {
-                pane.revalidateAfterVolumeChange()
+            let directories = panes.map(\.currentDirectory)
+            self.volumeChangeProbeGeneration += 1
+            let generation = self.volumeChangeProbeGeneration
+            Task { [weak self] in
+                guard let self else { return }
+                let actions = await VolumeChangePaneRefreshRouter.actions(
+                    for: directories,
+                    change: change,
+                    isReachable: { [fileSystemProbe] url in
+                        await fileSystemProbe.exists(url, deadline: .milliseconds(200))
+                    }
+                )
+                // Ignore a completion that belongs to an older mount event.
+                guard generation == self.volumeChangeProbeGeneration,
+                      panes.map(\.currentDirectory) == directories else { return }
+                for (pane, action) in zip(panes, actions) where action == .fallBack {
+                    pane.fallBackIfCurrentDirectoryIsUnavailable()
+                }
+                for (pane, action) in zip(panes, actions) where action == .revalidate {
+                    pane.revalidateAfterVolumeChange()
+                }
             }
         }
         updateActivePane()
@@ -537,21 +550,26 @@ final class MainWindowViewController: NSViewController {
             return
         }
 
-        guard FileManager.default.fileExists(atPath: item.url.path) else {
-            showError(message: "Preview Unavailable".localized, detail: "The selected item no longer exists.".localized)
-            return
+        quickLookProbeGeneration += 1
+        let generation = quickLookProbeGeneration
+        Task { [weak self, fileSystemProbe] in
+            let answer = await fileSystemProbe.exists(item.url, deadline: .milliseconds(250))
+            guard let self, generation == self.quickLookProbeGeneration,
+                  self.targetPane().focusedItem?.url == item.url else { return }
+            guard case .value(true) = answer else {
+                self.showError(message: "Preview Unavailable".localized, detail: "The selected item is unavailable or no longer exists.".localized)
+                return
+            }
+            self.quickLookPreviewURL = item.url as NSURL
+            guard let panel = QLPreviewPanel.shared() else {
+                self.showError(message: "Preview Unavailable".localized, detail: "Quick Look is not available for this item.".localized)
+                return
+            }
+            panel.dataSource = self
+            panel.delegate = self
+            panel.reloadData()
+            panel.makeKeyAndOrderFront(nil)
         }
-
-        quickLookPreviewURL = item.url as NSURL
-        guard let panel = QLPreviewPanel.shared() else {
-            showError(message: "Preview Unavailable".localized, detail: "Quick Look is not available for this item.".localized)
-            return
-        }
-
-        panel.dataSource = self
-        panel.delegate = self
-        panel.reloadData()
-        panel.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -1208,15 +1226,25 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func goToFolder(path rawPath: String) {
-        do {
-            let url = try resolveFolderPath(rawPath)
-            targetPane().navigate(to: url)
-        } catch {
-            showError(message: "Could Not Go to Folder".localized, detail: error.localizedDescription)
+        navigationProbeGeneration += 1
+        let generation = navigationProbeGeneration
+        let pane = targetPane()
+        Task { [weak self, fileSystemProbe] in
+            guard let self else { return }
+            do {
+                let url = try await self.resolveFolderPath(rawPath, probe: fileSystemProbe)
+                guard generation == self.navigationProbeGeneration, self.targetPane() === pane else { return }
+                pane.navigate(to: url)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard generation == self.navigationProbeGeneration else { return }
+                self.showError(message: "Could Not Go to Folder".localized, detail: error.localizedDescription)
+            }
         }
     }
 
-    private func resolveFolderPath(_ rawPath: String) throws -> URL {
+    private func resolveFolderPath(_ rawPath: String, probe: any FileSystemProbing) async throws -> URL {
         let trimmedPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPath.isEmpty else { throw FileNameValidator.ValidationError.empty }
 
@@ -1235,11 +1263,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
         let url = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
         try accessPolicy.validateAccess(to: url)
-        var isDirectory = ObjCBool(false)
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+        let directoryAnswer = await probe.isDirectory(url, deadline: .milliseconds(250))
+        guard case .value(let isDirectory) = directoryAnswer else {
             throw FileOperationError.destinationDirectoryMissing(url)
         }
-        guard isDirectory.boolValue else {
+        guard isDirectory else {
             throw FileOperationError.destinationNotDirectory(url)
         }
         return url
@@ -1488,12 +1516,21 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
-        do {
-            try validateDroppedItems(urls, destinationDirectory: destinationDirectory)
-        } catch {
-            showError(message: "Could Not Accept Drop".localized, detail: error.localizedDescription)
-            return
+        dropProbeGeneration += 1
+        let generation = dropProbeGeneration
+        Task { [weak self, fileSystemProbe] in
+            do {
+                try await self?.validateDroppedItems(urls, destinationDirectory: destinationDirectory, probe: fileSystemProbe)
+                guard let self, generation == self.dropProbeGeneration else { return }
+                self.beginDroppedItemTransfer(urls, destinationDirectory: destinationDirectory, copy: copy)
+            } catch {
+                guard let self, generation == self.dropProbeGeneration else { return }
+                self.showError(message: "Could Not Accept Drop".localized, detail: error.localizedDescription)
+            }
         }
+    }
+
+    private func beginDroppedItemTransfer(_ urls: [URL], destinationDirectory: URL, copy: Bool) {
 
         let kind = copy ? "Copy".localized : "Move".localized
         let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
@@ -1519,19 +1556,20 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
-    private func validateDroppedItems(_ urls: [URL], destinationDirectory: URL) throws {
+    private func validateDroppedItems(_ urls: [URL], destinationDirectory: URL, probe: any FileSystemProbing) async throws {
         try accessPolicy.validateAccess(to: destinationDirectory)
-        var isDirectory = ObjCBool(false)
-        guard FileManager.default.fileExists(atPath: destinationDirectory.path, isDirectory: &isDirectory) else {
+        let destinationAnswer = await probe.isDirectory(destinationDirectory, deadline: .milliseconds(250))
+        guard case .value(let isDirectory) = destinationAnswer else {
             throw FileOperationError.destinationDirectoryMissing(destinationDirectory)
         }
-        guard isDirectory.boolValue else {
+        guard isDirectory else {
             throw FileOperationError.destinationNotDirectory(destinationDirectory)
         }
 
         for url in urls {
             try accessPolicy.validateAccess(to: url)
-            guard FileManager.default.fileExists(atPath: url.path) else {
+            let sourceAnswer = await probe.exists(url, deadline: .milliseconds(250))
+            guard case .value(true) = sourceAnswer else {
                 throw FileOperationError.sourceMissing(url)
             }
         }
