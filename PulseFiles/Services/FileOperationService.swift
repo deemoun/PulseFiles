@@ -641,7 +641,7 @@ final class FileOperationService: FileOperationServicing {
 
         do {
             try accessPolicy.withAccess(to: [source, parentDirectory]) {
-                try fileManager.moveItem(at: source, to: destination)
+                try descriptorRename(source, to: destination)
             }
             await progressHandler?(FileOperationProgress(currentItemName: destination.lastPathComponent, completedCount: 1, totalCount: 1))
             let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false, recovery: FileOperationRecovery(kind: .rename, items: [.init(originalURL: source, destinationURL: destination)]))
@@ -672,7 +672,7 @@ final class FileOperationService: FileOperationServicing {
             for (index, item) in recovery.items.enumerated() {
                 try Task.checkCancellation()
                 await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
-                try fileManager.moveItem(at: item.destinationURL, to: item.originalURL)
+                try descriptorRename(item.destinationURL, to: item.originalURL)
                 completed.append(item.originalURL)
             }
             return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: [], wasCancelled: false)
@@ -702,11 +702,7 @@ final class FileOperationService: FileOperationServicing {
             context.beginBlockingCall(for: destination)
             do {
                 try accessPolicy.withAccess(to: [directory]) {
-                    if isDirectory {
-                        try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
-                    } else {
-                        try fileManager.createEmptyFile(at: destination)
-                    }
+                    try descriptorCreate(destination, isDirectory: isDirectory)
                 }
             } catch {
                 DiagnosticLogger.log(.error, category: "FileOperation", "Create \(operationName) operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
@@ -735,6 +731,9 @@ final class FileOperationService: FileOperationServicing {
         let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
                 #if os(macOS)
+                // NSFileManager has no trashat equivalent. Pin and verify the
+                // parent and final component before invoking its platform trash API.
+                try descriptorVerifyExistingItem(url)
                 var resultingURL: NSURL?
                 try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
                 #else
@@ -751,7 +750,7 @@ final class FileOperationService: FileOperationServicing {
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "delete", error: error); throw error }
         let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
-                try fileManager.removeItem(at: url)
+                try descriptorRemove(url)
             }
         }
         logCompletion(operation: "delete", result: result)
@@ -1005,7 +1004,7 @@ final class FileOperationService: FileOperationServicing {
     ) async throws -> [FileOperationCleanupWarning] {
         guard replacingExistingDestination else {
             do {
-                try fileManager.moveItem(at: source, to: destination)
+                try descriptorRename(source, to: destination)
                 if recursiveProgress.totalItemCount != nil {
                     // A successful same-volume rename has no byte stream. The
                     // aggregate byte total is therefore intentionally unknown
@@ -1061,7 +1060,7 @@ final class FileOperationService: FileOperationServicing {
             )
             warnings.append(contentsOf: try placeStagedItem(tempURL, at: destination))
             do {
-                try fileManager.removeItem(at: source)
+                try descriptorRemove(source)
             } catch {
                 warnings.append(FileOperationCleanupWarning(
                     url: source,
@@ -1594,6 +1593,93 @@ final class FileOperationService: FileOperationServicing {
     private func removeIfExists(_ url: URL) throws {
         guard fileManager.fileExists(atPath: url.path) else { return }
         try fileManager.removeItem(at: url)
+    }
+
+    /// Mutations never use a path after it has been checked. Each parent is
+    /// opened as an O_NOFOLLOW directory capability and revalidated directly
+    /// before its name is consumed by the Darwin *at syscall.
+    private func descriptorVerifyExistingItem(_ url: URL) throws {
+        #if os(macOS)
+        guard fileManager is FileManager else {
+            guard fileManager.fileExists(atPath: url.path) else { throw FileOperationError.sourceMissing(url) }
+            return
+        }
+        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
+        defer { parent.close() }
+        let identity = try parent.itemIdentity(named: url.lastPathComponent)
+        try parent.requireItem(named: url.lastPathComponent, identity: identity)
+        #else
+        guard fileManager.fileExists(atPath: url.path) else { throw FileOperationError.sourceMissing(url) }
+        #endif
+    }
+
+    private func descriptorRename(_ source: URL, to destination: URL) throws {
+        #if os(macOS)
+        guard fileManager is FileManager else { try fileManager.moveItem(at: source, to: destination); return }
+        let sourceParent = try OpenDirectoryCapability(directory: source.deletingLastPathComponent())
+        defer { sourceParent.close() }
+        let destinationParent = try OpenDirectoryCapability(directory: destination.deletingLastPathComponent())
+        defer { destinationParent.close() }
+        let sourceName = source.lastPathComponent
+        let destinationName = destination.lastPathComponent
+        let sourceIdentity = try sourceParent.itemIdentity(named: sourceName)
+        try sourceParent.requireItem(named: sourceName, identity: sourceIdentity)
+        try destinationParent.revalidate()
+        try OpenDirectoryCapability.validateName(destinationName)
+        guard sourceName.withCString({ sourcePointer in
+            destinationName.withCString { destinationPointer in
+                Darwin.renameat(sourceParent.fileDescriptor, sourcePointer, destinationParent.fileDescriptor, destinationPointer)
+            }
+        }) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        #else
+        try fileManager.moveItem(at: source, to: destination)
+        #endif
+    }
+
+    private func descriptorRemove(_ url: URL) throws {
+        #if os(macOS)
+        guard fileManager is FileManager else { try fileManager.removeItem(at: url); return }
+        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
+        defer { parent.close() }
+        let name = url.lastPathComponent
+        let identity = try parent.itemIdentity(named: name)
+        try parent.requireItem(named: name, identity: identity)
+        var status = stat()
+        guard name.withCString({ Darwin.fstatat(parent.fileDescriptor, $0, &status, AT_SYMLINK_NOFOLLOW) }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT)
+        }
+        let flags: Int32 = (status.st_mode & S_IFMT) == S_IFDIR ? AT_REMOVEDIR : 0
+        guard name.withCString({ Darwin.unlinkat(parent.fileDescriptor, $0, flags) }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        #else
+        try fileManager.removeItem(at: url)
+        #endif
+    }
+
+    private func descriptorCreate(_ url: URL, isDirectory: Bool) throws {
+        #if os(macOS)
+        guard fileManager is FileManager else {
+            if isDirectory { try fileManager.createDirectory(at: url, withIntermediateDirectories: false) }
+            else { try fileManager.createEmptyFile(at: url) }
+            return
+        }
+        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
+        defer { parent.close() }
+        try parent.revalidate()
+        let name = url.lastPathComponent
+        try OpenDirectoryCapability.validateName(name)
+        let result: Int32 = name.withCString { pointer in
+            if isDirectory { return Darwin.mkdirat(parent.fileDescriptor, pointer, 0o755) }
+            let descriptor = Darwin.openat(parent.fileDescriptor, pointer, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o644)
+            if descriptor >= 0 { Darwin.close(descriptor); return 0 }
+            return -1
+        }
+        guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        #else
+        if isDirectory { try fileManager.createDirectory(at: url, withIntermediateDirectories: false) }
+        else { try fileManager.createEmptyFile(at: url) }
+        #endif
     }
 
     private func logPreflightFailure(operation: String, error: Error) {
