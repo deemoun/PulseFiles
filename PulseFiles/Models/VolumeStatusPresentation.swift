@@ -33,7 +33,27 @@ struct VolumeStatusPresentation: Equatable {
         self.availability = availability
     }
 
-    static func resolve(for directory: URL) -> VolumeStatusPresentation {
+    /// Resolves volume metadata on a utility-priority background task. Callers may
+    /// cancel their task while the resource lookup is in progress; in that case the
+    /// result is discarded before it can be returned to the caller.
+    static func resolve(for directory: URL) async -> VolumeStatusPresentation {
+        let task = Task.detached(priority: .utility) {
+            guard !Task.isCancelled else { return loading(for: directory) }
+            let presentation = resolveSynchronously(for: directory)
+            return Task.isCancelled ? loading(for: directory) : presentation
+        }
+        return await withTaskCancellationHandler(operation: {
+            await task.value
+        }, onCancel: {
+            task.cancel()
+        })
+    }
+
+    static func loading(for directory: URL) -> VolumeStatusPresentation {
+        unavailable(for: directory, availability: .unavailable)
+    }
+
+    private static func resolveSynchronously(for directory: URL) -> VolumeStatusPresentation {
         do {
             let directoryValues = try directory.resourceValues(forKeys: [.volumeURLKey])
             guard let volumeURL = directoryValues.allValues[.volumeURLKey] as? URL else {
