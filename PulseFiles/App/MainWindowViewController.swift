@@ -61,10 +61,11 @@ final class MainWindowViewController: NSViewController {
 
     private let settings = SettingsService()
     private let accessPolicy = SandboxFileAccessPolicy.current
-    private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy)
+    private let fileSystemScheduler = FileSystemOperationScheduler.shared
+    private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: fileSystemScheduler)
     private lazy var fileOperations = FileOperationService(accessPolicy: accessPolicy)
     private lazy var volumeChangeMonitor = VolumeChangeMonitor()
-    private let fileSystemProbe: any FileSystemProbing = FileSystemProbeService()
+    private lazy var fileSystemProbe: any FileSystemProbing = FileSystemProbeService(scheduler: fileSystemScheduler)
     private let recentLocations = RecentLocationService()
 
     private lazy var leftPane = FilePaneViewController(

@@ -21,8 +21,10 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
     private let existsOperation: @Sendable (URL) -> Bool
     private let directoryOperation: @Sendable (URL) -> Bool
     private let volumeOperation: @Sendable (URL) -> String?
+    private let scheduler: FileSystemOperationScheduler
 
-    init(fileManager: FileManager = .default) {
+    init(fileManager: FileManager = .default, scheduler: FileSystemOperationScheduler = .shared) {
+        self.scheduler = scheduler
         existsOperation = { fileManager.fileExists(atPath: $0.path) }
         directoryOperation = { url in
             var isDirectory = ObjCBool(false)
@@ -37,8 +39,10 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
     init(
         existsOperation: @escaping @Sendable (URL) -> Bool,
         directoryOperation: @escaping @Sendable (URL) -> Bool,
-        volumeOperation: @escaping @Sendable (URL) -> String?
+        volumeOperation: @escaping @Sendable (URL) -> String?,
+        scheduler: FileSystemOperationScheduler = .shared
     ) {
+        self.scheduler = scheduler
         self.existsOperation = existsOperation
         self.directoryOperation = directoryOperation
         self.volumeOperation = volumeOperation
@@ -61,10 +65,20 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 let completion = ProbeCompletion(continuation)
-                cancellation.set { completion.finish(.unavailable) }
-                Task.detached(priority: .utility) { completion.finish(operation()) }
+                let operationTask = Task {
+                    do {
+                        completion.finish(try await self.scheduler.submit(priority: .probe, operation: operation))
+                    } catch {
+                        completion.finish(.unavailable)
+                    }
+                }
+                cancellation.set {
+                    operationTask.cancel()
+                    completion.finish(.unavailable)
+                }
                 Task.detached {
                     try? await Task.sleep(for: deadline)
+                    operationTask.cancel()
                     completion.finish(.unavailable)
                 }
             }
