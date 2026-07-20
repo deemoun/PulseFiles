@@ -2,7 +2,13 @@ import AppKit
 import ImageIO
 
 final class SidebarViewController: NSViewController {
+    typealias MetadataReader = @Sendable (URL) throws -> String?
+
     var onOpenLocation: ((URL, Bool) -> Void)?
+
+    /// Test-only observation point invoked after an inspector detail row has
+    /// passed its selection and cancellation checks and is about to be updated.
+    var onInspectorDetailUpdate: ((String, String) -> Void)?
 
     private enum SidebarMode: Int {
         case navigation
@@ -140,6 +146,7 @@ final class SidebarViewController: NSViewController {
     private let recentLocations: RecentLocationService
     private let accessPolicy: SandboxFileAccessPolicy
     private let volumeDiscovery: any VolumeDiscovering
+    private let metadataReader: MetadataReader
     private let scrollView = NSScrollView()
     private let modeControl = NSSegmentedControl()
     private let stack = NSStackView()
@@ -155,11 +162,13 @@ final class SidebarViewController: NSViewController {
     init(
         recentLocations: RecentLocationService,
         accessPolicy: SandboxFileAccessPolicy = .current,
-        volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService()
+        volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService(),
+        metadataReader: @escaping MetadataReader = SidebarViewController.gpsLocation
     ) {
         self.recentLocations = recentLocations
         self.accessPolicy = accessPolicy
         self.volumeDiscovery = volumeDiscovery
+        self.metadataReader = metadataReader
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -435,14 +444,27 @@ final class SidebarViewController: NSViewController {
 
     private func loadDetails(for item: FileItem, selectionID: UUID) {
         let accessPolicy = accessPolicy
+        let metadataReader = metadataReader
         sizeTask = Task { [weak self] in
-            let totalSize = await Self.totalSize(for: item.url, fallback: item.size, accessPolicy: accessPolicy)
-            let gps = item.isDirectory ? nil : Self.gpsLocation(for: item.url)
+            let details = await Task.detached(priority: .utility) {
+                let totalSize = Self.calculateTotalSize(for: item.url, fallback: item.size, accessPolicy: accessPolicy)
+                let gps: String?
+                if item.isDirectory {
+                    gps = nil
+                } else {
+                    gps = (try? metadataReader(item.url)) ?? nil
+                }
+                return (totalSize, gps)
+            }.value
             await MainActor.run {
-                guard let self, self.representedSelectionID == selectionID else { return }
-                self.updateInfoRow(identifier: "total-size", value: FileSizeFormatter.string(fromByteCount: totalSize))
+                guard !Task.isCancelled, let self, self.representedSelectionID == selectionID else { return }
+                let totalSize = FileSizeFormatter.string(fromByteCount: details.0)
+                self.onInspectorDetailUpdate?("total-size", totalSize)
+                self.updateInfoRow(identifier: "total-size", value: totalSize)
                 if self.isImage(item) {
-                    self.updateInfoRow(identifier: "gps-location", value: gps ?? "No GPS metadata")
+                    let gps = details.1 ?? "No GPS metadata"
+                    self.onInspectorDetailUpdate?("gps-location", gps)
+                    self.updateInfoRow(identifier: "gps-location", value: gps)
                 }
             }
         }
@@ -456,28 +478,34 @@ final class SidebarViewController: NSViewController {
                 total += await Self.totalSize(for: item.url, fallback: item.size, accessPolicy: accessPolicy)
             }
             await MainActor.run {
-                guard let self, self.representedSelectionID == selectionID else { return }
-                self.updateInfoRow(identifier: "total-size", value: FileSizeFormatter.string(fromByteCount: total))
+                guard !Task.isCancelled, let self, self.representedSelectionID == selectionID else { return }
+                let formattedTotal = FileSizeFormatter.string(fromByteCount: total)
+                self.onInspectorDetailUpdate?("total-size", formattedTotal)
+                self.updateInfoRow(identifier: "total-size", value: formattedTotal)
             }
         }
     }
 
     static func totalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy = .current) async -> Int64 {
         await Task.detached(priority: .utility) {
-            guard accessPolicy.canAccess(url, logDecision: false) else { return fallback }
-            return accessPolicy.withAccess(to: [url]) {
-                var isDirectory: ObjCBool = false
-                guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return fallback }
-                guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { return fallback }
-                var total: Int64 = 0
-                while let child = enumerator.nextObject() as? URL {
-                    if Task.isCancelled { return total }
-                    guard let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true else { continue }
-                    total += Int64(values.fileSize ?? 0)
-                }
-                return total
-            }
+            Self.calculateTotalSize(for: url, fallback: fallback, accessPolicy: accessPolicy)
         }.value
+    }
+
+    private static func calculateTotalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy) -> Int64 {
+        guard accessPolicy.canAccess(url, logDecision: false) else { return fallback }
+        return accessPolicy.withAccess(to: [url]) {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return fallback }
+            guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { return fallback }
+            var total: Int64 = 0
+            while let child = enumerator.nextObject() as? URL {
+                if Task.isCancelled { return total }
+                guard let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true else { continue }
+                total += Int64(values.fileSize ?? 0)
+            }
+            return total
+        }
     }
 
     private static func gpsLocation(for url: URL) -> String? {
