@@ -686,7 +686,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         case .search:
             let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "Search".localized
-            item.searchField.placeholderString = "Filter active pane".localized
+            item.searchField.placeholderString = "Search active pane".localized
             item.searchField.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.searchField)
             item.searchField.target = self
             item.searchField.action = #selector(toolbarSearchChanged(_:))
