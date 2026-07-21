@@ -18,6 +18,7 @@ struct MainCommandRoutingState: Equatable {
     var activePaneID: PaneID
     var leftPane: MainCommandRoutingPane
     var rightPane: MainCommandRoutingPane
+    var isSinglePaneMode: Bool
     var isFileOperationActive: Bool
     var sandboxAllowsSelectedURLs: Bool
     var hasUndoRecovery: Bool
@@ -26,6 +27,7 @@ struct MainCommandRoutingState: Equatable {
         activePaneID: PaneID = .left,
         leftPane: MainCommandRoutingPane,
         rightPane: MainCommandRoutingPane,
+        isSinglePaneMode: Bool = false,
         isFileOperationActive: Bool = false,
         sandboxAllowsSelectedURLs: Bool = true,
         hasUndoRecovery: Bool = false
@@ -33,6 +35,7 @@ struct MainCommandRoutingState: Equatable {
         self.activePaneID = activePaneID
         self.leftPane = leftPane
         self.rightPane = rightPane
+        self.isSinglePaneMode = isSinglePaneMode
         self.isFileOperationActive = isFileOperationActive
         self.sandboxAllowsSelectedURLs = sandboxAllowsSelectedURLs
         self.hasUndoRecovery = hasUndoRecovery
@@ -50,6 +53,7 @@ struct MainCommandRoutingState: Equatable {
 enum MainCommandRoutingDisabledReason: Equatable {
     case noSelection
     case noFocusedItem
+    case noOppositePane
     case sandboxRejectedSelection
     case fileOperationInProgress
     case noActiveFileOperation
@@ -82,6 +86,9 @@ struct MainCommandRouter {
         case .focusRightPane:
             return .switchPane(to: .right)
         case .copy, .move:
+            guard !state.isSinglePaneMode else {
+                return .disabled(command: command, reason: .noOppositePane)
+            }
             return selectedRoute(command, in: state) {
                 .crossPane(
                     command: command,

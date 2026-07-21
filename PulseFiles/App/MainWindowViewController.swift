@@ -457,6 +457,11 @@ final class MainWindowViewController: NSViewController {
             showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
+        guard !(isSinglePaneMode && (command == .copy || command == .move)) else {
+            DiagnosticLogger.log(.warning, category: "MainWindow", "Cross-pane command rejected because single-pane mode is active: command=\(command)")
+            showError(message: "Opposite Pane Unavailable".localized, detail: "Use dual-pane mode before copying or moving items between panes.".localized)
+            return
+        }
 
         switch command {
         case .open:
@@ -919,6 +924,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         activePaneID = focusPane
         rebuildPaneArrangement()
         updateActivePane()
+        NSApp.mainMenu?.update()
     }
 
     private func rebuildPaneArrangement() {
@@ -2174,6 +2180,7 @@ extension MainWindowViewController: NSMenuItemValidation {
                 selectedURLs: rightSelectedURLs,
                 focusedURL: rightFocusedURL
             ),
+            isSinglePaneMode: isSinglePaneMode,
             isFileOperationActive: isFileOperationActive,
             sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs,
             hasUndoRecovery: undoRecovery != nil
