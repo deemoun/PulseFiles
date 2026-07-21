@@ -59,6 +59,8 @@ final class FilePaneViewController: NSViewController {
     private var isPaneActive = false
     private var dimmedFileURLs = Set<String>()
     private var previousSelectedRowIndexes = IndexSet()
+    /// URLs survive sorting, filtering, and monitor-driven reloads; row indexes do not.
+    private var previousSelectionURLs: [URL] = []
     private var pendingSelectionURL: URL?
     private var inlineRenameRow: Int?
     /// The item snapshot remains valid while a refresh is deferred, even when
@@ -133,10 +135,11 @@ final class FilePaneViewController: NSViewController {
         bindViewModel()
     }
 
-    func loadDirectory(selecting url: URL? = nil) {
+    func loadDirectory(selecting url: URL? = nil, onLoaded: (@escaping () -> Void)? = nil) {
         pendingSelectionURL = url
         viewModel.loadCurrentDirectory { [weak self] in
             self?.selectPendingItemIfAvailable()
+            onLoaded?()
         }
     }
 
@@ -173,6 +176,7 @@ final class FilePaneViewController: NSViewController {
         guard viewModel.fallBackIfCurrentDirectoryIsUnavailable() else { return false }
         pendingSelectionURL = nil
         previousSelectedRowIndexes = []
+        previousSelectionURLs = []
         tableView.deselectAll(nil)
         onSelectionChanged?([])
         return true
@@ -459,6 +463,7 @@ final class FilePaneViewController: NSViewController {
         if !selectPendingItemIfAvailable(), tableView.selectedRow == -1, tableView.numberOfRows > 0 {
             selectDefaultRow()
         }
+        previousSelectionURLs = selectedItems.map(\.url)
         configureStatusView()
         configureContentOverlay()
         onSelectionChanged?(selectedItems)
@@ -488,6 +493,7 @@ final class FilePaneViewController: NSViewController {
     @discardableResult
     private func selectPendingItemIfAvailable() -> Bool {
         guard !viewModel.isLoading, let pendingSelectionURL else { return false }
+        let selectedURL = pendingSelectionURL
         guard let itemIndex = viewModel.visibleItems.firstIndex(where: {
             isSameFileURL($0.url, pendingSelectionURL)
         }) else { return false }
@@ -497,6 +503,7 @@ final class FilePaneViewController: NSViewController {
         tableView.scrollRowToVisible(row)
         self.pendingSelectionURL = nil
         previousSelectedRowIndexes = tableView.selectedRowIndexes
+        previousSelectionURLs = [selectedURL]
         return true
     }
 
@@ -522,11 +529,9 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func restorePreviousSelectionIfPossible() {
-        guard pendingSelectionURL == nil, !previousSelectedRowIndexes.isEmpty else { return }
-        let selectedURLs = previousSelectedRowIndexes.compactMap { item(forRow: $0)?.url }
-        guard !selectedURLs.isEmpty else { return }
+        guard pendingSelectionURL == nil, !previousSelectionURLs.isEmpty else { return }
 
-        let rows = selectedURLs.reduce(into: IndexSet()) { partialResult, url in
+        let rows = previousSelectionURLs.reduce(into: IndexSet()) { partialResult, url in
             if let index = viewModel.visibleItems.firstIndex(where: { isSameFileURL($0.url, url) }) {
                 partialResult.insert(index + realRowOffset)
             }
@@ -753,6 +758,9 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         configureStatusView()
         configureContentOverlay()
         onSelectionChanged?(selectedItems)
+        if !isReloadingData {
+            previousSelectionURLs = selectedItems.map(\.url)
+        }
         if !isReloadingData {
             onActivate?()
         }
