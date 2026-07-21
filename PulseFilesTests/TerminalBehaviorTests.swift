@@ -146,7 +146,7 @@ final class TerminalBehaviorTests: XCTestCase {
 
         XCTAssertFalse(process.didRun)
         XCTAssertNil(process.currentDirectoryURL)
-        XCTAssertTrue(controller.terminalTextForTesting.contains("Acknowledge the experimental terminal warning"))
+        XCTAssertTrue(controller.terminalTextForTesting.contains("Acknowledge the post-V1 experimental terminal warning"))
     }
 
     @MainActor

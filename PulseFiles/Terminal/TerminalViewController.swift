@@ -61,7 +61,7 @@ final class TerminalViewController: NSViewController {
         terminalView.onSubmit = { [weak self] command in
             self?.run(command)
         }
-        appendLine("PulseFiles terminal (experimental V1)")
+        appendLine("PulseFiles post-V1 experimental terminal")
         appendLine("Warning: shell commands can modify or delete files.")
         appendPrompt()
     }
@@ -153,7 +153,7 @@ final class TerminalViewController: NSViewController {
         }
         guard isShellInteractionAllowedProvider?() ?? true else {
             DiagnosticLogger.log(.warning, category: "Terminal", "Blocked terminal command until the first-use warning is acknowledged")
-            appendLine("Acknowledge the experimental terminal warning before running shell commands.")
+            appendLine("Acknowledge the post-V1 experimental terminal warning before running shell commands.")
             appendPrompt()
             return
         }

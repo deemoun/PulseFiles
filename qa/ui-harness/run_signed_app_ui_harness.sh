@@ -158,8 +158,8 @@ tell application "System Events" to tell process appName
   key code 53
 end tell
 
--- Terminal disabled state: toggle should not show terminal when disabled.
-pressMenu(appName, "View", "Toggle Terminal")
+-- Post-V1 experimental terminal disabled state: toggle should not show terminal when disabled.
+pressMenu(appName, "View", "Toggle Post-V1 Experimental Terminal")
 delay 0.5
 
 -- Confirmation flows: invoke copy/move/delete and cancel dialogs so disposable files are not changed by the harness.
@@ -208,7 +208,7 @@ tell application "System Events" to tell process appName
   key code 53
 end tell
 
--- Enable terminal preference and verify the toggle path can be invoked. The app may show its first-use warning.
+-- Enable the post-V1 experimental terminal preference and verify the toggle path can be invoked. The app may show its first-use warning.
 do shell script "/usr/bin/defaults write ${BUNDLE_ID} experimentalTerminalEnabled -bool true; /usr/bin/defaults write ${BUNDLE_ID} hasAcknowledgedTerminalWarning -bool true"
 tell application appName to quit
 waitForProcess(appName, false, 10)
@@ -216,7 +216,7 @@ do shell script "open -n " & quoted form of appPath
 waitForProcess(appName, true, 10)
 waitForWindow(appName, 10)
 delay 1
-pressMenu(appName, "View", "Toggle Terminal")
+pressMenu(appName, "View", "Toggle Post-V1 Experimental Terminal")
 delay 0.7
 
 -- Close-last-window termination.
