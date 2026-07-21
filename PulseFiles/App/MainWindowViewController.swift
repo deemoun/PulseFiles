@@ -62,11 +62,12 @@ struct RenamePaneRefreshPlan {
 
     init(currentDirectories: [URL], sourceURL: URL) {
         let sourceDirectory = sourceURL.deletingLastPathComponent()
-        renamedPaneIndexes = currentDirectories.indices.filter {
+        let renamedIndexes = currentDirectories.indices.filter {
             FilePathComparison.isSamePath(currentDirectories[$0], sourceDirectory)
         }
+        renamedPaneIndexes = renamedIndexes
         genericRefreshPaneIndexes = currentDirectories.indices.filter {
-            !renamedPaneIndexes.contains($0)
+            !renamedIndexes.contains($0)
         }
     }
 }
