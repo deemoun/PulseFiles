@@ -24,6 +24,15 @@ let package = Package(
             dependencies: ["PulseFiles"],
             path: "PulseFilesTests",
             exclude: ["TestSupport/README.md"]
+        ),
+        // SwiftPM cannot create an Xcode UI-test bundle.  Keep AppKit wiring
+        // coverage separate from service tests while still exercising the
+        // actual views and accessibility tree in-process.
+        .testTarget(
+            name: "PulseFilesAppKitUITests",
+            dependencies: ["PulseFiles"],
+            path: "PulseFilesAppKitUITests",
+            exclude: ["README.md"]
         )
     ]
 )

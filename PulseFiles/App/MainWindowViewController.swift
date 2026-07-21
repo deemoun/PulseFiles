@@ -1926,6 +1926,41 @@ extension MainWindowViewController: NSWindowDelegate {
     }
 }
 
+#if DEBUG
+/// Narrow, debug-only seam used by the deterministic AppKit UI harness.
+/// It keeps the harness on the same controller routing used by menu and
+/// keyboard actions without exposing mutable production UI state in releases.
+extension MainWindowViewController {
+    struct UIHarnessState: Equatable {
+        let activePaneID: PaneID
+        let leftDirectory: URL
+        let rightDirectory: URL
+        let leftSearchQuery: String
+        let rightSearchQuery: String
+    }
+
+    var uiHarnessState: UIHarnessState {
+        UIHarnessState(
+            activePaneID: activePaneID,
+            leftDirectory: leftPane.currentDirectory,
+            rightDirectory: rightPane.currentDirectory,
+            leftSearchQuery: leftPane.viewModel.searchQuery,
+            rightSearchQuery: rightPane.viewModel.searchQuery
+        )
+    }
+
+    func uiHarnessNavigate(_ paneID: PaneID, to directory: URL) {
+        activePaneID = paneID
+        targetPane().navigate(to: directory)
+    }
+
+    func uiHarnessSetSearchQuery(_ query: String) {
+        activeFilterText = query
+        targetPane().setSearchQuery(query)
+    }
+}
+#endif
+
 extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
