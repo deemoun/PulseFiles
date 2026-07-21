@@ -1147,12 +1147,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func startCreationOperation(named operationName: String, directory: URL, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
-        startFileOperation(named: operationName, operation: operation) { [weak self] result in
+        startFileOperation(named: operationName, operation: operation, completion: { [weak self] result in
             guard let self, let destination = result.completedItems.first else { return }
             let pane = [self.leftPane, self.rightPane].first { $0.currentDirectory == directory } ?? self.targetPane()
             pane.viewModel.invalidateCurrentDirectorySnapshot()
             pane.loadDirectory(selecting: destination)
-        }
+        })
     }
 
     private func presentOpenWithApplicationPicker() {

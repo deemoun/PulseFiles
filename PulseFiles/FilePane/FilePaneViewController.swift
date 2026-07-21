@@ -135,7 +135,7 @@ final class FilePaneViewController: NSViewController {
         bindViewModel()
     }
 
-    func loadDirectory(selecting url: URL? = nil, onLoaded: (@escaping () -> Void)? = nil) {
+    func loadDirectory(selecting url: URL? = nil, onLoaded: (() -> Void)? = nil) {
         pendingSelectionURL = url
         viewModel.loadCurrentDirectory { [weak self] in
             self?.selectPendingItemIfAvailable()
@@ -833,7 +833,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             isCancelled: isCancelled
         )
         clearInlineRenameState()
-        if case let .rename(itemURL, name) = result, let item {
+        if case let .rename(_, name) = result, let item {
             onRenameItem?(item, name)
         }
         flushDeferredTableReloadIfNeeded()
@@ -1084,7 +1084,7 @@ struct InlineRenameCommitSession {
     }
 
     func matches(itemURL: URL, generation: UInt) -> Bool {
-        guard let normalizedItemPath else { return false }
+        guard normalizedItemPath != nil else { return false }
         return self.generation == generation && self.normalizedItemPath == normalizedPath(for: itemURL)
     }
 
