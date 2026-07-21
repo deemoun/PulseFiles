@@ -1,9 +1,10 @@
 import AppKit
 
 final class SettingsViewController: NSViewController {
-    private enum Category: Int, CaseIterable {
+    enum Category: Int, CaseIterable {
         case general
         case folders
+        case permissions
         case operations
         case colors
 #if DEBUG
@@ -14,6 +15,7 @@ final class SettingsViewController: NSViewController {
             switch self {
             case .general: return "General".localized
             case .folders: return "Folders".localized
+            case .permissions: return "Permissions".localized
             case .operations: return "Operations".localized
             case .colors: return "Colors".localized
 #if DEBUG
@@ -26,6 +28,7 @@ final class SettingsViewController: NSViewController {
             switch self {
             case .general: return "gearshape"
             case .folders: return "folder"
+            case .permissions: return "lock.shield"
             case .operations: return "arrow.left.arrow.right"
             case .colors: return "paintpalette"
 #if DEBUG
@@ -281,6 +284,21 @@ final class SettingsViewController: NSViewController {
                     ]
                 )
             ]
+        case .permissions:
+            return [
+                settingsSection(
+                    title: "Effective Access Mode".localized,
+                    views: [effectiveAccessModeView()]
+                ),
+                settingsSection(
+                    title: "Folder Access Grants".localized,
+                    views: [folderAccessGrantsView()]
+                ),
+                settingsSection(
+                    title: "macOS Privacy Permissions".localized,
+                    views: [privacyPermissionsExplanationView()]
+                )
+            ]
         case .operations:
             return [
                 settingsSection(
@@ -310,6 +328,80 @@ final class SettingsViewController: NSViewController {
             ]
 #endif
         }
+    }
+
+    private func effectiveAccessModeView() -> NSView {
+        let title = accessPolicy.isEnabled
+            ? "DEBUG experimental sandbox is enabled".localized
+            : "Normal macOS-governed file-manager access".localized
+        let message = accessPolicy.isEnabled
+            ? "File access is limited to the experimental sandbox root unless a folder has an explicit security-scoped grant. Sandbox root: %@".localized(with: accessPolicy.rootURL.path)
+            : "PulseFiles uses the access that macOS allows for this app. Protected locations and folder grants are still checked through the file access policy.".localized
+        return permissionStatusView(title: title, message: message)
+    }
+
+    private func folderAccessGrantsView() -> NSView {
+        let grants = accessGrantService.grants
+        let rows = NSStackView()
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 8
+
+        if grants.isEmpty {
+            let empty = NSTextField(wrappingLabelWithString: "No persisted folder access grants.".localized)
+            empty.textColor = .secondaryLabelColor
+            rows.addArrangedSubview(empty)
+        } else {
+            for grant in grants {
+                let isStale = accessGrantService.staleGrantURLs.contains { $0.standardizedFileURL == grant.url.standardizedFileURL }
+                let path = NSTextField(labelWithString: grant.url.path)
+                path.lineBreakMode = .byTruncatingMiddle
+                path.toolTip = grant.url.path
+                let state = NSTextField(labelWithString: isStale ? "Unavailable or stale bookmark".localized : "Available".localized)
+                state.textColor = isStale ? .systemOrange : .secondaryLabelColor
+                let revoke = NSButton(title: "Revoke".localized, target: self, action: #selector(revokeFolderAccess(_:)))
+                revoke.representedObject = grant.url as NSURL
+                let row = NSStackView(views: [path, state, revoke])
+                row.orientation = .horizontal
+                row.alignment = .centerY
+                row.spacing = 8
+                path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                rows.addArrangedSubview(row)
+                row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+            }
+        }
+
+        let grant = NSButton(title: "Grant Folder Access…".localized, target: self, action: #selector(grantFolderAccess(_:)))
+        let refresh = NSButton(title: "Refresh Grant Status".localized, target: self, action: #selector(refreshFolderAccessGrants(_:)))
+        let controls = NSStackView(views: [grant, refresh])
+        controls.orientation = .horizontal
+        controls.spacing = 8
+        let stack = NSStackView(views: [rows, controls])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        rows.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return stack
+    }
+
+    private func privacyPermissionsExplanationView() -> NSView {
+        let message = "macOS controls access to protected locations. PulseFiles cannot silently grant itself Full Disk Access or other broad privacy permissions; use System Settings if you need to review or recover those permissions.".localized
+        let label = NSTextField(wrappingLabelWithString: message)
+        label.textColor = .secondaryLabelColor
+        return label
+    }
+
+    private func permissionStatusView(title: String, message: String) -> NSView {
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        let messageLabel = NSTextField(wrappingLabelWithString: message)
+        messageLabel.textColor = .secondaryLabelColor
+        messageLabel.isSelectable = true
+        let stack = NSStackView(views: [titleLabel, messageLabel])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        return stack
     }
 
 
@@ -567,6 +659,29 @@ final class SettingsViewController: NSViewController {
         onChange?()
     }
 
+    @objc private func grantFolderAccess(_ sender: Any?) {
+        accessGrantService.requestGrant(startingAt: nil, window: view.window) { [weak self] result in
+            guard let self else { return }
+            self.accessGrantService.refreshResolvedGrants()
+            self.rebuildSettingsPage()
+            if case .failure(let error) = result,
+               (error as? CocoaError)?.code != .userCancelled {
+                self.showFolderGrantFailureAlert(error)
+            }
+        }
+    }
+
+    @objc private func refreshFolderAccessGrants(_ sender: Any?) {
+        accessGrantService.refreshResolvedGrants()
+        rebuildSettingsPage()
+    }
+
+    @objc private func revokeFolderAccess(_ sender: NSButton) {
+        guard let url = sender.representedObject as? NSURL else { return }
+        _ = accessGrantService.removeGrant(for: url as URL)
+        rebuildSettingsPage()
+    }
+
     @objc private func controlChanged(_ sender: Any?) {
         settings.defaultSidebarVisible = sidebarCheckbox.state == .on
         settings.liquidGlassEnabled = liquidGlassCheckbox.state == .on
@@ -642,6 +757,19 @@ final class SettingsViewController: NSViewController {
         alert.alertStyle = .warning
         alert.messageText = "Folder Access Needed".localized
         alert.informativeText = "PulseFiles does not currently have permission to access this folder. Choose another folder or grant access in macOS privacy settings.".localized
+        alert.addButton(withTitle: "OK".localized)
+        if let window = view.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
+    }
+
+    private func showFolderGrantFailureAlert(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Could Not Grant Folder Access".localized
+        alert.informativeText = "PulseFiles could not create a secure folder-access bookmark. No additional folder access was granted. %@".localized(with: error.localizedDescription)
         alert.addButton(withTitle: "OK".localized)
         if let window = view.window {
             alert.beginSheetModal(for: window)
