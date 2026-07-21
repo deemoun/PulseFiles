@@ -61,7 +61,11 @@ final class FilePaneViewController: NSViewController {
     private var previousSelectedRowIndexes = IndexSet()
     private var pendingSelectionURL: URL?
     private var inlineRenameRow: Int?
+    /// The item snapshot remains valid while a refresh is deferred, even when
+    /// filtering, sorting, or navigation has already changed the view model.
+    private var inlineRenameItem: FileItem?
     private var inlineRenameSession = InlineRenameCommitSession()
+    private var hasDeferredTableReload = false
     private lazy var dropProbeCache = FileSystemProbeCache()
     private lazy var dropTransferPolicy = DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
         guard let self else { return nil }
@@ -196,7 +200,7 @@ final class FilePaneViewController: NSViewController {
         guard isPaneActive != active else { return }
         isPaneActive = active
         updatePaneChrome()
-        tableView.reloadData()
+        requestTableReload()
     }
 
     private func updatePaneChrome() {
@@ -230,6 +234,7 @@ final class FilePaneViewController: NSViewController {
         guard let row = row(for: item), !isParentRow(row) else { return false }
         guard let nameColumn = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }) else { return false }
         inlineRenameRow = row
+        inlineRenameItem = item
         inlineRenameSession.begin(for: item.url)
         updateInlineRenameField(at: row, for: item.url)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -250,7 +255,7 @@ final class FilePaneViewController: NSViewController {
 
     func setDimmedFileURLs(_ urls: [URL]) {
         dimmedFileURLs = Set(urls.map(normalizedPath))
-        tableView.reloadData()
+        requestTableReload()
     }
 
     private func buildHeader() {
@@ -406,10 +411,43 @@ final class FilePaneViewController: NSViewController {
         LiquidGlassStyle.applyButtonChrome(to: hiddenButton)
         LiquidGlassStyle.applyPanelChrome(to: view)
         updatePaneChrome()
-        tableView.reloadData()
+        requestTableReload()
     }
 
     private func reloadData() {
+        requestTableReload()
+    }
+
+    /// Keeps AppKit's field editor alive while the table's backing listing is
+    /// changing. This is deliberately a defer/coalesce policy: the current
+    /// rename is completed or cancelled before the table is rebuilt.
+    private func requestTableReload() {
+        guard let editedItem = inlineRenameItem,
+              inlineRenameSession.isEditing else {
+            performTableReload()
+            return
+        }
+
+        // A filtered-out item is still a valid rename target. Only cancel when
+        // the file itself has disappeared, so we never submit a stale path.
+        switch InlineRenameReloadPolicy.decision(
+            isEditing: inlineRenameSession.isEditing,
+            itemExists: FileManager.default.fileExists(atPath: editedItem.url.path)
+        ) {
+        case .deferReload:
+            hasDeferredTableReload = true
+        case .cancelRenameAndReload:
+            inlineRenameSession.cancel()
+            clearInlineRenameState()
+            hasDeferredTableReload = false
+            performTableReload()
+            showInlineRenameItemRemovedAlert()
+        case .reloadNow:
+            performTableReload()
+        }
+    }
+
+    private func performTableReload() {
         isReloadingData = true
         defer { isReloadingData = false }
         breadcrumb.configure(url: viewModel.currentDirectory)
@@ -426,6 +464,25 @@ final class FilePaneViewController: NSViewController {
         onSelectionChanged?(selectedItems)
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files".localized)
+    }
+
+    private func flushDeferredTableReloadIfNeeded() {
+        guard hasDeferredTableReload else { return }
+        hasDeferredTableReload = false
+        performTableReload()
+    }
+
+    private func showInlineRenameItemRemovedAlert() {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Rename Cancelled".localized
+        alert.informativeText = "The item being renamed was removed or moved by another application. No rename was made.".localized
+        alert.addButton(withTitle: "OK".localized)
+        if let window = view.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     @discardableResult
@@ -752,7 +809,14 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
               let sessionGeneration,
               inlineRenameSession.matches(itemURL: itemURL, generation: sessionGeneration) else { return }
 
-        let item = item(for: itemURL)
+        let item = inlineRenameItem
+        guard isCancelled || (item.map { FileManager.default.fileExists(atPath: $0.url.path) } ?? false) else {
+            inlineRenameSession.cancel()
+            clearInlineRenameState()
+            showInlineRenameItemRemovedAlert()
+            flushDeferredTableReloadIfNeeded()
+            return
+        }
         let result = inlineRenameSession.commit(
             itemURL: itemURL,
             generation: sessionGeneration,
@@ -764,6 +828,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         if case let .rename(itemURL, name) = result, let item {
             onRenameItem?(item, name)
         }
+        flushDeferredTableReloadIfNeeded()
     }
 
     private func item(for url: URL) -> FileItem? {
@@ -780,6 +845,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     private func clearInlineRenameState() {
         inlineRenameRow = nil
+        inlineRenameItem = nil
     }
 
     private func reloadRowsForSelectionColorChange() {
@@ -790,6 +856,10 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         )
         previousSelectedRowIndexes = currentSelectedRowIndexes
         guard !changedRows.isEmpty else { return }
+        guard !inlineRenameSession.isEditing else {
+            hasDeferredTableReload = true
+            return
+        }
         tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
     }
 
@@ -962,6 +1032,20 @@ private final class InlineRenameTextField: NSTextField {
     var sessionGeneration: UInt?
 }
 
+/// Defines the safe table-refresh behavior while AppKit owns an inline editor.
+enum InlineRenameReloadPolicy {
+    enum Decision: Equatable {
+        case reloadNow
+        case deferReload
+        case cancelRenameAndReload
+    }
+
+    static func decision(isEditing: Bool, itemExists: Bool) -> Decision {
+        guard isEditing else { return .reloadNow }
+        return itemExists ? .deferReload : .cancelRenameAndReload
+    }
+}
+
 /// Tracks one edit independently from the table's lifecycle callbacks.
 /// A successful, unchanged, or cancelled decision consumes the session; stale
 /// callbacks therefore cannot submit a rename for a newer edit.
@@ -974,11 +1058,17 @@ struct InlineRenameCommitSession {
     }
 
     private(set) var itemURL: URL?
+    /// Identity is a normalized path, rather than the table row which can
+    /// change under sorting, filtering, or a directory monitor notification.
+    private(set) var normalizedItemPath: String?
     private(set) var generation: UInt = 0
+
+    var isEditing: Bool { itemURL != nil }
 
     mutating func begin(for itemURL: URL) {
         generation &+= 1
         self.itemURL = itemURL
+        normalizedItemPath = normalizedPath(for: itemURL)
     }
 
     func generation(for itemURL: URL) -> UInt? {
@@ -986,17 +1076,26 @@ struct InlineRenameCommitSession {
     }
 
     func matches(itemURL: URL, generation: UInt) -> Bool {
-        guard let activeURL = self.itemURL else { return false }
-        return self.generation == generation && isSameFileURL(activeURL, itemURL)
+        guard let normalizedItemPath else { return false }
+        return self.generation == generation && self.normalizedItemPath == normalizedPath(for: itemURL)
     }
 
     mutating func commit(itemURL: URL, generation: UInt, proposedName: String, originalName: String?, isCancelled: Bool) -> Result {
         guard matches(itemURL: itemURL, generation: generation) else { return .ignored }
-        defer { self.itemURL = nil }
+        defer { cancel() }
         guard !isCancelled else { return .cancelled }
         guard let originalName else { return .cancelled }
         guard proposedName != originalName else { return .noChange }
         return .rename(itemURL, proposedName)
+    }
+
+    mutating func cancel() {
+        itemURL = nil
+        normalizedItemPath = nil
+    }
+
+    private func normalizedPath(for url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 }
 

@@ -42,6 +42,27 @@ final class InlineRenameCommitSessionTests: XCTestCase {
         XCTAssertNil(session.generation(for: fileURL))
     }
 
+    func testExternalRefreshDuringInlineRenameDefersUntilTheEditFinishes() {
+        let decision = InlineRenameReloadPolicy.decision(isEditing: true, itemExists: true)
+
+        XCTAssertEqual(decision, .deferReload)
+    }
+
+    func testExternalRefreshCancelsInsteadOfRenamingAnItemRemovedExternally() {
+        let decision = InlineRenameReloadPolicy.decision(isEditing: true, itemExists: false)
+
+        XCTAssertEqual(decision, .cancelRenameAndReload)
+    }
+
+    func testSessionMatchesEquivalentNormalizedURLs() throws {
+        let fileURL = URL(fileURLWithPath: "/tmp/PulseFilesRename/../Original.txt")
+        let normalizedURL = URL(fileURLWithPath: "/tmp/Original.txt")
+        var session = InlineRenameCommitSession()
+        session.begin(for: fileURL)
+
+        XCTAssertNotNil(session.generation(for: normalizedURL))
+    }
+
     private func submit(_ result: InlineRenameCommitSession.Result, into callbacks: inout [String]) {
         if case let .rename(_, name) = result {
             callbacks.append(name)
