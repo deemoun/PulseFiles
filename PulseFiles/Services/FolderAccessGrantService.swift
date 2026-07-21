@@ -16,6 +16,14 @@ struct FolderAccessScope {
     }
 }
 
+/// The usable state of a persisted folder capability for a requested path.
+enum FolderAccessGrantStatus: Equatable {
+    case noMatchingGrant
+    case staleOrUnavailable
+    case available
+    case inaccessible
+}
+
 protocol FolderAccessBookmarkResolving {
     func makeBookmarkData(for url: URL) throws -> Data
     func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool)
@@ -41,17 +49,23 @@ final class FolderAccessGrantService {
     private let defaults: UserDefaults
     private let resolver: FolderAccessBookmarkResolving
     private let fileManager: FileManager
+    private let startSecurityScopedAccess: (URL) -> Bool
+    private let stopSecurityScopedAccess: (URL) -> Void
     private var resolvedGrants: [String: URL] = [:]
     private(set) var staleGrantURLs: [URL] = []
 
     init(
         defaults: UserDefaults = .standard,
         resolver: FolderAccessBookmarkResolving = SystemFolderAccessBookmarkResolver(),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        startSecurityScopedAccess: @escaping (URL) -> Bool = { $0.startAccessingSecurityScopedResource() },
+        stopSecurityScopedAccess: @escaping (URL) -> Void = { $0.stopAccessingSecurityScopedResource() }
     ) {
         self.defaults = defaults
         self.resolver = resolver
         self.fileManager = fileManager
+        self.startSecurityScopedAccess = startSecurityScopedAccess
+        self.stopSecurityScopedAccess = stopSecurityScopedAccess
         resolveStoredBookmarks()
     }
 
@@ -131,7 +145,6 @@ final class FolderAccessGrantService {
             do {
                 let resolved = try resolver.resolveBookmarkData(grant.bookmarkData)
                 let standardized = resolved.url.standardizedFileURL
-                resolvedGrants[normalizedPath(standardized)] = standardized
                 var resolvedGrant = FolderAccessGrant(url: standardized, bookmarkData: grant.bookmarkData)
                 if resolved.isStale {
                     do {
@@ -142,8 +155,11 @@ final class FolderAccessGrantService {
                         shouldRewriteStoredGrants = true
                     } catch {
                         staleGrantURLs.append(standardized)
+                        resolvedStoredGrants.append(grant)
+                        continue
                     }
                 }
+                resolvedGrants[normalizedPath(standardized)] = standardized
                 if resolvedGrant.url != grant.url.standardizedFileURL {
                     shouldRewriteStoredGrants = true
                 }
@@ -181,6 +197,27 @@ final class FolderAccessGrantService {
 
     func hasGrant(containing url: URL) -> Bool {
         resolvedGrant(containing: url) != nil
+    }
+
+    /// Checks a matching bookmark without leaving a security-scoped resource active.
+    /// `canRead` and `canWrite` are deliberately injected so this decision is testable
+    /// and can use the caller's filesystem access policy.
+    func grantStatus(
+        containing url: URL,
+        requireWritable: Bool = false,
+        canRead: (String) -> Bool,
+        canWrite: (String) -> Bool = { _ in true }
+    ) -> FolderAccessGrantStatus {
+        guard let grantURL = resolvedGrant(containing: url) else {
+            return storedGrant(containing: url) == nil ? .noMatchingGrant : .staleOrUnavailable
+        }
+
+        guard startSecurityScopedAccess(grantURL) else { return .inaccessible }
+        defer { stopSecurityScopedAccess(grantURL) }
+
+        let path = normalizedPath(url)
+        guard canRead(path), !requireWritable || canWrite(path) else { return .inaccessible }
+        return .available
     }
 
     func withSecurityScopedAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
@@ -251,7 +288,7 @@ final class FolderAccessGrantService {
         var seen = Set<String>()
         for url in urls.compactMap({ resolvedGrant(containing: $0) }) {
             guard seen.insert(normalizedPath(url)).inserted else { continue }
-            if url.startAccessingSecurityScopedResource() {
+            if startSecurityScopedAccess(url) {
                 started.append(url)
             }
         }
@@ -259,13 +296,21 @@ final class FolderAccessGrantService {
     }
 
     private func stopAccessing(_ urls: [URL]) {
-        urls.reversed().forEach { $0.stopAccessingSecurityScopedResource() }
+        urls.reversed().forEach(stopSecurityScopedAccess)
     }
 
     private func resolvedGrant(containing url: URL) -> URL? {
         let candidate = normalizedPath(url)
         return resolvedGrants.values.first { grantURL in
             let grantPath = normalizedPath(grantURL)
+            return candidate == grantPath || candidate.hasPrefix(grantPath + "/")
+        }
+    }
+
+    private func storedGrant(containing url: URL) -> FolderAccessGrant? {
+        let candidate = normalizedPath(url)
+        return grants.first { grant in
+            let grantPath = normalizedPath(grant.url)
             return candidate == grantPath || candidate.hasPrefix(grantPath + "/")
         }
     }

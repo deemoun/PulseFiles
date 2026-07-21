@@ -39,7 +39,12 @@ final class SandboxFileAccessPolicyTests: XCTestCase {
         let fixture = try SandboxFixture(testCase: self)
         let defaultsFixture = try IsolatedDefaultsFixture(prefix: "SandboxFileAccessPolicyGrantTests", testCase: self)
         defer { defaultsFixture.cleanup() }
-        let grantService = FolderAccessGrantService(defaults: defaultsFixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
+        let grantService = FolderAccessGrantService(
+            defaults: defaultsFixture.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in true },
+            stopSecurityScopedAccess: { _ in }
+        )
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root, grantService: grantService)
         let externalFile = try fixture.externalFile("Granted/File.txt", contents: "granted")
 
@@ -49,6 +54,46 @@ final class SandboxFileAccessPolicyTests: XCTestCase {
 
         XCTAssertTrue(policy.canAccess(externalFile))
         XCTAssertNoThrow(try policy.validateAccess(to: externalFile))
+    }
+
+    func testResolvedGrantIsDeniedWhenInjectedProbeCannotReadIt() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let defaultsFixture = try IsolatedDefaultsFixture(prefix: "SandboxFileAccessPolicyInaccessibleGrant", testCase: self)
+        defer { defaultsFixture.cleanup() }
+        let grantService = FolderAccessGrantService(
+            defaults: defaultsFixture.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in true },
+            stopSecurityScopedAccess: { _ in }
+        )
+        try grantService.grantAccess(to: fixture.externalDirectory)
+        let policy = SandboxFileAccessPolicy(
+            isEnabled: true,
+            rootURL: fixture.root,
+            grantService: grantService,
+            accessProbe: .init(fileExists: { _ in true }, isReadableFile: { _ in false }, isWritableFile: { _ in false })
+        )
+
+        XCTAssertFalse(policy.canAccess(fixture.externalDirectory))
+    }
+
+    func testUnrelatedFolderSelectionDoesNotAuthorizeRequestedDirectory() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let defaultsFixture = try IsolatedDefaultsFixture(prefix: "SandboxFileAccessPolicySelection", testCase: self)
+        defer { defaultsFixture.cleanup() }
+        let grantService = FolderAccessGrantService(
+            defaults: defaultsFixture.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in true },
+            stopSecurityScopedAccess: { _ in }
+        )
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root, grantService: grantService)
+        let unrelated = try fixture.root.deletingLastPathComponent().appendingPathComponent("Unrelated-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: unrelated) }
+
+        XCTAssertFalse(policy.grantSelectedFolder(unrelated, for: fixture.externalDirectory))
+        XCTAssertFalse(policy.canAccess(fixture.externalDirectory))
     }
 
     func testSiblingPathsWithSimilarPrefixesAreRejected() throws {

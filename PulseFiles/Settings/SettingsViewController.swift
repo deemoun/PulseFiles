@@ -353,12 +353,29 @@ final class SettingsViewController: NSViewController {
             rows.addArrangedSubview(empty)
         } else {
             for grant in grants {
-                let isStale = accessGrantService.staleGrantURLs.contains { $0.standardizedFileURL == grant.url.standardizedFileURL }
+                let grantStatus = accessGrantService.grantStatus(
+                    containing: grant.url,
+                    canRead: { FileManager.default.fileExists(atPath: $0) && FileManager.default.isReadableFile(atPath: $0) },
+                    canWrite: FileManager.default.isWritableFile(atPath:)
+                )
                 let path = NSTextField(labelWithString: grant.url.path)
                 path.lineBreakMode = .byTruncatingMiddle
                 path.toolTip = grant.url.path
-                let state = NSTextField(labelWithString: isStale ? "Unavailable or stale bookmark".localized : "Available".localized)
-                state.textColor = isStale ? .systemOrange : .secondaryLabelColor
+                let statusText: String
+                let statusColor: NSColor
+                switch grantStatus {
+                case .available:
+                    statusText = "Available".localized
+                    statusColor = .secondaryLabelColor
+                case .staleOrUnavailable:
+                    statusText = "Stale or unavailable".localized
+                    statusColor = .systemOrange
+                case .inaccessible, .noMatchingGrant:
+                    statusText = "Currently inaccessible".localized
+                    statusColor = .systemOrange
+                }
+                let state = NSTextField(labelWithString: statusText)
+                state.textColor = statusColor
                 let revoke = FolderAccessGrantButton(title: "Revoke".localized, target: self, action: #selector(revokeFolderAccess(_:)))
                 revoke.grantURL = grant.url
                 let row = NSStackView(views: [path, state, revoke])

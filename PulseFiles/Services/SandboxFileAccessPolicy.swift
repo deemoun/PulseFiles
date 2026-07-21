@@ -74,7 +74,7 @@ struct SandboxFileAccessPolicy {
             if isInsideExperimentalSandbox(url) {
                 allowed = true
                 reason = "inside sandbox root"
-            } else if grantService.hasGrant(containing: url) {
+            } else if hasUsableGrant(to: url) {
                 allowed = true
                 reason = "explicit folder access grant"
             } else {
@@ -82,7 +82,7 @@ struct SandboxFileAccessPolicy {
                 reason = "outside sandbox root and not explicitly granted"
             }
         } else {
-            allowed = hasProcessAccess(to: url) || grantService.hasGrant(containing: url)
+            allowed = hasProcessAccess(to: url) || hasUsableGrant(to: url)
             reason = allowed ? "directly readable, security-scoped, or granted" : "not readable or not authorized"
         }
         if shouldLogDecision {
@@ -108,7 +108,7 @@ struct SandboxFileAccessPolicy {
             if isInsideExperimentalSandbox(parentDirectory) {
                 allowed = true
                 reason = "parent inside sandbox root"
-            } else if grantService.hasGrant(containing: parentDirectory) {
+            } else if hasUsableGrant(to: parentDirectory, requireWritable: true) {
                 allowed = true
                 reason = "parent inside explicit folder access grant"
             } else {
@@ -116,7 +116,7 @@ struct SandboxFileAccessPolicy {
                 reason = "parent outside sandbox root and not explicitly granted"
             }
         } else {
-            allowed = hasProcessAccess(to: parentDirectory, requireWritable: true) || grantService.hasGrant(containing: parentDirectory)
+            allowed = hasProcessAccess(to: parentDirectory, requireWritable: true) || hasUsableGrant(to: parentDirectory, requireWritable: true)
             reason = allowed ? "parent directly readable and writable, security-scoped, or granted" : "parent not writable or not authorized"
         }
 
@@ -167,12 +167,7 @@ struct SandboxFileAccessPolicy {
                 completion(false)
                 return
             }
-            do {
-                _ = try grantService.grantAccess(to: selectedURL)
-                completion(true)
-            } catch {
-                completion(false)
-            }
+            completion(grantSelectedFolder(selectedURL, for: directory))
         }
 
         if let window {
@@ -182,6 +177,21 @@ struct SandboxFileAccessPolicy {
         }
     }
     #endif
+
+    /// Completes a folder-picker decision. Kept separate from AppKit so the
+    /// containment and post-grant validation are testable.
+    @discardableResult
+    func grantSelectedFolder(_ selectedFolder: URL, for requestedDirectory: URL) -> Bool {
+        do {
+            let grant = try grantService.grantAccess(to: selectedFolder)
+            guard contains(requestedDirectory, within: grant.url), canAccess(requestedDirectory) else {
+                return false
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
 
 
     func withAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
@@ -220,6 +230,21 @@ struct SandboxFileAccessPolicy {
             return accessProbe.isWritableFile(path)
         }
         return true
+    }
+
+    private func hasUsableGrant(to url: URL, requireWritable: Bool = false) -> Bool {
+        grantService.grantStatus(
+            containing: url,
+            requireWritable: requireWritable,
+            canRead: { accessProbe.fileExists($0) && accessProbe.isReadableFile($0) },
+            canWrite: accessProbe.isWritableFile
+        ) == .available
+    }
+
+    private func contains(_ candidate: URL, within container: URL) -> Bool {
+        let containerPath = normalizedPath(container)
+        let candidatePath = normalizedPath(candidate)
+        return candidatePath == containerPath || candidatePath.hasPrefix(containerPath + "/")
     }
 
     private func logDecision(_ level: DiagnosticLogLevel, allowed: Bool, url: URL, reason: String) {
