@@ -149,6 +149,7 @@ final class SidebarViewController: NSViewController {
     private let volumeDiscovery: any VolumeDiscovering
     private let metadataReader: MetadataReader
     private let scrollView = NSScrollView()
+    private let documentView = SidebarDocumentView()
     private let modeControl = NSSegmentedControl()
     private let stack = NSStackView()
     private var selectedItems: [FileItem] = []
@@ -256,14 +257,24 @@ final class SidebarViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .width
         stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 12, bottom: 14, right: 12)
+        stack.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 14, right: 12)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = stack
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        documentView.addSubview(stack)
+        scrollView.documentView = documentView
+        let documentMinimumHeight = documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor)
+        documentMinimumHeight.priority = .defaultLow
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            stack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
+            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            documentMinimumHeight,
+
+            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor)
         ])
     }
 
@@ -590,6 +601,8 @@ final class SidebarViewController: NSViewController {
         container.layer?.borderColor = LiquidGlassStyle.subtleStroke.cgColor
         container.layer?.borderWidth = 1
         container.translatesAutoresizingMaskIntoConstraints = false
+        container.setContentHuggingPriority(.required, for: .vertical)
+        container.setContentCompressionResistancePriority(.required, for: .vertical)
 
         let imageView = NSImageView(image: presentation.icon)
         imageView.imageScaling = .scaleProportionallyDown
@@ -635,7 +648,7 @@ final class SidebarViewController: NSViewController {
             button.leadingAnchor.constraint(equalTo: textStack.leadingAnchor),
             button.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
             button.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: 8),
-            button.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -10)
+            button.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
         ])
         stack.setCustomSpacing(14, after: container)
     }
@@ -800,6 +813,10 @@ private final class SidebarInfoRowView: NSView {
             textStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5)
         ])
     }
+}
+
+private final class SidebarDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 private final class SidebarRowView: NSControl {
