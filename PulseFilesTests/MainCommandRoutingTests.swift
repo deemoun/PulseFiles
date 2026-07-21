@@ -32,6 +32,34 @@ final class MainCommandRoutingTests: XCTestCase {
         )
     }
 
+    func testCopyAndMoveAreDisabledInSinglePaneModeAndRestoreInDualPaneMode() {
+        let selected = URL(fileURLWithPath: "/sandbox/right/report.pdf")
+        let singlePaneState = makeState(activePaneID: .right, rightSelection: [selected], isSinglePaneMode: true)
+        let dualPaneState = makeState(activePaneID: .right, rightSelection: [selected], isSinglePaneMode: false)
+        let expectedDualPaneRoute = MainCommandRoute.crossPane(
+            command: .copy,
+            sourcePane: .right,
+            destinationPane: .left,
+            sourceURLs: [selected],
+            destinationDirectory: URL(fileURLWithPath: "/sandbox/left", isDirectory: true)
+        )
+
+        for command in [MainCommand.copy, .move] {
+            XCTAssertEqual(router.route(command, in: singlePaneState), .disabled(command: command, reason: .noOppositePane))
+        }
+        XCTAssertEqual(router.route(.copy, in: dualPaneState), expectedDualPaneRoute)
+        XCTAssertEqual(
+            router.route(.move, in: dualPaneState),
+            .crossPane(
+                command: .move,
+                sourcePane: .right,
+                destinationPane: .left,
+                sourceURLs: [selected],
+                destinationDirectory: URL(fileURLWithPath: "/sandbox/left", isDirectory: true)
+            )
+        )
+    }
+
     func testTabSwitchingAlternatesBetweenLeftAndRightPanes() {
         XCTAssertEqual(router.route(.switchPane, in: makeState(activePaneID: .left)), .switchPane(to: .right))
         XCTAssertEqual(router.route(.switchPane, in: makeState(activePaneID: .right)), .switchPane(to: .left))
@@ -167,6 +195,7 @@ final class MainCommandRoutingTests: XCTestCase {
         rightSelection: [URL] = [],
         leftFocusedURL: URL?? = nil,
         rightFocusedURL: URL?? = nil,
+        isSinglePaneMode: Bool = false,
         isFileOperationActive: Bool = false,
         sandboxAllowsSelectedURLs: Bool = true,
         hasUndoRecovery: Bool = false
@@ -185,6 +214,7 @@ final class MainCommandRoutingTests: XCTestCase {
                 selectedURLs: rightSelection,
                 focusedURL: rightFocusedURL ?? rightSelection.first
             ),
+            isSinglePaneMode: isSinglePaneMode,
             isFileOperationActive: isFileOperationActive,
             sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs,
             hasUndoRecovery: hasUndoRecovery
