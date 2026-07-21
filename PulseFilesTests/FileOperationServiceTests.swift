@@ -4,6 +4,22 @@ import Darwin
 #endif
 @testable import PulseFiles
 
+private final class CloudPlaceholderState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedPlaceholder: Bool
+    private var storedUnavailable = false
+
+    init(placeholder: Bool) { storedPlaceholder = placeholder }
+    var placeholder: Bool { get { lock.withLock { storedPlaceholder } } set { lock.withLock { storedPlaceholder = newValue } } }
+    var unavailable: Bool { get { lock.withLock { storedUnavailable } } set { lock.withLock { storedUnavailable = newValue } } }
+}
+
+private final class TestCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @unchecked Sendable {
+    let action: @Sendable (URL) async throws -> Bool
+    init(action: @escaping @Sendable (URL) async throws -> Bool) { self.action = action }
+    func prepareDownload(for url: URL) async throws -> Bool { try await action(url) }
+}
+
 final class FileOperationServiceTests: XCTestCase {
     func testOperationContextMarksBlockedCancellationAsUnknownUntilWorkerCanFinish() {
         let context = FileOperationContext()
@@ -14,6 +30,86 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(context.currentItem, item)
         XCTAssertTrue(context.needsVerification)
         XCTAssertFalse(FileOperationResult.unknownAfterAbandoning(currentItem: context.currentItem).wasCancelled)
+    }
+
+    func testCloudPlaceholderDownloadsThenCopiesWithPreparationProgress() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Cloud-only.txt")
+        try Data("downloaded".utf8).write(to: source)
+        let state = CloudPlaceholderState(placeholder: true)
+        let preparer = TestCloudDownloadPreparer { _ in
+            state.placeholder = false
+            return true
+        }
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, pathSafetyStateProvider: { url in
+            url == source ? .init(isICloudPlaceholder: state.placeholder) : .init()
+        }, cloudDownloadPreparer: preparer)
+        var progress: [FileOperationProgress] = []
+
+        let result = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: { progress.append($0) })
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try String(contentsOf: fixture.right.appendingPathComponent("Cloud-only.txt")), "downloaded")
+        XCTAssertTrue(progress.contains { $0.isPreparingTransfer && $0.currentItemName.contains("Downloading") })
+    }
+
+    func testCloudDownloadCancellationDoesNotMutateFiles() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Cloud-only.txt")
+        try Data("placeholder".utf8).write(to: source)
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, pathSafetyStateProvider: { url in
+            url == source ? .init(isICloudPlaceholder: true) : .init()
+        }, cloudDownloadPreparer: TestCloudDownloadPreparer { _ in
+            try await Task.sleep(nanoseconds: 5_000_000_000)
+            return true
+        })
+
+        let task = Task { await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        task.cancel()
+        let result = try await task.value
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(source.lastPathComponent).path))
+    }
+
+    func testCloudDownloadUnavailableProviderPreservesSafeFailure() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Cloud-only.txt")
+        try Data("placeholder".utf8).write(to: source)
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, pathSafetyStateProvider: { url in
+            url == source ? .init(isICloudPlaceholder: true) : .init()
+        }, cloudDownloadPreparer: TestCloudDownloadPreparer { _ in false })
+
+        do {
+            _ = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+            XCTFail("Expected unavailable download provider to preserve placeholder failure")
+        } catch FileOperationError.iCloudItemNotDownloaded(let rejectedURL) {
+            XCTAssertEqual(rejectedURL, source)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(source.lastPathComponent).path))
+    }
+
+    func testCloudDownloadRevalidatesAvailabilityBeforeMutation() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Cloud-only.txt")
+        try Data("placeholder".utf8).write(to: source)
+        let state = CloudPlaceholderState(placeholder: true)
+        let service = FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, pathSafetyStateProvider: { url in
+            url == source ? .init(isAvailable: !state.unavailable, isICloudPlaceholder: state.placeholder) : .init()
+        }, cloudDownloadPreparer: TestCloudDownloadPreparer { _ in
+            state.placeholder = false
+            state.unavailable = true
+            return true
+        })
+
+        do {
+            _ = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+            XCTFail("Expected post-download availability revalidation")
+        } catch FileOperationError.volumeUnavailable(let rejectedURL) {
+            XCTAssertEqual(rejectedURL, source)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(source.lastPathComponent).path))
     }
 
     func testICloudPlaceholderIsRejectedBeforeConflictResolution() async throws {

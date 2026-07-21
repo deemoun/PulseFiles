@@ -267,6 +267,41 @@ final class FileOperationContext: @unchecked Sendable {
 typealias FileOperationProgressHandler = @MainActor (FileOperationProgress) -> Void
 typealias FileConflictHandler = (URL) async -> FileConflictResolution
 
+/// Requests a local copy of a provider-backed placeholder. `false` retains the
+/// normal safe failure path when a provider cannot perform the download.
+protocol FileOperationCloudDownloadPreparing: Sendable {
+    func prepareDownload(for url: URL) async throws -> Bool
+}
+
+/// Uses macOS ubiquitous-item support and bounds waiting for an unavailable
+/// provider so file operations never mutate an item that remains a placeholder.
+final class MacOSCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @unchecked Sendable {
+    private let timeout: TimeInterval
+    private let pollInterval: TimeInterval
+
+    init(timeout: TimeInterval = 30, pollInterval: TimeInterval = 0.25) {
+        self.timeout = timeout
+        self.pollInterval = pollInterval
+    }
+
+    func prepareDownload(for url: URL) async throws -> Bool {
+        #if os(macOS)
+        guard (try? url.resourceValues(forKeys: [.isUbiquitousItemKey])).isUbiquitousItem == true else { return false }
+        guard (try? FileManager.default.startDownloadingUbiquitousItem(at: url)) != nil else { return false }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            try Task.checkCancellation()
+            let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            if values?.ubiquitousItemDownloadingStatus == .current { return true }
+            try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+        }
+        return false
+        #else
+        return false
+        #endif
+    }
+}
+
 protocol FileOperationServicing {
     func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight
     func copy(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
@@ -436,25 +471,28 @@ final class FileOperationService: FileOperationServicing {
     private let destinationCapacityProvider: (URL) -> Int64?
     private let volumeIdentifierProvider: (URL) -> String?
     private let pathSafetyStateProvider: (URL) -> FileOperationPathSafetyState
+    private let cloudDownloadPreparer: any FileOperationCloudDownloadPreparing
     private let traversalLimits: TraversalLimits
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, traversalLimits: TraversalLimits = .init()) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
         self.destinationCapacityProvider = destinationCapacityProvider
         self.volumeIdentifierProvider = volumeIdentifierProvider
         self.pathSafetyStateProvider = pathSafetyStateProvider
+        self.cloudDownloadPreparer = cloudDownloadPreparer
         self.traversalLimits = traversalLimits
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, traversalLimits: TraversalLimits = .init()) {
+    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
         self.destinationCapacityProvider = destinationCapacityProvider
         self.volumeIdentifierProvider = volumeIdentifierProvider
         self.pathSafetyStateProvider = pathSafetyStateProvider
+        self.cloudDownloadPreparer = cloudDownloadPreparer
         self.traversalLimits = traversalLimits
     }
 
@@ -532,6 +570,7 @@ final class FileOperationService: FileOperationServicing {
     ) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Copy operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
         do {
+            try await prepareCloudPlaceholders(for: request.sources, progressHandler: progressHandler)
             try preflightTransferRequest(request)
             try await enforceTransferCapacityPreflight(for: request, isMove: false)
         } catch {
@@ -600,6 +639,7 @@ final class FileOperationService: FileOperationServicing {
     ) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Move operation starting: sourceCount=\(request.sources.count); destination=\(DiagnosticLogger.sanitizedPath(request.destinationDirectory))")
         do {
+            try await prepareCloudPlaceholders(for: request.sources, progressHandler: progressHandler)
             try preflightTransferRequest(request, isMove: true)
             try await enforceTransferCapacityPreflight(for: request, isMove: true)
         } catch {
@@ -618,6 +658,7 @@ final class FileOperationService: FileOperationServicing {
     }
 
     func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+        try await prepareCloudPlaceholders(for: [source], progressHandler: progressHandler)
         let parentDirectory = source.deletingLastPathComponent()
         try validateExistingSource(source)
         try validateSourceAccess(source)
@@ -653,6 +694,7 @@ final class FileOperationService: FileOperationServicing {
     }
 
     func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+        try await prepareCloudPlaceholders(for: recovery.items.map(\.destinationURL), progressHandler: progressHandler)
         guard !recovery.items.isEmpty else { throw FileOperationError.undoUnavailable }
         for item in recovery.items {
             try validateExistingSource(item.destinationURL)
@@ -724,6 +766,7 @@ final class FileOperationService: FileOperationServicing {
 
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Trash operation starting: itemCount=\(urls.count)")
+        try await prepareCloudPlaceholders(for: urls, progressHandler: progressHandler)
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "trash", error: error); throw error }
         let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
@@ -744,6 +787,7 @@ final class FileOperationService: FileOperationServicing {
 
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Delete operation starting: itemCount=\(urls.count)")
+        try await prepareCloudPlaceholders(for: urls, progressHandler: progressHandler)
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "delete", error: error); throw error }
         let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
@@ -1464,6 +1508,25 @@ final class FileOperationService: FileOperationServicing {
         return destination
     }
 
+    /// Access is checked before the provider request and revalidated once it
+    /// reports success, preventing a download race from bypassing safety rules.
+    private func prepareCloudPlaceholders(for urls: [URL], progressHandler: FileOperationProgressHandler?) async throws {
+        for (index, url) in urls.enumerated() where pathSafetyStateProvider(url).isICloudPlaceholder {
+            try validateExistingSource(url)
+            try validateAvailableSource(url, allowingPlaceholder: true)
+            try validateSourceAccess(url)
+            await progressHandler?(FileOperationProgress(currentItemName: "Downloading %@".localized(with: url.lastPathComponent), completedCount: index, totalCount: urls.count, isPreparingTransfer: true))
+            guard try await cloudDownloadPreparer.prepareDownload(for: url) else {
+                throw FileOperationError.iCloudItemNotDownloaded(url)
+            }
+            try Task.checkCancellation()
+            try validateExistingSource(url)
+            try validateAvailableSource(url)
+            try validateSourceAccess(url)
+            await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: index + 1, totalCount: urls.count, isPreparingTransfer: true))
+        }
+    }
+
     private func preflightTransferRequest(_ request: FileOperationRequest, isMove: Bool = false) throws {
         try validateExistingDirectory(request.destinationDirectory)
         try validateWritableMutationTarget(request.destinationDirectory)
@@ -1542,10 +1605,10 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-    private func validateAvailableSource(_ url: URL) throws {
+    private func validateAvailableSource(_ url: URL, allowingPlaceholder: Bool = false) throws {
         let state = pathSafetyStateProvider(url)
         guard state.isAvailable else { throw FileOperationError.volumeUnavailable(url) }
-        guard !state.isICloudPlaceholder else { throw FileOperationError.iCloudItemNotDownloaded(url) }
+        guard allowingPlaceholder || !state.isICloudPlaceholder else { throw FileOperationError.iCloudItemNotDownloaded(url) }
     }
 
     private func validateWritableMutationTarget(_ url: URL) throws {
