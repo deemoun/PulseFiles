@@ -29,6 +29,26 @@ struct DropTransferPolicy {
 }
 
 final class FilePaneViewController: NSViewController {
+    private enum ColumnID {
+        static let name = "name"
+        static let kind = "kind"
+        static let size = "size"
+        static let modified = "modified"
+    }
+
+    private struct ColumnMetrics {
+        let compactWidth: CGFloat
+        let singlePaneMinimumWidth: CGFloat
+        let singlePaneWeight: CGFloat
+    }
+
+    private static let columnMetrics: [String: ColumnMetrics] = [
+        ColumnID.name: ColumnMetrics(compactWidth: 360, singlePaneMinimumWidth: 210, singlePaneWeight: 0.48),
+        ColumnID.kind: ColumnMetrics(compactWidth: 140, singlePaneMinimumWidth: 120, singlePaneWeight: 0.18),
+        ColumnID.size: ColumnMetrics(compactWidth: 90, singlePaneMinimumWidth: 100, singlePaneWeight: 0.14),
+        ColumnID.modified: ColumnMetrics(compactWidth: 170, singlePaneMinimumWidth: 160, singlePaneWeight: 0.20)
+    ]
+
     let paneID: PaneID
     let viewModel: FilePaneViewModel
     let tableView = FileTableView()
@@ -70,6 +90,8 @@ final class FilePaneViewController: NSViewController {
     private var inlineRenameSession = InlineRenameCommitSession()
     private var hasDeferredTableReload = false
     private var hasOppositePane = true
+    private var lastAppliedColumnLayoutWidth: CGFloat = 0
+    private var dualPaneGridStyleMask = NSTableView.GridLineStyle()
     private lazy var dropProbeCache = FileSystemProbeCache()
     private lazy var dropTransferPolicy = DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
         guard let self else { return nil }
@@ -135,6 +157,11 @@ final class FilePaneViewController: NSViewController {
         buildTable()
         buildLayout()
         bindViewModel()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        applyColumnLayout()
     }
 
     func loadDirectory(selecting url: URL? = nil, onLoaded: (() -> Void)? = nil) {
@@ -217,6 +244,7 @@ final class FilePaneViewController: NSViewController {
 
     func setHasOppositePane(_ hasOppositePane: Bool) {
         self.hasOppositePane = hasOppositePane
+        applyColumnLayout(force: true)
     }
 
     private func updatePaneChrome() {
@@ -308,11 +336,12 @@ final class FilePaneViewController: NSViewController {
         tableView.target = self
         tableView.headerView = NSTableHeaderView()
         tableView.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
+        dualPaneGridStyleMask = tableView.gridStyleMask
 
-        addColumn(identifier: "name", title: "Name", width: 360)
-        addColumn(identifier: "kind", title: "Kind", width: 140)
-        addColumn(identifier: "size", title: "Size", width: 90)
-        addColumn(identifier: "modified", title: "Modified", width: 170)
+        addColumn(identifier: ColumnID.name, title: "Name", width: Self.columnMetrics[ColumnID.name]?.compactWidth ?? 360)
+        addColumn(identifier: ColumnID.kind, title: "Kind", width: Self.columnMetrics[ColumnID.kind]?.compactWidth ?? 140)
+        addColumn(identifier: ColumnID.size, title: "Size", width: Self.columnMetrics[ColumnID.size]?.compactWidth ?? 90)
+        addColumn(identifier: ColumnID.modified, title: "Modified", width: Self.columnMetrics[ColumnID.modified]?.compactWidth ?? 170)
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -325,9 +354,62 @@ final class FilePaneViewController: NSViewController {
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(identifier))
         column.title = title
         column.width = width
-        column.minWidth = identifier == "name" ? 180 : 70
+        column.minWidth = identifier == ColumnID.name ? 180 : 70
         column.sortDescriptorPrototype = NSSortDescriptor(key: identifier, ascending: true)
         tableView.addTableColumn(column)
+    }
+
+    private func applyColumnLayout(force: Bool = false) {
+        guard tableView.tableColumns.count == 4 else { return }
+        let availableWidth = scrollView.contentView.bounds.width - 1
+        guard availableWidth > 0 else { return }
+        guard force || abs(availableWidth - lastAppliedColumnLayoutWidth) > 8 else { return }
+        lastAppliedColumnLayoutWidth = availableWidth
+
+        if hasOppositePane {
+            scrollView.hasHorizontalScroller = true
+            tableView.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
+            tableView.gridStyleMask = dualPaneGridStyleMask
+            setColumnWidths(Self.columnMetrics.mapValues(\.compactWidth))
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollView.contentView.bounds.origin.y))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            return
+        }
+
+        scrollView.hasHorizontalScroller = false
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        tableView.gridStyleMask = []
+        let targetWidth = max(availableWidth - 2, 0)
+        let minimumWidths = Self.columnMetrics.mapValues(\.singlePaneMinimumWidth)
+        let minimumTotal = minimumWidths.values.reduce(CGFloat(0), +)
+        guard targetWidth > minimumTotal else {
+            setColumnWidths(fittedMinimumWidths(minimumWidths, targetWidth: targetWidth))
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollView.contentView.bounds.origin.y))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            return
+        }
+
+        setColumnWidths(Self.columnMetrics.mapValues { metrics in
+            max(metrics.singlePaneMinimumWidth, floor(targetWidth * metrics.singlePaneWeight))
+        })
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollView.contentView.bounds.origin.y))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    private func fittedMinimumWidths(_ widths: [String: CGFloat], targetWidth: CGFloat) -> [String: CGFloat] {
+        let minimumTotal = widths.values.reduce(CGFloat(0), +)
+        guard minimumTotal > targetWidth, targetWidth > 0 else { return widths }
+        let scale = targetWidth / minimumTotal
+        return widths.mapValues { max(70, floor($0 * scale)) }
+    }
+
+    private func setColumnWidths(_ widths: [String: CGFloat]) {
+        for column in tableView.tableColumns {
+            guard let width = widths[column.identifier.rawValue] else { continue }
+            if abs(column.width - width) > 1 {
+                column.width = width
+            }
+        }
     }
 
     private func buildLayout() {
