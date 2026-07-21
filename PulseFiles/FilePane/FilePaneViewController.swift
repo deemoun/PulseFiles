@@ -61,8 +61,7 @@ final class FilePaneViewController: NSViewController {
     private var previousSelectedRowIndexes = IndexSet()
     private var pendingSelectionURL: URL?
     private var inlineRenameRow: Int?
-    private var inlineRenameItemURL: URL?
-    private var didCommitInlineRename = false
+    private var inlineRenameSession = InlineRenameCommitSession()
     private lazy var dropProbeCache = FileSystemProbeCache()
     private lazy var dropTransferPolicy = DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
         guard let self else { return nil }
@@ -231,8 +230,8 @@ final class FilePaneViewController: NSViewController {
         guard let row = row(for: item), !isParentRow(row) else { return false }
         guard let nameColumn = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }) else { return false }
         inlineRenameRow = row
-        inlineRenameItemURL = item.url
-        didCommitInlineRename = false
+        inlineRenameSession.begin(for: item.url)
+        updateInlineRenameField(at: row, for: item.url)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         view.window?.makeFirstResponder(tableView)
@@ -640,6 +639,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         if identifier == "name" {
             let renameTextField = InlineRenameTextField(string: item.filename)
             renameTextField.itemURL = item.url
+            renameTextField.sessionGeneration = inlineRenameSession.generation(for: item.url)
             renameTextField.delegate = self
             renameTextField.target = self
             renameTextField.action = #selector(commitInlineRenameFromAction(_:))
@@ -731,37 +731,55 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         guard tableColumn?.identifier.rawValue == "name",
               let item = item(forRow: row),
               let proposedName = object as? String,
-              proposedName != item.filename else { return }
-        onRenameItem?(item, proposedName)
+              let generation = inlineRenameSession.generation(for: item.url) else { return }
+        commitInlineRename(itemURL: item.url, sessionGeneration: generation, proposedName: proposedName, isCancelled: false)
     }
 
     @objc private func commitInlineRenameFromAction(_ sender: NSTextField) {
         guard let sender = sender as? InlineRenameTextField else { return }
-        commitInlineRename(from: sender)
+        commitInlineRename(
+            itemURL: sender.itemURL,
+            sessionGeneration: sender.sessionGeneration,
+            proposedName: sender.stringValue,
+            isCancelled: false
+        )
     }
 
-    private func commitInlineRename(from textField: InlineRenameTextField) {
-        guard !didCommitInlineRename,
-              let itemURL = textField.itemURL,
-              inlineRenameItemURL.map({ isSameFileURL($0, itemURL) }) != false,
-              let item = item(for: itemURL) else {
-            clearInlineRenameState()
-            return
+    /// The sole submission path for an inline rename session. AppKit can send
+    /// an action, end-editing notification, and object value for one edit.
+    private func commitInlineRename(itemURL: URL?, sessionGeneration: UInt?, proposedName: String, isCancelled: Bool) {
+        guard let itemURL,
+              let sessionGeneration,
+              inlineRenameSession.matches(itemURL: itemURL, generation: sessionGeneration) else { return }
+
+        let item = item(for: itemURL)
+        let result = inlineRenameSession.commit(
+            itemURL: itemURL,
+            generation: sessionGeneration,
+            proposedName: proposedName,
+            originalName: item?.filename,
+            isCancelled: isCancelled
+        )
+        clearInlineRenameState()
+        if case let .rename(itemURL, name) = result, let item {
+            onRenameItem?(item, name)
         }
-        didCommitInlineRename = true
-        defer { clearInlineRenameState() }
-        let proposedName = textField.stringValue
-        guard proposedName != item.filename else { return }
-        onRenameItem?(item, proposedName)
     }
 
     private func item(for url: URL) -> FileItem? {
         viewModel.visibleItems.first { isSameFileURL($0.url, url) }
     }
 
+    private func updateInlineRenameField(at row: Int, for itemURL: URL) {
+        guard let column = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }),
+              let cell = tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? NSTableCellView,
+              let textField = cell.textField as? InlineRenameTextField else { return }
+        textField.itemURL = itemURL
+        textField.sessionGeneration = inlineRenameSession.generation(for: itemURL)
+    }
+
     private func clearInlineRenameState() {
         inlineRenameRow = nil
-        inlineRenameItemURL = nil
     }
 
     private func reloadRowsForSelectionColorChange() {
@@ -930,16 +948,56 @@ extension FilePaneViewController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let textField = notification.object as? InlineRenameTextField else { return }
         let movement = (notification.userInfo?["NSTextMovement"] as? NSNumber)?.intValue
-        if movement == NSCancelTextMovement {
-            clearInlineRenameState()
-            return
-        }
-        commitInlineRename(from: textField)
+        commitInlineRename(
+            itemURL: textField.itemURL,
+            sessionGeneration: textField.sessionGeneration,
+            proposedName: textField.stringValue,
+            isCancelled: movement == NSCancelTextMovement
+        )
     }
 }
 
 private final class InlineRenameTextField: NSTextField {
     var itemURL: URL?
+    var sessionGeneration: UInt?
+}
+
+/// Tracks one edit independently from the table's lifecycle callbacks.
+/// A successful, unchanged, or cancelled decision consumes the session; stale
+/// callbacks therefore cannot submit a rename for a newer edit.
+struct InlineRenameCommitSession {
+    enum Result: Equatable {
+        case rename(URL, String)
+        case noChange
+        case cancelled
+        case ignored
+    }
+
+    private(set) var itemURL: URL?
+    private(set) var generation: UInt = 0
+
+    mutating func begin(for itemURL: URL) {
+        generation &+= 1
+        self.itemURL = itemURL
+    }
+
+    func generation(for itemURL: URL) -> UInt? {
+        matches(itemURL: itemURL, generation: generation) ? generation : nil
+    }
+
+    func matches(itemURL: URL, generation: UInt) -> Bool {
+        guard let activeURL = self.itemURL else { return false }
+        return self.generation == generation && isSameFileURL(activeURL, itemURL)
+    }
+
+    mutating func commit(itemURL: URL, generation: UInt, proposedName: String, originalName: String?, isCancelled: Bool) -> Result {
+        guard matches(itemURL: itemURL, generation: generation) else { return .ignored }
+        defer { self.itemURL = nil }
+        guard !isCancelled else { return .cancelled }
+        guard let originalName else { return .cancelled }
+        guard proposedName != originalName else { return .noChange }
+        return .rename(itemURL, proposedName)
+    }
 }
 
 extension FilePaneViewController: FileTableViewActionDelegate {
