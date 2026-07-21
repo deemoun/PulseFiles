@@ -40,55 +40,61 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(source.lastPathComponent).path))
     }
 
-    func testFinderAliasIsRejectedBeforeMutation() async throws {
+    func testFinderAliasCopyPreservesOpaqueAliasObjectAndMetadata() async throws {
         let fixture = try makeFixture()
         let alias = fixture.left.appendingPathComponent("Reference.alias")
         try Data("alias data".utf8).write(to: alias)
-        let service = FileOperationService(
-            fileManager: .default,
-            accessPolicy: fixture.unrestrictedPolicy,
-            pathSafetyStateProvider: { url in
-                url == alias ? FileOperationPathSafetyState(isFinderAlias: true) : FileOperationPathSafetyState()
-            }
-        )
-
-        do {
-            _ = try await service.move(FileOperationRequest(sources: [alias], destinationDirectory: fixture.right), conflictHandler: { _ in
-                XCTFail("A Finder alias must be rejected before conflict handling")
-                return .cancel
-            }, progressHandler: nil)
-            XCTFail("Expected an unsupported Finder alias error")
-        } catch FileOperationError.finderAliasUnsupported(let rejectedURL) {
-            XCTAssertEqual(rejectedURL, alias)
-        }
-        XCTAssertTrue(FileManager.default.fileExists(atPath: alias.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(alias.lastPathComponent).path))
+        try setTestExtendedAttribute(on: alias)
+        let service = aliasAwareService(for: [alias], fixture: fixture)
+        let result = try await service.copy(FileOperationRequest(sources: [alias], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        let copiedAlias = fixture.right.appendingPathComponent(alias.lastPathComponent)
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try Data(contentsOf: copiedAlias), Data("alias data".utf8))
+        XCTAssertEqual(try testExtendedAttribute(on: copiedAlias), Data("pulsefiles".utf8))
     }
 
-    func testFinderAliasDestinationIsRejectedBeforeReplacement() async throws {
+    func testFinderAliasMoveAndRenameTreatAliasAsOpaqueObject() async throws {
         let fixture = try makeFixture()
-        let source = fixture.left.appendingPathComponent("Reference.alias")
-        let destination = fixture.right.appendingPathComponent(source.lastPathComponent)
-        try Data("source data".utf8).write(to: source)
-        try Data("existing alias data".utf8).write(to: destination)
-        let service = FileOperationService(
-            fileManager: .default,
-            accessPolicy: fixture.unrestrictedPolicy,
-            pathSafetyStateProvider: { url in
-                url == destination ? FileOperationPathSafetyState(isFinderAlias: true) : FileOperationPathSafetyState()
-            }
-        )
+        let alias = fixture.left.appendingPathComponent("Reference.alias")
+        try Data("alias data".utf8).write(to: alias)
+        let movedAlias = fixture.right.appendingPathComponent(alias.lastPathComponent)
+        let service = aliasAwareService(for: [alias, movedAlias], fixture: fixture)
+        let moveResult = try await service.move(FileOperationRequest(sources: [alias], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        let renameResult = try await service.rename(movedAlias, to: "Renamed.alias", progressHandler: nil)
+        XCTAssertTrue(moveResult.succeededCompletely)
+        XCTAssertTrue(renameResult.succeededCompletely)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: alias.path))
+        XCTAssertEqual(try Data(contentsOf: fixture.right.appendingPathComponent("Renamed.alias")), Data("alias data".utf8))
+    }
 
-        do {
-            _ = try await service.copy(FileOperationRequest(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in
-                XCTFail("A Finder alias destination must be rejected before conflict handling")
-                return .replace
-            }, progressHandler: nil)
-            XCTFail("Expected an unsupported Finder alias error")
-        } catch FileOperationError.finderAliasUnsupported(let rejectedURL) {
-            XCTAssertEqual(rejectedURL, destination)
-        }
-        XCTAssertEqual(try String(contentsOf: destination), "existing alias data")
+    func testFinderAliasTrashAndDeleteTreatAliasAsOpaqueObject() async throws {
+        let fixture = try makeFixture()
+        let deletedAlias = fixture.left.appendingPathComponent("Delete.alias")
+        try Data("delete alias".utf8).write(to: deletedAlias)
+        let deleteResult = try await aliasAwareService(for: [deletedAlias], fixture: fixture).delete([deletedAlias], progressHandler: nil)
+        XCTAssertTrue(deleteResult.succeededCompletely)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: deletedAlias.path))
+        let trashedAlias = fixture.left.appendingPathComponent("Trash.alias")
+        try Data("trash alias".utf8).write(to: trashedAlias)
+        let trashResult = try await aliasAwareService(for: [trashedAlias], fixture: fixture).trash([trashedAlias], progressHandler: nil)
+        XCTAssertTrue(trashResult.succeededCompletely)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: trashedAlias.path))
+    }
+
+    func testFinderAliasConflictReplacementRollsBackWhenAliasCopyFails() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let alias = fixture.left.appendingPathComponent("Reference.alias")
+        let destination = fixture.right.appendingPathComponent(alias.lastPathComponent)
+        try Data("new alias".utf8).write(to: alias)
+        try Data("existing alias".utf8).write(to: destination)
+        fixture.failingFileManager?.failCopyFromURL = alias
+        let service = FileOperationService(fileManager: fixture.failingFileManager!, accessPolicy: fixture.unrestrictedPolicy, pathSafetyStateProvider: { url in
+                [alias, destination].contains(url.standardizedFileURL) ? .init(isFinderAlias: true) : .init()
+            })
+        let result = try await service.copy(FileOperationRequest(sources: [alias], destinationDirectory: fixture.right), conflictHandler: { _ in .replace }, progressHandler: nil)
+        XCTAssertEqual(result.failedItems.count, 1)
+        XCTAssertEqual(try String(contentsOf: destination), "existing alias")
+        XCTAssertEqual(try String(contentsOf: alias), "new alias")
     }
 
     func testReadOnlyDestinationIsRejectedBeforeCopy() async throws {
@@ -1596,6 +1602,13 @@ final class FileOperationServiceTests: XCTestCase {
             return Fixture(root: sandbox.root, left: left, right: right, service: FileOperationService(fileManager: failingFileManager, accessPolicy: policy), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: failingFileManager)
         }
         return Fixture(root: sandbox.root, left: left, right: right, service: sandbox.fileOperationService(), unrestrictedPolicy: sandbox.unrestrictedPolicy, failingFileManager: nil)
+    }
+
+    private func aliasAwareService(for aliases: [URL], fixture: Fixture) -> FileOperationService {
+        let aliasPaths = Set(aliases.map { $0.standardizedFileURL.path })
+        return FileOperationService(fileManager: .default, accessPolicy: fixture.unrestrictedPolicy, pathSafetyStateProvider: { url in
+            aliasPaths.contains(url.standardizedFileURL.path) ? .init(isFinderAlias: true) : .init()
+        })
     }
 
     private func assertOverlappingSelectionIsRejected(

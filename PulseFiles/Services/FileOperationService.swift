@@ -20,7 +20,6 @@ enum FileOperationError: LocalizedError, Equatable {
     case temporarySiblingUnavailable(destination: URL, prefix: String)
     case insufficientDestinationCapacity(required: Int64, available: Int64)
     case iCloudItemNotDownloaded(URL)
-    case finderAliasUnsupported(URL)
     case readOnlyVolume(URL)
     case volumeUnavailable(URL)
     case traversalLimitExceeded(URL, maximumDepth: Int, maximumItems: Int)
@@ -56,8 +55,6 @@ enum FileOperationError: LocalizedError, Equatable {
             return "The destination does not have enough available space.".localized
         case .iCloudItemNotDownloaded(let url):
             return "%@ is stored in iCloud and has not finished downloading.".localized(with: url.lastPathComponent)
-        case .finderAliasUnsupported(let url):
-            return "%@ is a Finder alias, which PulseFiles 1.0 does not modify.".localized(with: url.lastPathComponent)
         case .readOnlyVolume(let url):
             return "%@ is on a read-only volume.".localized(with: url.lastPathComponent)
         case .volumeUnavailable(let url):
@@ -103,8 +100,6 @@ enum FileOperationError: LocalizedError, Equatable {
             return "This operation requires %@, but the destination volume has only %@ available.".localized(with: Self.formattedByteCount(required), Self.formattedByteCount(available))
         case .iCloudItemNotDownloaded(let url):
             return "Download %@ in Finder, then try again. PulseFiles did not change any files.".localized(with: url.path)
-        case .finderAliasUnsupported(let url):
-            return "Use Finder to copy, move, rename, or delete %@, or operate on the original item instead. PulseFiles did not change any files.".localized(with: url.path)
         case .readOnlyVolume(let url):
             return "Choose a writable destination or eject the read-only media before modifying %@.".localized(with: url.path)
         case .volumeUnavailable(let url):
@@ -124,8 +119,8 @@ struct FileOperationPathSafetyState: Equatable {
     var isAvailable = true
     var isReadOnlyVolume = false
     var isICloudPlaceholder = false
-    /// Finder aliases are not symbolic links. Their resolution and resource-fork
-    /// semantics are intentionally not a 1.0 mutation guarantee.
+    /// Finder aliases are not symbolic links. Operations preserve the alias
+    /// object and never resolve its target.
     var isFinderAlias = false
 }
 
@@ -361,6 +356,8 @@ final class FileOperationService: FileOperationServicing {
         case file
         case directory
         case symbolicLink(destination: String)
+        /// An opaque Finder alias. It is copied as an object, never resolved.
+        case finderAlias
     }
 
     private struct TransferFailure: Error {
@@ -1124,6 +1121,10 @@ final class FileOperationService: FileOperationServicing {
                     if let size = values?.fileSize { byteCount += Int64(size) } else { hasUnknownByteCount = true }
                 case .symbolicLink:
                     break // Link metadata describes the link itself, not its target.
+                case .finderAlias:
+                    // Alias resource forks are not reliably represented by the
+                    // data-fork size, so do not make a false capacity claim.
+                    hasUnknownByteCount = true
                 case .directory:
                     try Task.checkCancellation() // Check immediately before a potentially blocking read.
                     guard let children = try? fileManager.contentsOfDirectory(at: item.url, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: []) else {
@@ -1178,6 +1179,12 @@ final class FileOperationService: FileOperationServicing {
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                     warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
+                case .finderAlias:
+                    // FileManager preserves the Finder alias record and resource
+                    // fork without resolving or otherwise touching its target.
+                    try fileManager.copyItem(at: source, to: destination)
+                    recursiveProgress.completedItemCount += 1
+                    await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                 case .directory:
                     try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
                     recursiveProgress.completedItemCount += 1
@@ -1298,6 +1305,9 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func sourceItemKind(at url: URL) throws -> SourceItemKind {
+        if pathSafetyStateProvider(url).isFinderAlias {
+            return .finderAlias
+        }
         let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
         if values.isSymbolicLink == true {
             return .symbolicLink(destination: try fileManager.destinationOfSymbolicLink(atPath: url.path))
@@ -1471,9 +1481,6 @@ final class FileOperationService: FileOperationServicing {
             let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
             try accessPolicy.validateDestinationAccess(to: destination)
             try validateDestination(destination, for: source)
-            if fileManager.fileExists(atPath: destination.path) {
-                try validateNotFinderAlias(destination)
-            }
             let normalizedDestination = FilePathComparison.normalizedPath(destination)
             guard normalizedDestinations.insert(normalizedDestination).inserted else {
                 throw FileOperationError.duplicateDestination(destination)
@@ -1490,7 +1497,6 @@ final class FileOperationService: FileOperationServicing {
         try validateWritableMutationTarget(source.deletingLastPathComponent())
         try validateDestination(destination, for: source)
         if fileManager.fileExists(atPath: destination.path), FilePathComparison.normalizedPath(source) != FilePathComparison.normalizedPath(destination) {
-            try validateNotFinderAlias(destination)
             throw FileOperationError.destinationExists(destination)
         }
     }
@@ -1540,11 +1546,6 @@ final class FileOperationService: FileOperationServicing {
         let state = pathSafetyStateProvider(url)
         guard state.isAvailable else { throw FileOperationError.volumeUnavailable(url) }
         guard !state.isICloudPlaceholder else { throw FileOperationError.iCloudItemNotDownloaded(url) }
-        guard !state.isFinderAlias else { throw FileOperationError.finderAliasUnsupported(url) }
-    }
-
-    private func validateNotFinderAlias(_ url: URL) throws {
-        guard !pathSafetyStateProvider(url).isFinderAlias else { throw FileOperationError.finderAliasUnsupported(url) }
     }
 
     private func validateWritableMutationTarget(_ url: URL) throws {
@@ -1557,6 +1558,10 @@ final class FileOperationService: FileOperationServicing {
         if case .symbolicLink = try sourceItemKind(at: source) {
             // Access to the link is governed by its containing directory. Do
             // not resolve its target: the copy policy above never traverses it.
+            try accessPolicy.validateAccess(to: source.deletingLastPathComponent())
+        } else if case .finderAlias = try sourceItemKind(at: source) {
+            // An alias target may be outside the selected tree; access applies
+            // to the opaque alias object in its containing directory.
             try accessPolicy.validateAccess(to: source.deletingLastPathComponent())
         } else {
             try accessPolicy.validateAccess(to: source)
