@@ -52,6 +52,25 @@ struct MainCommandDestinationResolver {
     }
 }
 
+/// Separates the panes that need a targeted rename refresh from panes that can
+/// use the normal operation refresh. Keeping this decision value-based makes
+/// the two-pane case explicit and prevents a second reload from racing the
+/// selection restore for a renamed item.
+struct RenamePaneRefreshPlan {
+    let renamedPaneIndexes: [Int]
+    let genericRefreshPaneIndexes: [Int]
+
+    init(currentDirectories: [URL], sourceURL: URL) {
+        let sourceDirectory = sourceURL.deletingLastPathComponent()
+        renamedPaneIndexes = currentDirectories.indices.filter {
+            FilePathComparison.isSamePath(currentDirectories[$0], sourceDirectory)
+        }
+        genericRefreshPaneIndexes = currentDirectories.indices.filter {
+            !renamedPaneIndexes.contains($0)
+        }
+    }
+}
+
 final class MainWindowViewController: NSViewController {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220
@@ -1292,10 +1311,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func rename(item: FileItem, to rawName: String) {
         startFileOperation(named: "Rename".localized, captureRecovery: true) { [fileOperations] progressHandler in
             try await fileOperations.rename(item.url, to: rawName, progressHandler: progressHandler)
-        } completion: { [weak self] result in
-            guard let self, let renamedItem = result.completedItems.first else { return }
-            let pane = [self.leftPane, self.rightPane].first { FilePathComparison.isSamePath($0.currentDirectory, item.url.deletingLastPathComponent()) } ?? self.targetPane()
-            pane.selectItem(at: renamedItem)
+        } refresh: { [weak self] result in
+            self?.refreshPanesAfterRename(sourceURL: item.url, result: result)
         }
     }
 
@@ -1690,7 +1707,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         _ = retainedOperationTasks[generation]
     }
 
-    private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult, completion: ((FileOperationResult) -> Void)? = nil) {
+    private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult, refresh: ((FileOperationResult) -> Void)? = nil, completion: ((FileOperationResult) -> Void)? = nil) {
         guard !isFileOperationActive else { return }
         fileOperationGeneration += 1
         let generation = fileOperationGeneration
@@ -1727,7 +1744,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 guard self.currentFileOperationGeneration == generation else { return }
                 if captureRecovery { self.undoRecovery = result.succeededCompletely ? result.recovery : nil }
                 self.clearClipboardFeedback()
-                self.refreshBothPanes()
+                if let refresh {
+                    refresh(result)
+                } else {
+                    self.refreshBothPanes()
+                }
                 completion?(result)
                 self.showOperationResult(result, operationName: operationName)
             } catch {
@@ -1838,10 +1859,45 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func refreshBothPanes() {
-        leftPane.viewModel.invalidateCurrentDirectorySnapshot()
-        rightPane.viewModel.invalidateCurrentDirectorySnapshot()
-        leftPane.loadDirectory()
-        rightPane.loadDirectory()
+        refreshPanes([leftPane, rightPane])
+    }
+
+    private func refreshPanes(_ panes: [FilePaneViewController]) {
+        panes.forEach { $0.viewModel.invalidateCurrentDirectorySnapshot() }
+        panes.forEach { $0.loadDirectory() }
+    }
+
+    private func refreshPanesAfterRename(sourceURL: URL, result: FileOperationResult) {
+        let panes = [leftPane, rightPane]
+        let plan = RenamePaneRefreshPlan(currentDirectories: panes.map(\.currentDirectory), sourceURL: sourceURL)
+        guard let renamedURL = result.completedItems.first else {
+            refreshPanes(panes)
+            return
+        }
+
+        // Capture this before loads complete: their selection notifications must
+        // not change which pane receives keyboard focus after the rename.
+        let activePaneID = self.activePaneID
+        let renamedPanes = plan.renamedPaneIndexes.map { panes[$0] }
+        let genericPanes = plan.genericRefreshPaneIndexes.map { panes[$0] }
+        refreshPanes(genericPanes)
+        guard !renamedPanes.isEmpty else { return }
+
+        var remainingReloads = renamedPanes.count
+        renamedPanes.forEach { pane in
+            pane.viewModel.invalidateCurrentDirectorySnapshot()
+            pane.loadDirectory(selecting: renamedURL) { [weak self] in
+                guard let self else { return }
+                remainingReloads -= 1
+                guard remainingReloads == 0 else { return }
+                self.activePaneID = activePaneID
+                self.view.window?.makeFirstResponder(self.pane(for: activePaneID).tableView)
+            }
+        }
+    }
+
+    private func pane(for paneID: PaneID) -> FilePaneViewController {
+        paneID == .left ? leftPane : rightPane
     }
 
     private func showError(message: String, detail: String) {
