@@ -61,6 +61,29 @@ final class FolderAccessGrantServiceTests: XCTestCase {
         XCTAssertTrue(reloaded.hasGrant(containing: grantedFolder))
     }
 
+    func testRemoveGrantDeletesPersistedAndResolvedCapability() throws {
+        let grantedFolder = try temporaryDirectory.folder("Revocable")
+        let service = FolderAccessGrantService(defaults: fixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
+        try service.grantAccess(to: grantedFolder)
+
+        XCTAssertTrue(service.removeGrant(for: grantedFolder))
+        XCTAssertTrue(service.grants.isEmpty)
+        XCTAssertFalse(service.hasGrant(containing: grantedFolder.appendingPathComponent("Nested")))
+        XCTAssertFalse(service.removeGrant(for: grantedFolder))
+    }
+
+    func testRefreshResolvedGrantsUpdatesStaleGrantState() throws {
+        let grantedFolder = try temporaryDirectory.folder("RefreshStale")
+        let staleResolver = FakeFolderAccessBookmarkResolver(stalePaths: [grantedFolder.path])
+        let service = FolderAccessGrantService(defaults: fixture.defaults, resolver: staleResolver)
+        service.grants = [FolderAccessGrant(url: grantedFolder, bookmarkData: Data(grantedFolder.path.utf8))]
+
+        XCTAssertTrue(service.staleGrantURLs.isEmpty)
+        service.refreshResolvedGrants()
+
+        XCTAssertEqual(service.staleGrantURLs.map(\.path), [grantedFolder.path])
+    }
+
     func testSettingsServiceExposesStoredFolderAccessGrants() throws {
         let grantedFolder = try temporaryDirectory.folder("SettingsGrant")
         let data = Data(grantedFolder.path.utf8)
@@ -71,3 +94,13 @@ final class FolderAccessGrantServiceTests: XCTestCase {
         XCTAssertEqual(SettingsService(defaults: fixture.defaults).folderAccessGrants, [FolderAccessGrant(url: grantedFolder, bookmarkData: data)])
     }
 }
+
+#if canImport(AppKit)
+final class SettingsPermissionsCategoryTests: XCTestCase {
+    func testPermissionsCategoryIsAvailableWithLockShieldSymbol() {
+        XCTAssertTrue(SettingsViewController.Category.allCases.contains(.permissions))
+        XCTAssertEqual(SettingsViewController.Category.permissions.symbolName, "lock.shield")
+        XCTAssertEqual(SettingsViewController.Category.permissions.title, "Permissions".localized)
+    }
+}
+#endif

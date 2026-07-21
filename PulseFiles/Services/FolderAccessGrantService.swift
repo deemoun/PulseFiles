@@ -62,12 +62,7 @@ final class FolderAccessGrantService {
             return grants
         }
         set {
-            if newValue.isEmpty {
-                defaults.removeObject(forKey: Self.defaultsKey)
-                return
-            }
-            guard let data = try? JSONEncoder().encode(newValue) else { return }
-            defaults.set(data, forKey: Self.defaultsKey)
+            _ = store(newValue)
         }
     }
 
@@ -125,12 +120,28 @@ final class FolderAccessGrantService {
                 let standardized = resolved.url.standardizedFileURL
                 resolvedGrants[normalizedPath(standardized)] = standardized
                 if resolved.isStale {
-                    staleGrantURLs.append(standardized)
+                    staleGrantURLs.append(grant.url.standardizedFileURL)
                 }
             } catch {
                 staleGrantURLs.append(grant.url)
             }
         }
+    }
+
+    /// Refreshes bookmark resolution after folders have moved, become available, or been reauthorized.
+    func refreshResolvedGrants() {
+        resolveStoredBookmarks()
+    }
+
+    /// Removes the persisted capability for a folder and immediately refreshes the resolved state.
+    @discardableResult
+    func removeGrant(for directory: URL) -> Bool {
+        let path = normalizedPath(directory)
+        let stored = grants
+        let remaining = stored.filter { normalizedPath($0.url) != path }
+        guard remaining.count != stored.count, store(remaining) else { return false }
+        resolveStoredBookmarks()
+        return true
     }
 
     func hasGrant(containing url: URL) -> Bool {
@@ -162,6 +173,17 @@ final class FolderAccessGrantService {
         var stored = grants.filter { normalizedPath($0.url) != path }
         stored.append(grant)
         grants = stored
+    }
+
+    @discardableResult
+    private func store(_ grants: [FolderAccessGrant]) -> Bool {
+        if grants.isEmpty {
+            defaults.removeObject(forKey: Self.defaultsKey)
+            return true
+        }
+        guard let data = try? JSONEncoder().encode(grants) else { return false }
+        defaults.set(data, forKey: Self.defaultsKey)
+        return true
     }
 
     private func startAccessing(_ urls: [URL]) -> [URL] {

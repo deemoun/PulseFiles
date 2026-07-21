@@ -271,3 +271,22 @@
 "The last operation cannot be safely undone." = "The last operation cannot be safely undone.";
 "This operation can no longer be safely undone." = "This operation can no longer be safely undone.";
 "The operation was partial, cancelled, or did not retain a complete safe reversal path." = "The operation was partial, cancelled, or did not retain a complete safe reversal path.";
+
+/* Permissions settings */
+"Permissions" = "Permissions";
+"Effective Access Mode" = "Effective Access Mode";
+"Folder Access Grants" = "Folder Access Grants";
+"macOS Privacy Permissions" = "macOS Privacy Permissions";
+"DEBUG experimental sandbox is enabled" = "DEBUG experimental sandbox is enabled";
+"Normal macOS-governed file-manager access" = "Normal macOS-governed file-manager access";
+"File access is limited to the experimental sandbox root unless a folder has an explicit security-scoped grant. Sandbox root: %@" = "File access is limited to the experimental sandbox root unless a folder has an explicit security-scoped grant. Sandbox root: %@";
+"PulseFiles uses the access that macOS allows for this app. Protected locations and folder grants are still checked through the file access policy." = "PulseFiles uses the access that macOS allows for this app. Protected locations and folder grants are still checked through the file access policy.";
+"No persisted folder access grants." = "No persisted folder access grants.";
+"Unavailable or stale bookmark" = "Unavailable or stale bookmark";
+"Available" = "Available";
+"Revoke" = "Revoke";
+"Grant Folder Access…" = "Grant Folder Access…";
+"Refresh Grant Status" = "Refresh Grant Status";
+"macOS controls access to protected locations. PulseFiles cannot silently grant itself Full Disk Access or other broad privacy permissions; use System Settings if you need to review or recover those permissions." = "macOS controls access to protected locations. PulseFiles cannot silently grant itself Full Disk Access or other broad privacy permissions; use System Settings if you need to review or recover those permissions.";
+"Could Not Grant Folder Access" = "Could Not Grant Folder Access";
+"PulseFiles could not create a secure folder-access bookmark. No additional folder access was granted. %@" = "PulseFiles could not create a secure folder-access bookmark. No additional folder access was granted. %@";
