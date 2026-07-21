@@ -359,8 +359,8 @@ final class SettingsViewController: NSViewController {
                 path.toolTip = grant.url.path
                 let state = NSTextField(labelWithString: isStale ? "Unavailable or stale bookmark".localized : "Available".localized)
                 state.textColor = isStale ? .systemOrange : .secondaryLabelColor
-                let revoke = NSButton(title: "Revoke".localized, target: self, action: #selector(revokeFolderAccess(_:)))
-                revoke.representedObject = grant.url as NSURL
+                let revoke = FolderAccessGrantButton(title: "Revoke".localized, target: self, action: #selector(revokeFolderAccess(_:)))
+                revoke.grantURL = grant.url
                 let row = NSStackView(views: [path, state, revoke])
                 row.orientation = .horizontal
                 row.alignment = .centerY
@@ -676,9 +676,9 @@ final class SettingsViewController: NSViewController {
         rebuildSettingsPage()
     }
 
-    @objc private func revokeFolderAccess(_ sender: NSButton) {
-        guard let url = sender.representedObject as? NSURL else { return }
-        _ = accessGrantService.removeGrant(for: url as URL)
+    @objc private func revokeFolderAccess(_ sender: FolderAccessGrantButton) {
+        guard let url = sender.grantURL else { return }
+        _ = accessGrantService.removeGrant(for: url)
         rebuildSettingsPage()
     }
 
@@ -777,6 +777,10 @@ final class SettingsViewController: NSViewController {
             alert.runModal()
         }
     }
+}
+
+private final class FolderAccessGrantButton: NSButton {
+    var grantURL: URL?
 }
 
 private final class FlippedView: NSView {

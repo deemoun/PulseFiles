@@ -53,7 +53,7 @@ struct VolumeStatusPresentation: Equatable {
         unavailable(for: directory, availability: .unavailable)
     }
 
-    private static func resolveSynchronously(for directory: URL) -> VolumeStatusPresentation {
+    static func resolveSynchronously(for directory: URL) -> VolumeStatusPresentation {
         do {
             let directoryValues = try directory.resourceValues(forKeys: [.volumeURLKey])
             guard let volumeURL = directoryValues.allValues[.volumeURLKey] as? URL else {

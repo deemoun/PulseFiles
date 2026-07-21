@@ -126,7 +126,7 @@ final class FileOperationProgressWindowController: NSWindowController {
         window.orderFront(nil)
     }
 
-    func update(operationName: String, progress: FileOperationProgress) {
+    func update(operationName: String, progress: FileOperationProgress?) {
         lastProgressDate = Date()
         apply(FileOperationProgressPresentation.make(operationName: operationName, progress: progress))
     }

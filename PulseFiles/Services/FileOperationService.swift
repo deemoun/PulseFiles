@@ -286,7 +286,7 @@ final class MacOSCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @un
 
     func prepareDownload(for url: URL) async throws -> Bool {
         #if os(macOS)
-        guard (try? url.resourceValues(forKeys: [.isUbiquitousItemKey])).isUbiquitousItem == true else { return false }
+        guard (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true else { return false }
         guard (try? FileManager.default.startDownloadingUbiquitousItem(at: url)) != nil else { return false }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

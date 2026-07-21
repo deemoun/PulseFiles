@@ -62,6 +62,7 @@ final class SidebarViewController: NSViewController {
         let rows: [InfoRow]
         let selectedURLs: [URL]
 
+        @MainActor
         static func make(for items: [FileItem]) -> SelectionInspectorPresentation? {
             guard !items.isEmpty else { return nil }
             if items.count == 1, let item = items.first {

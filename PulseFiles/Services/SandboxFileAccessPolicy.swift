@@ -260,7 +260,7 @@ struct OpenDirectoryCapability {
             }
             var status = stat()
             guard Darwin.fstat(descriptor, &status) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            guard (status.st_mode & S_IFMT) == S_IFDIR else { throw CocoaError(.fileReadNotDirectory) }
+            guard (status.st_mode & S_IFMT) == S_IFDIR else { throw POSIXError(.ENOTDIR) }
             fileDescriptor = descriptor
             identity = Identity(device: status.st_dev, inode: status.st_ino)
         } catch {

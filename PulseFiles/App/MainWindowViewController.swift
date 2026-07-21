@@ -1122,7 +1122,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     private func startCreationOperation(named operationName: String, directory: URL, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) {
         startFileOperation(named: operationName, operation: operation) { [weak self] result in
             guard let self, let destination = result.completedItems.first else { return }
-            let pane = self.panes.first { $0.currentDirectory == directory } ?? self.targetPane()
+            let pane = [self.leftPane, self.rightPane].first { $0.currentDirectory == directory } ?? self.targetPane()
             pane.viewModel.invalidateCurrentDirectorySnapshot()
             pane.loadDirectory(selecting: destination)
         }
@@ -1646,7 +1646,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         if urls.count > visibleNames.count {
             lines.append("- ...and %d more".localized(with: urls.count - visibleNames.count))
         }
-        let sourceVolumes = Dictionary(grouping: urls, by: { VolumeStatusPresentation.resolve(for: $0).locationDescription }).keys.sorted()
+        let sourceVolumes = Dictionary(grouping: urls, by: { VolumeStatusPresentation.resolveSynchronously(for: $0).locationDescription }).keys.sorted()
         if !sourceVolumes.isEmpty {
             lines.append("")
             lines.append("Source volume%@: %@".localized(with: sourceVolumes.count == 1 ? "" : "s", sourceVolumes.joined(separator: ", ")))
@@ -1654,7 +1654,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         if let destinationDirectory {
             lines.append("")
             lines.append("Destination: %@".localized(with: destinationDirectory.path))
-            lines.append("Destination volume: %@".localized(with: VolumeStatusPresentation.resolve(for: destinationDirectory).locationDescription))
+            lines.append("Destination volume: %@".localized(with: VolumeStatusPresentation.resolveSynchronously(for: destinationDirectory).locationDescription))
         }
         return lines.joined(separator: "\n")
     }
@@ -1712,14 +1712,15 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             guard let self else { return }
             defer {
                 self.retainedOperationTasks[generation] = nil
-                guard self.currentFileOperationGeneration == generation else { return }
-                if let previousWindowTitle {
-                    self.view.window?.title = previousWindowTitle
+                if self.currentFileOperationGeneration == generation {
+                    if let previousWindowTitle {
+                        self.view.window?.title = previousWindowTitle
+                    }
+                    self.fileOperationProgressWindowController.dismiss()
+                    self.isFileOperationActive = false
+                    self.activeOperationTask = nil
+                    self.currentFileOperationGeneration = nil
                 }
-                self.fileOperationProgressWindowController.dismiss()
-                self.isFileOperationActive = false
-                self.activeOperationTask = nil
-                self.currentFileOperationGeneration = nil
             }
 
             do {

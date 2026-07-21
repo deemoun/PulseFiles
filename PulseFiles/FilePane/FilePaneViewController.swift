@@ -72,11 +72,11 @@ final class FilePaneViewController: NSViewController {
     init(
         paneID: PaneID,
         viewModel: FilePaneViewModel,
-        openWithApplicationResolver: OpenWithMenuApplicationResolver = OpenWithMenuApplicationResolver()
+        openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil
     ) {
         self.paneID = paneID
         self.viewModel = viewModel
-        self.openWithApplicationResolver = openWithApplicationResolver
+        self.openWithApplicationResolver = openWithApplicationResolver ?? OpenWithMenuApplicationResolver()
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -941,7 +941,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             submenu: submenu,
             loadingItem: loadingItem
         ) { [weak self] applicationURL in
-            let applicationItem = NSMenuItem(title: applicationURL.deletingPathExtension().lastPathComponent, action: #selector(contextOpenWithApplication(_:)), keyEquivalent: "")
+            let applicationItem = NSMenuItem(title: applicationURL.deletingPathExtension().lastPathComponent, action: #selector(Self.contextOpenWithApplication(_:)), keyEquivalent: "")
             applicationItem.target = self
             applicationItem.representedObject = OpenWithRequest(fileURL: url, applicationURL: applicationURL)
             return applicationItem
