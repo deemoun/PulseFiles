@@ -88,10 +88,13 @@ final class MainWindowViewController: NSViewController {
     private lazy var fileSystemProbe: any FileSystemProbing = FileSystemProbeService(scheduler: fileSystemScheduler)
     private let recentLocations = RecentLocationService()
 
+    private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
+    private lazy var rightStartupResolution = settings.startupDirectoryResolution(for: .right)
+
     private lazy var leftPane = FilePaneViewController(
         paneID: .left,
         viewModel: FilePaneViewModel(
-            initialDirectory: accessPolicy.validatedDirectory(settings.launchLeftDirectory),
+            initialDirectory: leftStartupResolution.directory,
             showsHiddenFiles: settings.showHiddenFilesByDefault,
             sort: settings.defaultSortDescriptor,
             fileSystem: fileSystem,
@@ -101,7 +104,7 @@ final class MainWindowViewController: NSViewController {
     private lazy var rightPane = FilePaneViewController(
         paneID: .right,
         viewModel: FilePaneViewModel(
-            initialDirectory: accessPolicy.validatedDirectory(settings.launchRightDirectory),
+            initialDirectory: rightStartupResolution.directory,
             showsHiddenFiles: settings.showHiddenFilesByDefault,
             sort: settings.defaultSortDescriptor,
             fileSystem: fileSystem,
@@ -206,6 +209,7 @@ final class MainWindowViewController: NSViewController {
         updateActivePane()
         leftPane.loadDirectory()
         rightPane.loadDirectory()
+        presentStartupAccessRecoveryIfNeeded()
     }
 
     override func viewDidAppear() {
@@ -296,7 +300,44 @@ final class MainWindowViewController: NSViewController {
         }
     }
 
+    /// A denied saved startup folder is intentionally not opened or prompted
+    /// for automatically. The person can opt in to the picker from this
+    /// recovery alert, which creates a fresh folder grant.
+    private func presentStartupAccessRecoveryIfNeeded() {
+        let recoveries: [(PaneID, StartupDirectoryResolution)] = [
+            (.left, leftStartupResolution),
+            (.right, rightStartupResolution)
+        ]
+        guard let recovery = recoveries.first(where: { $0.1.needsAccessRecovery }) else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Startup Folder Access Needed".localized
+        alert.informativeText = "PulseFiles could not access %@, so this pane opened a safe default instead. Choose Folder… to grant access deliberately.".localized(with: recovery.1.requestedDirectory.path)
+        alert.addButton(withTitle: "Choose Folder…".localized)
+        alert.addButton(withTitle: "Not Now".localized)
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            if recovery.0 == .left {
+                self?.leftPane.chooseDirectoryForAccessRecovery()
+            } else {
+                self?.rightPane.chooseDirectoryForAccessRecovery()
+            }
+        }
+        if let window = view.window {
+            alert.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            completion(alert.runModal())
+        }
+    }
+
     private func bindPaneCallbacks() {
+        leftPane.onDirectoryAccessGranted = { [weak self] url in
+            self?.settings.startupLeftDirectory = url
+        }
+        rightPane.onDirectoryAccessGranted = { [weak self] url in
+            self?.settings.startupRightDirectory = url
+        }
         terminal.workingDirectoryProvider = { [weak self] in
             guard let self else { return ExperimentalFlags.appSandboxRoot }
             return self.terminalService.resolvedWorkingDirectory(

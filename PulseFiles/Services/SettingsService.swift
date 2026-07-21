@@ -1,5 +1,39 @@
 import AppKit
 
+enum StartupDirectorySource: Equatable {
+    case `default`
+    case lastVisited
+    case userSelected
+}
+
+/// The startup target is resolved before a pane starts loading. This avoids
+/// probing a privacy-protected saved folder until the user deliberately grants
+/// access to it again.
+struct StartupDirectoryResolution {
+    let directory: URL
+    let requestedDirectory: URL
+    let source: StartupDirectorySource
+    let needsAccessRecovery: Bool
+
+    static func resolve(
+        requestedDirectory: URL,
+        fallbackDirectory: URL,
+        source: StartupDirectorySource,
+        accessPolicy: SandboxFileAccessPolicy
+    ) -> Self {
+        guard !accessPolicy.canAccess(requestedDirectory) else {
+            return Self(directory: requestedDirectory, requestedDirectory: requestedDirectory, source: source, needsAccessRecovery: false)
+        }
+
+        return Self(
+            directory: accessPolicy.validatedDirectory(fallbackDirectory),
+            requestedDirectory: requestedDirectory,
+            source: source,
+            needsAccessRecovery: source == .userSelected
+        )
+    }
+}
+
 final class SettingsService {
     static var jsonSettingsURL: URL {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -15,7 +49,6 @@ final class SettingsService {
     private let grantService: FolderAccessGrantService
     private let homeDirectoryProvider: () -> URL
     private let documentsDirectoryProvider: () -> URL
-    private let downloadsDirectoryProvider: () -> URL
     private let applicationSupportDirectoryProvider: () -> URL
     private var isSyncingJSON = false
     private var runtimeTerminalVisible: Bool?
@@ -27,10 +60,6 @@ final class SettingsService {
         documentsDirectoryProvider: @escaping () -> URL = {
             FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents", isDirectory: true)
-        },
-        downloadsDirectoryProvider: @escaping () -> URL = {
-            FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
         },
         applicationSupportDirectoryProvider: @escaping () -> URL = {
             let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -45,7 +74,6 @@ final class SettingsService {
         self.accessPolicyOverride = accessPolicy
         self.homeDirectoryProvider = homeDirectoryProvider
         self.documentsDirectoryProvider = documentsDirectoryProvider
-        self.downloadsDirectoryProvider = downloadsDirectoryProvider
         self.applicationSupportDirectoryProvider = applicationSupportDirectoryProvider
         if syncsJSON {
             importJSONIfChanged()
@@ -63,16 +91,45 @@ final class SettingsService {
         set { set(newValue, forKey: "lastRightDirectory") }
     }
 
-    var launchLeftDirectory: URL { startupLeftDirectory ?? lastLeftDirectory }
-    var launchRightDirectory: URL { startupRightDirectory ?? lastRightDirectory }
+    var launchLeftDirectory: URL { startupDirectoryResolution(for: .left).directory }
+    var launchRightDirectory: URL { startupDirectoryResolution(for: .right).directory }
+
+    func startupDirectoryResolution(for pane: PaneID) -> StartupDirectoryResolution {
+        let startupKey = pane == .left ? "startupLeftDirectory" : "startupRightDirectory"
+        let lastKey = pane == .left ? "lastLeftDirectory" : "lastRightDirectory"
+        let fallback = pane == .left ? defaultLeftDirectory : defaultRightDirectory
+
+        if let startupDirectory = defaults.url(forKey: startupKey) {
+            return .resolve(
+                requestedDirectory: startupDirectory,
+                fallbackDirectory: fallback,
+                source: .userSelected,
+                accessPolicy: accessPolicy
+            )
+        }
+        if let lastDirectory = defaults.url(forKey: lastKey) {
+            return .resolve(
+                requestedDirectory: lastDirectory,
+                fallbackDirectory: fallback,
+                source: .lastVisited,
+                accessPolicy: accessPolicy
+            )
+        }
+        return .resolve(
+            requestedDirectory: fallback,
+            fallbackDirectory: fallback,
+            source: .default,
+            accessPolicy: accessPolicy
+        )
+    }
 
     var startupLeftDirectory: URL? {
-        get { optionalDirectory(forKey: "startupLeftDirectory") }
+        get { defaults.url(forKey: "startupLeftDirectory") }
         set { setOptionalDirectory(newValue, forKey: "startupLeftDirectory") }
     }
 
     var startupRightDirectory: URL? {
-        get { optionalDirectory(forKey: "startupRightDirectory") }
+        get { defaults.url(forKey: "startupRightDirectory") }
         set { setOptionalDirectory(newValue, forKey: "startupRightDirectory") }
     }
 
@@ -237,19 +294,14 @@ final class SettingsService {
             return accessPolicy.validatedDirectory(ExperimentalFlags.appSandboxRoot.appendingPathComponent("Right Pane", isDirectory: true))
         }
 
-        return firstAccessibleDirectory(from: [
-            downloadsDirectoryProvider(),
-            homeDirectoryProvider()
-        ])
+        // Do not enumerate Downloads at first launch: macOS may protect it
+        // until the person has explicitly selected it for PulseFiles.
+        return firstAccessibleDirectory(from: [homeDirectoryProvider()])
     }
 
     private func directory(forKey key: String, fallback: URL) -> URL {
         let url = defaults.url(forKey: key) ?? fallback
         return accessPolicy.validatedDirectory(url, fallback: fallback)
-    }
-
-    private func optionalDirectory(forKey key: String) -> URL? {
-        defaults.url(forKey: key).map { accessPolicy.validatedDirectory($0) }
     }
 
     private func firstAccessibleDirectory(from preferredDirectories: [URL]) -> URL {
