@@ -60,6 +60,9 @@ final class FilePaneViewController: NSViewController {
     private var dimmedFileURLs = Set<String>()
     private var previousSelectedRowIndexes = IndexSet()
     private var pendingSelectionURL: URL?
+    private var inlineRenameRow: Int?
+    private var inlineRenameItemURL: URL?
+    private var didCommitInlineRename = false
     private lazy var dropProbeCache = FileSystemProbeCache()
     private lazy var dropTransferPolicy = DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
         guard let self else { return nil }
@@ -227,6 +230,9 @@ final class FilePaneViewController: NSViewController {
         guard selectedItems.count == 1, let item = focusedItem else { return false }
         guard let row = row(for: item), !isParentRow(row) else { return false }
         guard let nameColumn = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }) else { return false }
+        inlineRenameRow = row
+        inlineRenameItemURL = item.url
+        didCommitInlineRename = false
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         view.window?.makeFirstResponder(tableView)
@@ -630,9 +636,17 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         guard let item = item(forRow: row) else { return nil }
         let cell = NSTableCellView()
         cell.alphaValue = isDimmed(item) ? 0.45 : 1
-        let text = identifier == "name"
-            ? NSTextField(string: item.filename)
-            : NSTextField(labelWithString: string(for: item, column: identifier))
+        let text: NSTextField
+        if identifier == "name" {
+            let renameTextField = InlineRenameTextField(string: item.filename)
+            renameTextField.itemURL = item.url
+            renameTextField.delegate = self
+            renameTextField.target = self
+            renameTextField.action = #selector(commitInlineRenameFromAction(_:))
+            text = renameTextField
+        } else {
+            text = NSTextField(labelWithString: string(for: item, column: identifier))
+        }
         text.isEditable = identifier == "name"
         text.isBordered = false
         text.drawsBackground = false
@@ -708,7 +722,9 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
-        tableColumn?.identifier.rawValue == "name" && item(forRow: row) != nil
+        tableColumn?.identifier.rawValue == "name"
+            && inlineRenameRow == row
+            && item(forRow: row) != nil
     }
 
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
@@ -717,6 +733,35 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
               let proposedName = object as? String,
               proposedName != item.filename else { return }
         onRenameItem?(item, proposedName)
+    }
+
+    @objc private func commitInlineRenameFromAction(_ sender: NSTextField) {
+        guard let sender = sender as? InlineRenameTextField else { return }
+        commitInlineRename(from: sender)
+    }
+
+    private func commitInlineRename(from textField: InlineRenameTextField) {
+        guard !didCommitInlineRename,
+              let itemURL = textField.itemURL,
+              inlineRenameItemURL.map({ isSameFileURL($0, itemURL) }) != false,
+              let item = item(for: itemURL) else {
+            clearInlineRenameState()
+            return
+        }
+        didCommitInlineRename = true
+        defer { clearInlineRenameState() }
+        let proposedName = textField.stringValue
+        guard proposedName != item.filename else { return }
+        onRenameItem?(item, proposedName)
+    }
+
+    private func item(for url: URL) -> FileItem? {
+        viewModel.visibleItems.first { isSameFileURL($0.url, url) }
+    }
+
+    private func clearInlineRenameState() {
+        inlineRenameRow = nil
+        inlineRenameItemURL = nil
     }
 
     private func reloadRowsForSelectionColorChange() {
@@ -879,6 +924,22 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             return ""
         }
     }
+}
+
+extension FilePaneViewController: NSTextFieldDelegate {
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let textField = notification.object as? InlineRenameTextField else { return }
+        let movement = (notification.userInfo?["NSTextMovement"] as? NSNumber)?.intValue
+        if movement == NSCancelTextMovement {
+            clearInlineRenameState()
+            return
+        }
+        commitInlineRename(from: textField)
+    }
+}
+
+private final class InlineRenameTextField: NSTextField {
+    var itemURL: URL?
 }
 
 extension FilePaneViewController: FileTableViewActionDelegate {
