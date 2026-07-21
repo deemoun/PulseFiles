@@ -69,6 +69,7 @@ final class FilePaneViewController: NSViewController {
     private var inlineRenameItem: FileItem?
     private var inlineRenameSession = InlineRenameCommitSession()
     private var hasDeferredTableReload = false
+    private var hasOppositePane = true
     private lazy var dropProbeCache = FileSystemProbeCache()
     private lazy var dropTransferPolicy = DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
         guard let self else { return nil }
@@ -212,6 +213,10 @@ final class FilePaneViewController: NSViewController {
         isPaneActive = active
         updatePaneChrome()
         requestTableReload()
+    }
+
+    func setHasOppositePane(_ hasOppositePane: Bool) {
+        self.hasOppositePane = hasOppositePane
     }
 
     private func updatePaneChrome() {
@@ -1182,9 +1187,11 @@ extension FilePaneViewController: FileTableViewActionDelegate {
                 menu.addItem(openWithMenu(for: rowItem.url))
             }
             menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
-            menu.addItem(.separator())
-            menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
-            menu.addItem(contextMenuItem("Move to Opposite Pane", action: #selector(contextMove)))
+            if hasOppositePane {
+                menu.addItem(.separator())
+                menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
+                menu.addItem(contextMenuItem("Move to Opposite Pane", action: #selector(contextMove)))
+            }
             menu.addItem(.separator())
             menu.addItem(contextMenuItem("Copy Path", action: #selector(contextCopyPath)))
             menu.addItem(contextMenuItem("Reveal in Finder", action: #selector(contextReveal)))

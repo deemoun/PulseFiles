@@ -928,6 +928,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func rebuildPaneArrangement() {
+        leftPane.setHasOppositePane(!isSinglePaneMode)
+        rightPane.setHasOppositePane(!isSinglePaneMode)
         paneSplitView.arrangedSubviews.forEach { subview in
             paneSplitView.removeArrangedSubview(subview)
             subview.removeFromSuperview()
