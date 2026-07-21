@@ -874,7 +874,7 @@ final class FileOperationService: FileOperationServicing {
         } catch {
             metadata = nil
         }
-        var recursiveProgress = RecursiveProgressState(
+        let recursiveProgress = RecursiveProgressState(
             totalItemCount: metadata?.itemCount,
             completedItemCount: 0,
             totalByteCount: metadata?.byteCount,
@@ -1299,7 +1299,12 @@ final class FileOperationService: FileOperationServicing {
         var warnings: [FileOperationCleanupWarning] = []
         var offset = 0
         while offset < names.count {
-            let name = String(cString: &names[offset]); offset += name.utf8.count + 1
+            let name = names.withUnsafeBufferPointer { buffer -> String? in
+                guard let baseAddress = buffer.baseAddress else { return nil }
+                return String(validatingCString: baseAddress.advanced(by: offset))
+            }
+            guard let name else { break }
+            offset += name.utf8.count + 1
             let valueSize = getxattr(source.path, name, nil, 0, 0, options)
             guard valueSize >= 0 else { warnings.append(contentsOf: metadataWarnings(for: source, errno: errno)); continue }
             var value = [UInt8](repeating: 0, count: valueSize)

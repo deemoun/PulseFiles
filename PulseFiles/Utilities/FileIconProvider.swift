@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Resolves generic file icons on the main/AppKit context and retains only a
 /// bounded set of images. Directory scanning therefore never invokes AppKit
@@ -10,9 +11,9 @@ final class FileIconProvider {
     private let cache = NSCache<NSString, NSImage>()
     private let imageResolver: (FileIconKey) -> NSImage
 
-    init(countLimit: Int = 128, imageResolver: @escaping (FileIconKey) -> NSImage = FileIconProvider.defaultImage) {
+    init(countLimit: Int = 128, imageResolver: ((FileIconKey) -> NSImage)? = nil) {
         cache.countLimit = countLimit
-        self.imageResolver = imageResolver
+        self.imageResolver = imageResolver ?? Self.defaultImage
     }
 
     func image(for key: FileIconKey) -> NSImage {
@@ -35,22 +36,28 @@ final class FileIconProvider {
     private static func defaultImage(for key: FileIconKey) -> NSImage {
         switch key.fileType {
         case .folder:
-            return NSImage(named: NSImage.folderName) ?? NSWorkspace.shared.icon(forFileType: "folder")
+            return NSImage(named: NSImage.folderName) ?? NSWorkspace.shared.icon(for: .folder)
         case .symbolicLink:
-            return NSWorkspace.shared.icon(forFileType: "alias")
+            return NSImage(systemSymbolName: "arrow.up.forward.square", accessibilityDescription: nil) ?? NSImage()
         case .package:
-            return workspaceIcon(fileType: key.fileExtension, fallback: "package")
+            return workspaceIcon(fileType: key.fileExtension, fallback: .package)
         case .file, .unknown:
             return workspaceIcon(fileType: key.fileExtension, fallback: key.contentTypeIdentifier)
         }
     }
 
     private static func workspaceIcon(fileType: String, fallback: String?) -> NSImage {
-        let resolvedType = fileType.isEmpty ? (fallback ?? "") : fileType
-        guard !resolvedType.isEmpty else {
+        let contentType = UTType(filenameExtension: fileType)
+            ?? fallback.flatMap(UTType.init)
+        guard let contentType else {
             return NSImage(named: NSImage.multipleDocumentsName) ?? NSImage()
         }
-        return NSWorkspace.shared.icon(forFileType: resolvedType)
+        return NSWorkspace.shared.icon(for: contentType)
+    }
+
+    private static func workspaceIcon(fileType: String, fallback: UTType) -> NSImage {
+        let contentType = UTType(filenameExtension: fileType) ?? fallback
+        return NSWorkspace.shared.icon(for: contentType)
     }
 }
 

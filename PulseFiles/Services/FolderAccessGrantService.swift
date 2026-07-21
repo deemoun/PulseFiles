@@ -72,8 +72,13 @@ final class FolderAccessGrantService {
         guard fileManager.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw CocoaError(.fileNoSuchFile)
         }
-        let bookmarkData = try resolver.makeBookmarkData(for: directory)
-        let grant = FolderAccessGrant(url: directory.standardizedFileURL, bookmarkData: bookmarkData)
+        let standardizedDirectory = directory.standardizedFileURL
+        if let existingGrant = grant(containing: standardizedDirectory) {
+            return existingGrant
+        }
+
+        let bookmarkData = try resolver.makeBookmarkData(for: standardizedDirectory)
+        let grant = FolderAccessGrant(url: standardizedDirectory, bookmarkData: bookmarkData)
         upsert(grant)
         resolveStoredBookmarks()
         return grant
@@ -82,6 +87,11 @@ final class FolderAccessGrantService {
     #if canImport(AppKit)
     @MainActor
     func requestGrant(startingAt directory: URL?, window: NSWindow?, completion: @escaping (Result<URL, Error>) -> Void) {
+        if let directory, let existingGrant = grant(containing: directory) {
+            completion(.success(existingGrant.url))
+            return
+        }
+
         let panel = NSOpenPanel()
         panel.directoryURL = directory
         panel.canChooseDirectories = true
@@ -114,17 +124,42 @@ final class FolderAccessGrantService {
     func resolveStoredBookmarks() {
         resolvedGrants.removeAll()
         staleGrantURLs.removeAll()
+        var resolvedStoredGrants: [FolderAccessGrant] = []
+        var shouldRewriteStoredGrants = false
+
         for grant in grants {
             do {
                 let resolved = try resolver.resolveBookmarkData(grant.bookmarkData)
                 let standardized = resolved.url.standardizedFileURL
                 resolvedGrants[normalizedPath(standardized)] = standardized
+                var resolvedGrant = FolderAccessGrant(url: standardized, bookmarkData: grant.bookmarkData)
                 if resolved.isStale {
-                    staleGrantURLs.append(grant.url.standardizedFileURL)
+                    do {
+                        resolvedGrant = FolderAccessGrant(
+                            url: standardized,
+                            bookmarkData: try resolver.makeBookmarkData(for: standardized)
+                        )
+                        shouldRewriteStoredGrants = true
+                    } catch {
+                        staleGrantURLs.append(standardized)
+                    }
                 }
+                if resolvedGrant.url != grant.url.standardizedFileURL {
+                    shouldRewriteStoredGrants = true
+                }
+                resolvedStoredGrants.append(resolvedGrant)
             } catch {
                 staleGrantURLs.append(grant.url)
+                resolvedStoredGrants.append(grant)
             }
+        }
+
+        let compactedGrants = compacted(resolvedStoredGrants)
+        if compactedGrants != resolvedStoredGrants {
+            shouldRewriteStoredGrants = true
+        }
+        if shouldRewriteStoredGrants {
+            _ = store(compactedGrants)
         }
     }
 
@@ -170,9 +205,34 @@ final class FolderAccessGrantService {
 
     private func upsert(_ grant: FolderAccessGrant) {
         let path = normalizedPath(grant.url)
-        var stored = grants.filter { normalizedPath($0.url) != path }
+        var stored = grants.filter {
+            let storedPath = normalizedPath($0.url)
+            return storedPath != path && !storedPath.hasPrefix(path + "/")
+        }
         stored.append(grant)
-        grants = stored
+        grants = compacted(stored)
+    }
+
+    private func grant(containing url: URL) -> FolderAccessGrant? {
+        let candidate = normalizedPath(url)
+        return grants.first { grant in
+            let grantPath = normalizedPath(grant.url)
+            return candidate == grantPath || candidate.hasPrefix(grantPath + "/")
+        }
+    }
+
+    private func compacted(_ grants: [FolderAccessGrant]) -> [FolderAccessGrant] {
+        let sorted = grants.sorted {
+            normalizedPath($0.url).count < normalizedPath($1.url).count
+        }
+        return sorted.reduce(into: [FolderAccessGrant]()) { kept, grant in
+            let path = normalizedPath(grant.url)
+            guard kept.contains(where: { existing in
+                let existingPath = normalizedPath(existing.url)
+                return path == existingPath || path.hasPrefix(existingPath + "/")
+            }) == false else { return }
+            kept.append(grant)
+        }
     }
 
     @discardableResult

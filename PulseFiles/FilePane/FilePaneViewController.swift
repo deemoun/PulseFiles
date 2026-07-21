@@ -42,6 +42,7 @@ final class FilePaneViewController: NSViewController {
     var onOpenURL: ((URL) -> Void)?
     var onOpenWithApplication: ((URL, URL?) -> Void)?
     var onDropURLs: (([URL], URL, Bool) -> Void)?
+    var onRenameItem: ((FileItem, String) -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
     var onSelectionChanged: (([FileItem]) -> Void)?
@@ -221,6 +222,19 @@ final class FilePaneViewController: NSViewController {
         }
     }
 
+    @discardableResult
+    func beginInlineRename() -> Bool {
+        guard selectedItems.count == 1, let item = focusedItem else { return false }
+        guard let row = row(for: item), !isParentRow(row) else { return false }
+        guard let nameColumn = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }) else { return false }
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        tableView.scrollRowToVisible(row)
+        view.window?.makeFirstResponder(tableView)
+        tableView.editColumn(nameColumn, row: row, with: nil, select: true)
+        selectFilenameStem(for: item)
+        return true
+    }
+
     func handleKeyDown(_ event: NSEvent) {
         tableView.keyDown(with: event)
     }
@@ -354,6 +368,11 @@ final class FilePaneViewController: NSViewController {
         return viewModel.visibleItems[index]
     }
 
+    private func row(for item: FileItem) -> Int? {
+        guard let index = viewModel.visibleItems.firstIndex(where: { isSameFileURL($0.url, item.url) }) else { return nil }
+        return index + realRowOffset
+    }
+
     private func isParentRow(_ row: Int) -> Bool {
         canShowParentRow && row == 0
     }
@@ -421,6 +440,15 @@ final class FilePaneViewController: NSViewController {
 
     private func isSameFileURL(_ lhs: URL, _ rhs: URL) -> Bool {
         normalizedPath(lhs) == normalizedPath(rhs)
+    }
+
+    private func selectFilenameStem(for item: FileItem) {
+        guard !item.isDirectory,
+              !item.url.pathExtension.isEmpty,
+              let editor = view.window?.fieldEditor(false, for: tableView) else { return }
+        let stem = (item.filename as NSString).deletingPathExtension
+        guard !stem.isEmpty else { return }
+        editor.selectedRange = NSRange(location: 0, length: stem.count)
     }
 
     private func normalizedPath(_ url: URL) -> String {
@@ -542,6 +570,11 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func grantedDirectoryURL(for url: URL) throws -> URL {
+        if accessGrantService.hasGrant(containing: url) {
+            try viewModel.validateAccess(to: url)
+            return url
+        }
+
         if viewModel.isAccessRestrictedToExperimentalSandbox {
             try viewModel.validateAccess(to: url)
             return url
@@ -597,7 +630,12 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         guard let item = item(forRow: row) else { return nil }
         let cell = NSTableCellView()
         cell.alphaValue = isDimmed(item) ? 0.45 : 1
-        let text = NSTextField(labelWithString: string(for: item, column: identifier))
+        let text = identifier == "name"
+            ? NSTextField(string: item.filename)
+            : NSTextField(labelWithString: string(for: item, column: identifier))
+        text.isEditable = identifier == "name"
+        text.isBordered = false
+        text.drawsBackground = false
         text.lineBreakMode = .byTruncatingMiddle
         if identifier == "name" {
             text.textColor = FileTypeColorPalette.textColor(
@@ -667,6 +705,18 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             onActivate?()
         }
         return true
+    }
+
+    func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
+        tableColumn?.identifier.rawValue == "name" && item(forRow: row) != nil
+    }
+
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+        guard tableColumn?.identifier.rawValue == "name",
+              let item = item(forRow: row),
+              let proposedName = object as? String,
+              proposedName != item.filename else { return }
+        onRenameItem?(item, proposedName)
     }
 
     private func reloadRowsForSelectionColorChange() {

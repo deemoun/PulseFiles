@@ -493,7 +493,7 @@ final class SidebarViewController: NSViewController {
         }.value
     }
 
-    private static func calculateTotalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy) -> Int64 {
+    nonisolated private static func calculateTotalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy) -> Int64 {
         guard accessPolicy.canAccess(url, logDecision: false) else { return fallback }
         return accessPolicy.withAccess(to: [url]) {
             var isDirectory: ObjCBool = false

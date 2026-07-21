@@ -298,6 +298,14 @@ final class MainWindowViewController: NSViewController {
         rightPane.onNewFolder = { [weak self] in self?.promptForNewFolder() }
         leftPane.onNewFile = { [weak self] in self?.promptForNewFile() }
         rightPane.onNewFile = { [weak self] in self?.promptForNewFile() }
+        leftPane.onRenameItem = { [weak self] item, name in
+            self?.activePaneID = .left
+            self?.rename(item: item, to: name)
+        }
+        rightPane.onRenameItem = { [weak self] item, name in
+            self?.activePaneID = .right
+            self?.rename(item: item, to: name)
+        }
         leftPane.onOpenURL = { [weak self] fileURL in
             self?.activePaneID = .left
             self?.openFile(fileURL, with: nil)
@@ -401,7 +409,7 @@ final class MainWindowViewController: NSViewController {
         case .newFolder:
             promptForNewFolder()
         case .rename:
-            promptForRename()
+            beginInlineRename()
         case .undo:
             undoLastOperation()
         case .copy:
@@ -1274,38 +1282,20 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         return url
     }
 
-    private func promptForRename() {
-        guard let item = targetPane().focusedItem else {
+    private func beginInlineRename() {
+        guard targetPane().beginInlineRename() else {
             showError(message: "Nothing Selected".localized, detail: "Select one item to rename.".localized)
             return
-        }
-
-        view.window?.makeFirstResponder(nil)
-        let alert = NSAlert()
-        alert.messageText = "Rename".localized
-        alert.informativeText = item.url.path
-        alert.addButton(withTitle: "Rename".localized)
-        alert.addButton(withTitle: "Cancel".localized)
-
-        let textField = NSTextField(string: item.filename)
-        textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-        alert.accessoryView = textField
-
-        let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            self.rename(item: item, to: textField.stringValue)
-        }
-
-        if let window = view.window {
-            alert.beginSheetModal(for: window, completionHandler: handleResponse)
-        } else {
-            handleResponse(alert.runModal())
         }
     }
 
     private func rename(item: FileItem, to rawName: String) {
         startFileOperation(named: "Rename".localized, captureRecovery: true) { [fileOperations] progressHandler in
             try await fileOperations.rename(item.url, to: rawName, progressHandler: progressHandler)
+        } completion: { [weak self] result in
+            guard let self, let renamedItem = result.completedItems.first else { return }
+            let pane = [self.leftPane, self.rightPane].first { FilePathComparison.isSamePath($0.currentDirectory, item.url.deletingLastPathComponent()) } ?? self.targetPane()
+            pane.selectItem(at: renamedItem)
         }
     }
 

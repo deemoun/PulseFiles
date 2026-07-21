@@ -51,7 +51,7 @@ final class FolderAccessGrantServiceTests: XCTestCase {
 
     func testStaleBookmarksAreDetectedForReauthorization() throws {
         let grantedFolder = try temporaryDirectory.folder("Stale")
-        let resolver = FakeFolderAccessBookmarkResolver(stalePaths: [grantedFolder.path])
+        let resolver = AlwaysStaleFolderAccessBookmarkResolver()
         let service = FolderAccessGrantService(defaults: fixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
         try service.grantAccess(to: grantedFolder)
 
@@ -59,6 +59,43 @@ final class FolderAccessGrantServiceTests: XCTestCase {
 
         XCTAssertEqual(reloaded.staleGrantURLs.map(\.path), [grantedFolder.path])
         XCTAssertTrue(reloaded.hasGrant(containing: grantedFolder))
+    }
+
+    func testStaleBookmarksAreRewrittenWhenResolutionCanCreateFreshBookmark() throws {
+        let grantedFolder = try temporaryDirectory.folder("RefreshableStale")
+        let resolver = FakeFolderAccessBookmarkResolver(stalePaths: [grantedFolder.path])
+        let service = FolderAccessGrantService(defaults: fixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
+        try service.grantAccess(to: grantedFolder)
+
+        let reloaded = FolderAccessGrantService(defaults: fixture.defaults, resolver: resolver)
+
+        XCTAssertTrue(reloaded.staleGrantURLs.isEmpty)
+        XCTAssertTrue(reloaded.hasGrant(containing: grantedFolder))
+    }
+
+    func testGrantAccessReusesExistingAncestorGrantForDescendant() throws {
+        let parent = try temporaryDirectory.folder("Parent")
+        let child = try temporaryDirectory.folder("Parent/Child")
+        let service = FolderAccessGrantService(defaults: fixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
+        let parentGrant = try service.grantAccess(to: parent)
+
+        let childGrant = try service.grantAccess(to: child)
+
+        XCTAssertEqual(childGrant.url.path, parentGrant.url.path)
+        XCTAssertEqual(service.grants.map { $0.url.path }, [parent.path])
+        XCTAssertTrue(service.hasGrant(containing: child.appendingPathComponent("Nested.txt")))
+    }
+
+    func testGrantAccessCompactsDescendantGrantsWhenParentIsGranted() throws {
+        let parent = try temporaryDirectory.folder("CompactParent")
+        let child = try temporaryDirectory.folder("CompactParent/Child")
+        let service = FolderAccessGrantService(defaults: fixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
+        try service.grantAccess(to: child)
+
+        try service.grantAccess(to: parent)
+
+        XCTAssertEqual(service.grants.map { $0.url.path }, [parent.path])
+        XCTAssertTrue(service.hasGrant(containing: child))
     }
 
     func testRemoveGrantDeletesPersistedAndResolvedCapability() throws {
@@ -92,6 +129,19 @@ final class FolderAccessGrantServiceTests: XCTestCase {
         settings.folderAccessGrants = [FolderAccessGrant(url: grantedFolder, bookmarkData: data)]
 
         XCTAssertEqual(SettingsService(defaults: fixture.defaults).folderAccessGrants, [FolderAccessGrant(url: grantedFolder, bookmarkData: data)])
+    }
+}
+
+private struct AlwaysStaleFolderAccessBookmarkResolver: FolderAccessBookmarkResolving {
+    func makeBookmarkData(for url: URL) throws -> Data {
+        Data(url.standardizedFileURL.path.utf8)
+    }
+
+    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool) {
+        guard let path = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return (URL(fileURLWithPath: path, isDirectory: true), true)
     }
 }
 

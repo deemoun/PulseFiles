@@ -742,7 +742,7 @@ final class SettingsViewController: NSViewController {
     }
 
     private func grantedDirectoryURL(for url: URL) throws -> URL {
-        if accessPolicy.isEnabled {
+        if accessPolicy.canAccess(url) {
             try accessPolicy.validateAccess(to: url)
             return url
         }

@@ -149,7 +149,7 @@ struct SandboxFileAccessPolicy {
     #if canImport(AppKit)
     @MainActor
     func requestAccess(to directory: URL, window: NSWindow?, completion: @escaping (Bool) -> Void) {
-        if isEnabled, canAccess(directory) {
+        if canAccess(directory) {
             completion(true)
             return
         }
