@@ -21,7 +21,7 @@ final class SettingsServiceTests: XCTestCase {
 
     func testDirectorySettingsDefaultAndRoundTrip() throws {
         XCTAssertEqual(settings.lastLeftDirectory, FileManager.default.homeDirectoryForCurrentUser)
-        XCTAssertEqual(settings.lastRightDirectory, FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true))
+        XCTAssertEqual(settings.lastRightDirectory, FileManager.default.homeDirectoryForCurrentUser)
         XCTAssertNil(settings.startupLeftDirectory)
         XCTAssertNil(settings.startupRightDirectory)
         XCTAssertEqual(settings.launchLeftDirectory, settings.lastLeftDirectory)
@@ -57,7 +57,6 @@ final class SettingsServiceTests: XCTestCase {
         let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceHomeFallbackTests", testCase: self)
         let accessibleHome = try temporaryDirectory.folder("Home")
         let inaccessibleDocuments = temporaryDirectory.path("MissingDocuments", isDirectory: true)
-        let inaccessibleDownloads = temporaryDirectory.path("MissingDownloads", isDirectory: true)
         let appSupport = try temporaryDirectory.folder("Application Support/PulseFiles")
         let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot)
         let fallbackSettings = SettingsService(
@@ -65,7 +64,6 @@ final class SettingsServiceTests: XCTestCase {
             accessPolicy: policy,
             homeDirectoryProvider: { accessibleHome },
             documentsDirectoryProvider: { inaccessibleDocuments },
-            downloadsDirectoryProvider: { inaccessibleDownloads },
             applicationSupportDirectoryProvider: { appSupport }
         )
 
@@ -73,11 +71,73 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertEqual(fallbackSettings.lastRightDirectory, accessibleHome)
     }
 
+    func testFreshInstallUsesHomeForBothPanesWithoutCheckingDownloads() throws {
+        let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceFreshInstallTests", testCase: self)
+        let home = try temporaryDirectory.folder("Home")
+        let protectedDownloads = temporaryDirectory.path("Downloads", isDirectory: true)
+        var checkedPaths: [String] = []
+        let policy = SandboxFileAccessPolicy(
+            isEnabled: false,
+            rootURL: home,
+            accessProbe: .init(
+                fileExists: { path in checkedPaths.append(path); return path == home.path },
+                isReadableFile: { path in checkedPaths.append(path); return path == home.path },
+                isWritableFile: { _ in true }
+            )
+        )
+        let freshSettings = SettingsService(
+            defaults: fixture.defaults,
+            accessPolicy: policy,
+            homeDirectoryProvider: { home },
+            applicationSupportDirectoryProvider: { home }
+        )
+
+        XCTAssertEqual(freshSettings.startupDirectoryResolution(for: .left).directory, home)
+        XCTAssertEqual(freshSettings.startupDirectoryResolution(for: .right).directory, home)
+        XCTAssertFalse(checkedPaths.contains(protectedDownloads.path))
+    }
+
+    func testInaccessibleUserSelectedStartupFolderFallsBackAndPreservesPreference() throws {
+        let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceStartupRecoveryTests", testCase: self)
+        let home = try temporaryDirectory.folder("Home")
+        let protectedFolder = temporaryDirectory.path("Protected", isDirectory: true)
+        let policy = SandboxFileAccessPolicy(
+            isEnabled: false,
+            rootURL: home,
+            accessProbe: .init(fileExists: { $0 == home.path }, isReadableFile: { $0 == home.path }, isWritableFile: { _ in true })
+        )
+        let recoveredSettings = SettingsService(defaults: fixture.defaults, accessPolicy: policy, homeDirectoryProvider: { home }, applicationSupportDirectoryProvider: { home })
+        recoveredSettings.startupRightDirectory = protectedFolder
+
+        let resolution = recoveredSettings.startupDirectoryResolution(for: .right)
+        XCTAssertEqual(resolution.directory, home)
+        XCTAssertEqual(resolution.requestedDirectory, protectedFolder)
+        XCTAssertEqual(resolution.source, .userSelected)
+        XCTAssertTrue(resolution.needsAccessRecovery)
+        XCTAssertEqual(recoveredSettings.startupRightDirectory, protectedFolder)
+    }
+
+    func testAccessibleUserSelectedStartupFolderReopensWithoutRecovery() throws {
+        let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceGrantedStartupTests", testCase: self)
+        let home = try temporaryDirectory.folder("Home")
+        let grantedFolder = try temporaryDirectory.folder("Granted")
+        let policy = SandboxFileAccessPolicy(
+            isEnabled: false,
+            rootURL: home,
+            accessProbe: .init(fileExists: { $0 == home.path || $0 == grantedFolder.path }, isReadableFile: { $0 == home.path || $0 == grantedFolder.path }, isWritableFile: { _ in true })
+        )
+        let grantedSettings = SettingsService(defaults: fixture.defaults, accessPolicy: policy, homeDirectoryProvider: { home }, applicationSupportDirectoryProvider: { home })
+        grantedSettings.startupLeftDirectory = grantedFolder
+
+        let resolution = grantedSettings.startupDirectoryResolution(for: .left)
+        XCTAssertEqual(resolution.directory, grantedFolder)
+        XCTAssertFalse(resolution.needsAccessRecovery)
+    }
+
     func testNormalDefaultsFallBackToApplicationSupportWhenPreferredAndHomeAreNotAccessible() throws {
         let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceApplicationSupportFallbackTests", testCase: self)
         let inaccessibleHome = temporaryDirectory.path("MissingHome", isDirectory: true)
         let inaccessibleDocuments = temporaryDirectory.path("MissingDocuments", isDirectory: true)
-        let inaccessibleDownloads = temporaryDirectory.path("MissingDownloads", isDirectory: true)
         let appSupport = temporaryDirectory.path("Application Support/PulseFiles", isDirectory: true)
         let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot)
         let fallbackSettings = SettingsService(
@@ -85,7 +145,6 @@ final class SettingsServiceTests: XCTestCase {
             accessPolicy: policy,
             homeDirectoryProvider: { inaccessibleHome },
             documentsDirectoryProvider: { inaccessibleDocuments },
-            downloadsDirectoryProvider: { inaccessibleDownloads },
             applicationSupportDirectoryProvider: { appSupport }
         )
 

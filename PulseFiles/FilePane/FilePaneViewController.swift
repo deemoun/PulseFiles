@@ -46,6 +46,7 @@ final class FilePaneViewController: NSViewController {
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
     var onSelectionChanged: (([FileItem]) -> Void)?
+    var onDirectoryAccessGranted: ((URL) -> Void)?
 
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
@@ -168,6 +169,12 @@ final class FilePaneViewController: NSViewController {
 
     func navigate(to url: URL) {
         viewModel.navigate(to: url)
+    }
+
+    /// Presents a user-initiated folder picker and stores a security-scoped
+    /// grant before opening the selected directory.
+    func chooseDirectoryForAccessRecovery() {
+        chooseRecoveryDirectory()
     }
 
     /// Clears UI state before redirecting away from an unmounted directory.
@@ -630,6 +637,7 @@ final class FilePaneViewController: NSViewController {
     private func openGrantedRecoveryDirectory(_ url: URL) {
         do {
             let accessibleURL = try grantedDirectoryURL(for: url)
+            onDirectoryAccessGranted?(accessibleURL)
             navigate(to: accessibleURL)
         } catch {
             showDirectoryAccessDeniedAlert()
