@@ -82,8 +82,8 @@
 "Dual-pane file manager for macOS" = "Dual-pane file manager for macOS";
 "Edit" = "Edit";
 "Edit Settings JSON…" = "Edit Settings JSON…";
-"Enable experimental terminal" = "Enable experimental terminal";
-"Enable the experimental terminal in Settings before opening it. Shell commands can modify or delete files." = "Enable the experimental terminal in Settings before opening it. Shell commands can modify or delete files.";
+"Enable post-V1 experimental terminal" = "Enable post-V1 experimental terminal";
+"Enable the post-V1 experimental terminal in Settings before opening it. Shell commands can modify or delete files." = "Enable the post-V1 experimental terminal in Settings before opening it. Shell commands can modify or delete files.";
 "Enter a folder path inside the PulseFiles experimental sandbox." = "Enter a folder path inside the PulseFiles experimental sandbox.";
 "Enter an absolute, home-relative, or active-pane-relative folder path." = "Enter an absolute, home-relative, or active-pane-relative folder path.";
 "Enter an absolute, home-relative, or active-pane-relative folder path. If macOS denies access, open or grant the folder first." = "Enter an absolute, home-relative, or active-pane-relative folder path. If macOS denies access, open or grant the folder first.";
@@ -92,8 +92,8 @@
 "Experimental sandbox mode is disabled" = "Experimental sandbox mode is disabled";
 "Experimental sandbox mode is enabled" = "Experimental sandbox mode is enabled";
 "Experimental sandbox mode is enabled." = "Experimental sandbox mode is enabled.";
-"Experimental terminal is disabled" = "Experimental terminal is disabled";
-"Experimental terminal warning" = "Experimental terminal warning";
+"Post-V1 experimental terminal is disabled" = "Post-V1 experimental terminal is disabled";
+"Post-V1 experimental terminal warning" = "Post-V1 experimental terminal warning";
 "Failed: %d" = "Failed: %d";
 "File" = "File";
 "File Browser" = "File Browser";
@@ -150,8 +150,8 @@
 "Permanent delete instead of Move to Trash" = "Permanent delete instead of Move to Trash";
 "Permanently Delete" = "Permanently Delete";
 "PulseFiles Help" = "PulseFiles Help";
-"PulseFiles Help Shortcuts" = "Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Command-` — Toggle Terminal V1 after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the experimental terminal and file-operation confirmations. Use folder pickers to grant PulseFiles access when macOS requires permission.";
-"PulseFiles Help Shortcuts Debug" = "Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Command-` — Toggle Terminal V1 after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the experimental terminal, file-operation confirmations, and Debug-only sandbox safeguards.";
+"PulseFiles Help Shortcuts" = "Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Command-` — Toggle the post-V1 experimental terminal after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the post-V1 experimental terminal and file-operation confirmations. Use folder pickers to grant PulseFiles access when macOS requires permission.";
+"PulseFiles Help Shortcuts Debug" = "Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Command-` — Toggle the post-V1 experimental terminal after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the experimental terminal, file-operation confirmations, and Debug-only sandbox safeguards.";
 "PulseFiles can browse real folders. Re-enable this before testing destructive file operations unless you intentionally want to work outside the test root.\\n\\nSandbox root: %@" = "PulseFiles can browse real folders. Re-enable this before testing destructive file operations unless you intentionally want to work outside the test root.\\n\\nSandbox root: %@";
 "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename." = "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename.";
 "PulseFiles rejected the operation before changing files because %@ appeared more than once." = "PulseFiles rejected the operation before changing files because %@ appeared more than once.";
@@ -175,7 +175,7 @@
 "Show Sidebar" = "Show Sidebar";
 "Show hidden files by default" = "Show hidden files by default";
 "Show sidebar by default" = "Show sidebar by default";
-"Show terminal by default" = "Show terminal by default";
+"Show post-V1 terminal by default" = "Show post-V1 terminal by default";
 "Sidebar" = "Sidebar";
 "Sidebar width" = "Sidebar width";
 "Kind" = "Kind";
@@ -193,9 +193,9 @@
 "Structured data and config files such as json, yaml, plist, csv, sqlite, and .env." = "Structured data and config files such as json, yaml, plist, csv, sqlite, and .env.";
 "Switch Pane" = "Switch Pane";
 "Symbolic links" = "Symbolic links";
-"Terminal" = "Terminal";
-"Terminal V1 is enabled. It runs shell commands in the active pane folder; commands can modify or delete files." = "Terminal V1 is enabled. It runs shell commands in the active pane folder; commands can modify or delete files.";
-"Terminal V1 is hidden by default. Enable it only if you accept the risk that shell commands can modify or delete files." = "Terminal V1 is hidden by default. Enable it only if you accept the risk that shell commands can modify or delete files.";
+"Post-V1 Terminal" = "Post-V1 Terminal";
+"Post-V1 experimental terminal is enabled. It is not part of the V1 product commitment; commands can modify or delete files in the active pane folder." = "Post-V1 experimental terminal is enabled. It is not part of the V1 product commitment; commands can modify or delete files in the active pane folder.";
+"Post-V1 experimental terminal is disabled and hidden. It is not part of the V1 product commitment; enable it only if you accept that shell commands can modify or delete files." = "Post-V1 experimental terminal is disabled and hidden. It is not part of the V1 product commitment; enable it only if you accept that shell commands can modify or delete files.";
 "The destination already contains %@." = "The destination already contains %@.";
 "The destination folder does not exist." = "The destination folder does not exist.";
 "The item was copied, but the original could not be removed." = "The item was copied, but the original could not be removed.";
@@ -210,7 +210,7 @@
 "Toggle Hidden Files" = "Toggle Hidden Files";
 "Toggle Sidebar" = "Toggle Sidebar";
 "Toggle Single Pane" = "Toggle Single Pane";
-"Toggle Terminal" = "Toggle Terminal";
+"Toggle Post-V1 Experimental Terminal" = "Toggle Post-V1 Experimental Terminal";
 "Unable to read folder: %@" = "Unable to read folder: %@";
 "Use Dual Pane" = "Use Dual Pane";
 "Use Last" = "Use Last";

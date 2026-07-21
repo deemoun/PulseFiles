@@ -218,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         orderItem.submenu = orderSubmenu
         submenu.addItem(orderItem)
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Toggle Terminal".localized, action: #selector(MainWindowViewController.menuToggleTerminal(_:)), key: "`", modifiers: [.command]))
+        submenu.addItem(menuItem("Toggle Post-V1 Experimental Terminal".localized, action: #selector(MainWindowViewController.menuToggleTerminal(_:)), key: "`", modifiers: [.command]))
         submenu.addItem(menuItem("Toggle Single Pane".localized, action: #selector(MainWindowViewController.menuTogglePaneLayout(_:)), key: "t", modifiers: [.command]))
         submenu.addItem(menuItem("Toggle Sidebar".localized, action: #selector(MainWindowViewController.menuToggleSidebar(_:)), key: "s", modifiers: [.command, .option]))
         item.submenu = submenu

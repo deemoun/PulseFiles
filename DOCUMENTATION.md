@@ -24,7 +24,7 @@ performCommand path. Keep cross-pane behavior here, not in a pane controller.
 | PulseFiles/App | Lifecycle, menus, window and high-level UI coordination. |
 | PulseFiles/FilePane | Pane view model/controller, file table, breadcrumbs, rows and status views. |
 | PulseFiles/Sidebar | Locations, mounted devices/recent folders and selection inspector. |
-| PulseFiles/Terminal | Experimental terminal interface and process adapter. |
+| PulseFiles/Terminal | Post-V1 experimental terminal interface and process adapter; excluded from the V1 feature commitment. |
 | PulseFiles/Settings | Preferences UI. |
 | PulseFiles/Commands | Commands, routing, shortcuts and command bar. |
 | PulseFiles/Models | Small value models. |
@@ -147,7 +147,7 @@ Limits that must remain visible in code and UI:
 | DirectoryMonitor | Watches a folder and asks the view model to reload. |
 | BookmarkService / RecentLocationService | Persist favorites and bounded, de-duplicated recents. |
 | SettingsService | Typed UserDefaults facade and settings JSON import/export; do not scatter raw keys. |
-| TerminalService | Computes terminal visibility/warning state; never enables Terminal V1 by default. |
+| TerminalService | Computes post-V1 terminal visibility/warning state; never enables the experimental preview by default. |
 | VolumeDiscoveryService / VolumeChangeMonitor | Mounted-volume snapshots and Workspace mount/unmount updates on main actor. |
 | DiagnosticLogService / DiagnosticLogger | Bounded in-memory log; sanitizes paths, redacts common secrets and truncates messages. |
 
@@ -182,12 +182,14 @@ panes refresh or fall back to an authorized directory. Expensive inspector detai
 such as aggregate size load asynchronously and must be tied to the active selection
 identity so stale details do not appear.
 
-Terminal V1 is experimental, hidden and disabled by default. The user must first
-enable SettingsService.experimentalTerminalEnabled. First use warns that commands
-may modify/delete files and, if experimental restriction is off, may operate
-outside its root. TerminalViewController follows the active pane directory where
-possible, uses ProcessTerminalProcess, and can stop a running process; it cannot
-undo shell changes.
+Terminal support is post-V1 experimental and excluded from the V1 feature commitment.
+It is hidden and disabled by default, and users must first enable
+SettingsService.experimentalTerminalEnabled. Its menu, toolbar, shortcut help, settings,
+and panel identify it as post-V1/experimental. First use warns that commands may
+modify/delete files and, if experimental restriction is off, may operate outside its root.
+TerminalViewController follows an authorized active-pane directory where possible, holds
+the access scope for command lifetime, reports launch/non-zero-exit errors, and can
+best-effort stop a running process; it cannot undo shell changes.
 
 SettingsService owns startup/last directories, sidebar/terminal visibility,
 single-pane mode, hidden/sort defaults, confirmation/permanent-delete options,
@@ -218,6 +220,6 @@ Before finishing, confirm:
 3. Main-actor UI and async race protections are maintained.
 4. Commands are routed, validated, localized and consistently exposed.
 5. Settings use SettingsService and apply to existing UI.
-6. Terminal V1 remains opt-in with warning/access scope intact.
+6. The post-V1 terminal preview remains opt-in, visibly labeled, and keeps its warning/access scope intact.
 7. Provider/volume/metadata failures remain honest partial results.
 8. swift test and the relevant build command have run; generated output is unstaged.

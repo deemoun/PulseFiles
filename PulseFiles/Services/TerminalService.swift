@@ -89,7 +89,7 @@ struct TerminalWarningState: Equatable {
     let isDebugBuild: Bool
 
     var messageText: String {
-        "Experimental terminal warning".localized
+        "Post-V1 experimental terminal warning".localized
     }
 
     var informativeText: String {
