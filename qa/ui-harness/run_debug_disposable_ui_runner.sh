@@ -43,11 +43,24 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Use an isolated home so preferences and the configured experimental root are
-# disposable. The app computes ExperimentalFlags.appSandboxRoot from this HOME.
-PREFERENCES_HOME="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesDebugRunnerHome.XXXXXX")"
-SANDBOX_ROOT="${PREFERENCES_HOME}/Library/Application Support/PulseFiles/ExperimentalSandbox"
+# disposable. The top-level automation command can supply both locations; it
+# remains responsible for removing locations it supplied.
+CALLER_MANAGES_LOCATIONS=false
+if [[ -n "${PULSEFILES_AUTOMATION_PREFERENCES_HOME:-}" || -n "${PULSEFILES_AUTOMATION_FIXTURE_ROOT:-}" ]]; then
+  [[ -n "${PULSEFILES_AUTOMATION_PREFERENCES_HOME:-}" && -n "${PULSEFILES_AUTOMATION_FIXTURE_ROOT:-}" ]] || { echo "Both PULSEFILES_AUTOMATION_PREFERENCES_HOME and PULSEFILES_AUTOMATION_FIXTURE_ROOT are required together." >&2; exit 64; }
+  PREFERENCES_HOME="${PULSEFILES_AUTOMATION_PREFERENCES_HOME}"
+  ROOT="${PULSEFILES_AUTOMATION_FIXTURE_ROOT}"
+  CALLER_MANAGES_LOCATIONS=true
+else
+  PREFERENCES_HOME="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesDebugRunnerHome.XXXXXX")"
+fi
+SANDBOX_ROOT="${PULSEFILES_AUTOMATION_SANDBOX_ROOT:-${PREFERENCES_HOME}/Library/Application Support/PulseFiles/ExperimentalSandbox}"
 mkdir -p "$SANDBOX_ROOT"
-ROOT="$(mktemp -d "${SANDBOX_ROOT}/AutomationRun.XXXXXX")"
+if [[ "${CALLER_MANAGES_LOCATIONS}" == false ]]; then
+  ROOT="$(mktemp -d "${SANDBOX_ROOT}/AutomationRun.XXXXXX")"
+else
+  mkdir -p "$ROOT"
+fi
 LEFT_DIR="${ROOT}/Left Pane"
 RIGHT_DIR="${ROOT}/Right Pane"
 APP_EXECUTABLE="${APP_PATH}/Contents/MacOS/${APP_NAME}"
@@ -75,7 +88,7 @@ screenshot() {
 }
 cleanup() {
   /usr/bin/osascript -e 'tell application "PulseFiles" to quit' >/dev/null 2>&1 || true
-  if [[ "$KEEP_FIXTURE" == true ]]; then
+  if [[ "$KEEP_FIXTURE" == true || "$CALLER_MANAGES_LOCATIONS" == true ]]; then
     log "Fixture retained: $ROOT"
   else
     rm -rf "$PREFERENCES_HOME"

@@ -6,11 +6,17 @@ so the suite launches the production `MainWindowController` in an AppKit
 application and drives it through the stable identifiers in
 `PulseFiles/Utilities/AccessibilityIdentifiers.swift`.
 
-Run it on macOS with:
+Run all automated tests (including this target on macOS) with:
 
 ```sh
-swift test --filter PulseFilesAppKitUITests
+./scripts/run_automation_tests.sh
 ```
+
+The command creates per-run fixture and preferences directories, runs this
+target only on macOS in a DEBUG sandbox-enabled configuration, and removes only
+those directories afterward. For focused local AppKit work, `swift test --filter
+PulseFilesAppKitUITests` remains available on macOS, but does not provide the
+automation command's isolated configuration.
 
 The suite intentionally complements rather than replaces `PulseFilesTests`:
 service-level conflict resolution, destructive-operation safety, drag/drop
