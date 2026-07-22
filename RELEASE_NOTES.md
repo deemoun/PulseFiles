@@ -42,6 +42,13 @@ PulseFiles supports common file-manager operations through its file-operation se
 
 File operations are preflighted before mutation. The app is intended to reject unsafe or ambiguous requests such as empty selections, duplicate sources, invalid destinations, missing sources, and destination-inside-source copy/move requests. Conflict handling should use replace, skip, or cancel choices rather than silently overwriting files.
 
+### Undo guarantees
+
+- The enabled Undo menu item names the precise recoverable action: **Undo Copy**, **Undo Move**, **Undo Rename**, or **Undo Move to Trash**.
+- Undo Copy removes only a fully completed, non-replacement copy destination after PulseFiles verifies the platform resource identity captured when it was created. If the identity, volume, access, or provider state cannot be verified, Undo is unavailable and nothing is removed.
+- Undo Move and Undo Rename retain their collision, access, and writable-destination safeguards. Undo Move to Trash restores only the item returned by macOS's trash API, after the same identity and destination checks.
+- Permanent deletion, replacements, skipped/failed/cancelled or partial operations, cleanup warnings, and uncertain provider states are explicitly non-undoable.
+
 ## Search, Filtering, and Hidden Files
 
 - Search/filter applies to the active pane.

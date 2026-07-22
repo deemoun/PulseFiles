@@ -694,9 +694,41 @@ final class FileOperationService: FileOperationServicing {
     }
 
     func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
-        try await prepareCloudPlaceholders(for: recovery.items.map(\.destinationURL), progressHandler: progressHandler)
         guard !recovery.items.isEmpty else { throw FileOperationError.undoUnavailable }
+        // Copies are only reversible by removing the exact destination that we
+        // created. Never use the source as a precondition: it is expected to
+        // remain after a copy.
+        if recovery.kind == .copy {
+            for item in recovery.items {
+                guard let expectedIdentity = item.destinationIdentity,
+                      itemIdentity(at: item.destinationURL) == expectedIdentity else {
+                    throw FileOperationError.undoUnavailable
+                }
+                try validateExistingSource(item.destinationURL)
+                try validateAvailableSource(item.destinationURL)
+                try validateWritableMutationTarget(item.destinationURL.deletingLastPathComponent())
+                try accessPolicy.validateAccess(to: item.destinationURL)
+            }
+            return try await accessPolicy.withAccess(to: recovery.items.map(\.destinationURL)) {
+                var completed: [URL] = []
+                for (index, item) in recovery.items.enumerated() {
+                    try Task.checkCancellation()
+                    await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
+                    // Recheck directly before removal to close the validation/mutation window.
+                    guard itemIdentity(at: item.destinationURL) == item.destinationIdentity else { throw FileOperationError.undoUnavailable }
+                    try descriptorRemove(item.destinationURL)
+                    completed.append(item.destinationURL)
+                }
+                return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: [], wasCancelled: false)
+            }
+        }
+        try await prepareCloudPlaceholders(for: recovery.items.map(\.destinationURL), progressHandler: progressHandler)
         for item in recovery.items {
+            if recovery.kind == .trash,
+               let expectedIdentity = item.destinationIdentity,
+               itemIdentity(at: item.destinationURL) != expectedIdentity {
+                throw FileOperationError.undoUnavailable
+            }
             try validateExistingSource(item.destinationURL)
             try validateAvailableSource(item.destinationURL)
             try validateExistingDirectory(item.originalURL.deletingLastPathComponent())
@@ -711,11 +743,17 @@ final class FileOperationService: FileOperationServicing {
             for (index, item) in recovery.items.enumerated() {
                 try Task.checkCancellation()
                 await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
+                if recovery.kind == .trash, itemIdentity(at: item.destinationURL) != item.destinationIdentity { throw FileOperationError.undoUnavailable }
                 try descriptorRename(item.destinationURL, to: item.originalURL)
                 completed.append(item.originalURL)
             }
             return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: [], wasCancelled: false)
         }
+    }
+
+    private func itemIdentity(at url: URL) -> String? {
+        guard let identifier = try? url.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else { return nil }
+        return String(describing: identifier)
     }
 
     func createFolder(named rawName: String, in directory: URL) async throws -> FileOperationResult {
@@ -768,6 +806,7 @@ final class FileOperationService: FileOperationServicing {
         DiagnosticLogger.log(.info, category: "FileOperation", "Trash operation starting: itemCount=\(urls.count)")
         try await prepareCloudPlaceholders(for: urls, progressHandler: progressHandler)
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "trash", error: error); throw error }
+        var trashedItems: [FileOperationRecovery.Item] = []
         let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
                 #if os(macOS)
@@ -776,13 +815,20 @@ final class FileOperationService: FileOperationServicing {
                 try descriptorVerifyExistingItem(url)
                 var resultingURL: NSURL?
                 try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
+                guard let resultingURL else { throw FileOperationError.undoUnavailable }
+                let trashURL = resultingURL as URL
+                guard let identity = itemIdentity(at: trashURL) else { throw FileOperationError.undoUnavailable }
+                trashedItems.append(.init(originalURL: url, destinationURL: trashURL, destinationIdentity: identity))
                 #else
                 throw CocoaError(.featureUnsupported)
                 #endif
             }
         }
-        logCompletion(operation: "trash", result: result)
-        return result
+        let recoverableResult = result.succeededCompletely && trashedItems.count == urls.count
+            ? FileOperationResult(completedItems: result.completedItems, skippedItems: result.skippedItems, failedItems: result.failedItems, cleanupWarnings: result.cleanupWarnings, wasCancelled: result.wasCancelled, needsVerification: result.needsVerification, recovery: .init(kind: .trash, items: trashedItems))
+            : result
+        logCompletion(operation: "trash", result: recoverableResult)
+        return recoverableResult
     }
 
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
@@ -993,9 +1039,21 @@ final class FileOperationService: FileOperationServicing {
             )
         }
 
-        let recovery: FileOperationRecovery? = kind == .move && skippedItems.isEmpty && failedItems.isEmpty && cleanupWarnings.isEmpty && completedItems.count == activePlans.count && !activePlans.contains(where: \.replacesExistingDestination)
-            ? FileOperationRecovery(kind: .move, items: activePlans.map { .init(originalURL: $0.source, destinationURL: $0.destination) })
-            : nil
+        let canRecover = skippedItems.isEmpty && failedItems.isEmpty && cleanupWarnings.isEmpty && completedItems.count == activePlans.count && !activePlans.contains(where: \.replacesExistingDestination)
+        let recovery: FileOperationRecovery?
+        switch kind {
+        case .move where canRecover:
+            recovery = FileOperationRecovery(kind: .move, items: activePlans.map { .init(originalURL: $0.source, destinationURL: $0.destination) })
+        case .copy where canRecover:
+            let items = activePlans.map { plan in
+                FileOperationRecovery.Item(originalURL: plan.source, destinationURL: plan.destination, destinationIdentity: itemIdentity(at: plan.destination))
+            }
+            // Provider files without a stable resource identity are explicitly
+            // non-undoable: deleting a path alone could delete another item.
+            recovery = items.allSatisfy { $0.destinationIdentity != nil } ? FileOperationRecovery(kind: .copy, items: items) : nil
+        default:
+            recovery = nil
+        }
         return FileOperationResult(
             completedItems: completedItems,
             skippedItems: skippedItems,

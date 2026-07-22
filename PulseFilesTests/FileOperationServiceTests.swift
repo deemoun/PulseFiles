@@ -1641,6 +1641,38 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
     }
 
+    func testUndoRemovesOnlyTheUnchangedCopyDestination() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Copy undo.txt")
+        try Data("copy".utf8).write(to: source)
+        let copy = try await fixture.service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        let recovery = try XCTUnwrap(copy.recovery)
+        XCTAssertEqual(recovery.kind, .copy)
+        let result = try await fixture.service.undo(recovery, progressHandler: nil)
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent(source.lastPathComponent).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    func testRecoveryTitlesDescribeTheExactUndoAction() {
+        let item = FileOperationRecovery.Item(originalURL: URL(fileURLWithPath: "/original"), destinationURL: URL(fileURLWithPath: "/destination"))
+        XCTAssertEqual(FileOperationRecovery(kind: .copy, items: [item]).undoTitle, "Undo Copy")
+        XCTAssertEqual(FileOperationRecovery(kind: .trash, items: [item]).undoTitle, "Undo Move to Trash")
+    }
+
+    func testUndoCopyRejectsReplacementAtDestination() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Copy replacement.txt")
+        let destination = fixture.right.appendingPathComponent(source.lastPathComponent)
+        try Data("copy".utf8).write(to: source)
+        let copy = try await fixture.service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        try FileManager.default.removeItem(at: destination)
+        try Data("replacement".utf8).write(to: destination)
+        do { _ = try await fixture.service.undo(try XCTUnwrap(copy.recovery), progressHandler: nil); XCTFail("Expected identity rejection") }
+        catch FileOperationError.undoUnavailable { }
+        XCTAssertEqual(try String(contentsOf: destination), "replacement")
+    }
+
     func testUndoRejectsOriginalPathConflict() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Conflict.txt")
