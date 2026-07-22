@@ -67,6 +67,18 @@ documented-limitations record below has an approved owner and target release.
 | 16. Version 1.0 storage compatibility — Finder alias | | | | |
 | 16. Version 1.0 storage compatibility — metadata | | | | |
 
+## UI harness artifact evidence
+
+When Accessibility automation is available, run `scripts/release_validation.sh`
+with `--ui-artifacts-dir` and attach or link the resulting concise report,
+before/after fixture tree snapshots, and screenshot. A missing Accessibility
+permission is not evidence of a pass. Record the workflow set and artifact
+location below.
+
+| Harness workflow set | Pass/fail | Artifact directory or attachment | Tester/date | Notes |
+| --- | --- | --- | --- | --- |
+| navigation, active-pane search, conflict choices, cancellation, drag/drop, trash, rename, grant recovery, volume fallback, relaunch, terminal opt-in | | | | |
+
 ## Failures and documented limitations
 
 An unresolved signed-app-only failure is a **release blocker**. It may be

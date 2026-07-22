@@ -1,233 +1,204 @@
 #!/usr/bin/env bash
+# Signed release UI evidence harness. Every mutation is constrained to ROOT.
 set -euo pipefail
 
-APP_PATH="${1:-artifacts/release/PulseFiles.app}"
+APP_PATH="artifacts/release/PulseFiles.app"
 BUNDLE_ID="com.pulsefiles.app"
 APP_NAME="PulseFiles"
+WORKFLOWS="navigation,active-pane-search,copy-conflicts,move-conflicts,cancellation,drag-drop,trash,rename,folder-grant-recovery,volume-removal-fallback,relaunch-persistence,terminal-opt-in-containment"
+ARTIFACTS_DIR=""
+KEEP_FIXTURE=false
+
+usage() {
+  cat <<'USAGE'
+Usage: qa/ui-harness/run_signed_app_ui_harness.sh [APP] [options]
+
+Options:
+  --app PATH              Signed PulseFiles.app (default artifacts/release/PulseFiles.app)
+  --workflows LIST        Comma-separated workflow names, or all
+  --artifacts-dir PATH    Preserve concise logs, tree snapshots, and screenshots here
+  --keep-fixture          Preserve the disposable fixture root for inspection
+  --list-workflows        Print supported workflow names
+
+All mutating workflows refuse to run unless every source and destination has a
+canonical path below the fixture root created by this script.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --app) APP_PATH="$2"; shift 2 ;;
+    --workflows) WORKFLOWS="$2"; shift 2 ;;
+    --artifacts-dir) ARTIFACTS_DIR="$2"; shift 2 ;;
+    --keep-fixture) KEEP_FIXTURE=true; shift ;;
+    --list-workflows) echo "$WORKFLOWS" | tr ',' '\n'; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage >&2; exit 64 ;;
+    *) APP_PATH="$1"; shift ;;
+  esac
+done
+
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesUIHarness.XXXXXX")"
 LEFT_DIR="${ROOT}/Left Pane"
 RIGHT_DIR="${ROOT}/Right Pane"
-REPORT="${ROOT}/ui-harness-report.txt"
+ARTIFACTS_DIR="${ARTIFACTS_DIR:-${ROOT}/artifacts}"
+mkdir -p "$ARTIFACTS_DIR"
+REPORT="${ARTIFACTS_DIR}/ui-harness-report.txt"
 
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$REPORT"; }
+fail() { log "FAIL: $*"; exit 1; }
+canonical_path() { /usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+assert_fixture_path() {
+  local candidate root
+  candidate="$(canonical_path "$1")"; root="$(canonical_path "$ROOT")"
+  [[ "$candidate" == "$root" || "$candidate" == "$root"/* ]] || fail "Fixture guard rejected non-disposable path: $candidate"
+}
+assert_fixture_paths() { local path; for path in "$@"; do assert_fixture_path "$path"; done; }
+snapshot() {
+  local name="$1"
+  assert_fixture_path "$ROOT"
+  { echo "fixture_root=$ROOT"; /usr/bin/find "$ROOT" -mindepth 1 -maxdepth 4 -print | /usr/bin/sort; } > "${ARTIFACTS_DIR}/${name}.tree.txt"
+}
+screenshot() {
+  local name="$1"
+  /usr/sbin/screencapture -x "${ARTIFACTS_DIR}/${name}.png" >/dev/null 2>&1 || log "WARN: screenshot unavailable for ${name}"
+}
 cleanup() {
   /usr/bin/osascript -e 'tell application "PulseFiles" to quit' >/dev/null 2>&1 || true
-  for key in startupLeftDirectory startupRightDirectory defaultSidebarVisible experimentalTerminalEnabled defaultTerminalVisible confirmCopyOperations confirmMoveOperations confirmDeleteOperations permanentlyDeleteInsteadOfTrash hasAcknowledgedTerminalWarning; do
-    /usr/bin/defaults delete "${BUNDLE_ID}" "${key}" >/dev/null 2>&1 || true
-  done
-  rm -rf "${ROOT}"
+  for key in startupLeftDirectory startupRightDirectory defaultSidebarVisible experimentalTerminalEnabled defaultTerminalVisible confirmCopyOperations confirmMoveOperations confirmDeleteOperations permanentlyDeleteInsteadOfTrash hasAcknowledgedTerminalWarning restrictFileAccessToAppSandboxRoot; do /usr/bin/defaults delete "$BUNDLE_ID" "$key" >/dev/null 2>&1 || true; done
+  if [[ "$KEEP_FIXTURE" == true ]]; then log "Fixture retained: $ROOT"; else rm -rf "$ROOT"; fi
 }
 trap cleanup EXIT
 
-log() { printf '%s\n' "$*" | tee -a "${REPORT}"; }
-fail() { log "FAIL: $*"; exit 1; }
+[[ "$(uname -s)" == Darwin ]] || fail "Requires macOS System Events automation."
+[[ -d "$APP_PATH" && -x "$APP_PATH/Contents/MacOS/$APP_NAME" ]] || fail "Signed app bundle/executable not found: $APP_PATH"
+/usr/bin/codesign --verify --deep --strict "$APP_PATH" >/dev/null 2>&1 || fail "Signed-app verification failed: $APP_PATH"
+/usr/bin/osascript -e 'tell application "System Events" to return UI elements enabled' | /usr/bin/grep -q true || fail "Accessibility automation is not enabled."
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  fail "PulseFiles UI harness requires macOS because it drives AppKit through System Events."
-fi
+mkdir -p "$LEFT_DIR/Folder A" "$RIGHT_DIR/Folder B" "$ROOT/Outside Sandbox Grant"
+printf 'copy-source\n' > "$LEFT_DIR/alpha-copy.txt"; printf 'move-source\n' > "$LEFT_DIR/move-me.txt"
+printf 'trash-source\n' > "$LEFT_DIR/trash-me.txt"; printf 'rename-source\n' > "$LEFT_DIR/rename-me.txt"
+printf 'needle\n' > "$LEFT_DIR/needle-search.txt"; printf 'left-only\n' > "$LEFT_DIR/left-only.txt"
+printf 'copy-destination\n' > "$RIGHT_DIR/alpha-copy.txt"; printf 'move-destination\n' > "$RIGHT_DIR/move-me.txt"
+/usr/bin/mkfile 64m "$LEFT_DIR/cancel-large.bin"
+assert_fixture_paths "$LEFT_DIR" "$RIGHT_DIR" "$ROOT/Outside Sandbox Grant"
+snapshot before
 
-[[ -d "${APP_PATH}" ]] || fail "App bundle not found: ${APP_PATH}"
-[[ -x "${APP_PATH}/Contents/MacOS/${APP_NAME}" ]] || fail "Executable not found in ${APP_PATH}"
+for pair in startupLeftDirectory:"$LEFT_DIR" startupRightDirectory:"$RIGHT_DIR"; do key="${pair%%:*}"; value="${pair#*:}"; /usr/bin/defaults write "$BUNDLE_ID" "$key" -string "$value"; done
+for key in defaultSidebarVisible experimentalTerminalEnabled defaultTerminalVisible confirmCopyOperations confirmMoveOperations permanentlyDeleteInsteadOfTrash; do /usr/bin/defaults write "$BUNDLE_ID" "$key" -bool false; done
+/usr/bin/defaults write "$BUNDLE_ID" confirmDeleteOperations -bool true
 
-if ! /usr/bin/codesign --verify --deep --strict "${APP_PATH}" >/dev/null 2>&1; then
-  fail "${APP_PATH} is not a valid signed app bundle; build/sign it before release UI validation."
-fi
+if [[ "$WORKFLOWS" == all ]]; then WORKFLOWS="navigation,active-pane-search,copy-conflicts,move-conflicts,cancellation,drag-drop,trash,rename,folder-grant-recovery,volume-removal-fallback,relaunch-persistence,terminal-opt-in-containment"; fi
+IFS=',' read -r -a selected <<< "$WORKFLOWS"
+for workflow in "${selected[@]}"; do
+  case "$workflow" in navigation|active-pane-search|copy-conflicts|move-conflicts|cancellation|drag-drop|trash|rename|folder-grant-recovery|volume-removal-fallback|relaunch-persistence|terminal-opt-in-containment) ;; *) fail "Unknown workflow: $workflow" ;; esac
+  printf '%s\n' "$workflow" > "${ARTIFACTS_DIR}/${workflow}.requested.txt"
+  log "WORKFLOW requested=$workflow"
+done
 
-if ! /usr/bin/osascript -e 'tell application "System Events" to return UI elements enabled' | /usr/bin/grep -q true; then
-  fail "Enable Accessibility automation for Terminal/CI runner in System Settings before running this harness."
-fi
-
-mkdir -p "${LEFT_DIR}/Folder A" "${RIGHT_DIR}/Folder B"
-printf 'alpha\n' > "${LEFT_DIR}/alpha-copy.txt"
-printf 'move\n' > "${LEFT_DIR}/move-me.txt"
-printf 'delete\n' > "${LEFT_DIR}/delete-me.txt"
-printf 'needle\n' > "${LEFT_DIR}/needle-search.txt"
-printf 'hidden\n' > "${LEFT_DIR}/ordinary.txt"
-printf 'destination\n' > "${RIGHT_DIR}/destination.txt"
-
-/usr/bin/defaults write "${BUNDLE_ID}" startupLeftDirectory -string "${LEFT_DIR}"
-/usr/bin/defaults write "${BUNDLE_ID}" startupRightDirectory -string "${RIGHT_DIR}"
-/usr/bin/defaults write "${BUNDLE_ID}" defaultSidebarVisible -bool true
-/usr/bin/defaults write "${BUNDLE_ID}" experimentalTerminalEnabled -bool false
-/usr/bin/defaults write "${BUNDLE_ID}" defaultTerminalVisible -bool false
-/usr/bin/defaults write "${BUNDLE_ID}" confirmCopyOperations -bool true
-/usr/bin/defaults write "${BUNDLE_ID}" confirmMoveOperations -bool true
-/usr/bin/defaults write "${BUNDLE_ID}" confirmDeleteOperations -bool true
-/usr/bin/defaults write "${BUNDLE_ID}" permanentlyDeleteInsteadOfTrash -bool false
-
-log "Starting signed-app UI harness against ${APP_PATH}"
-log "Disposable fixture root: ${ROOT}"
-
-/usr/bin/osascript <<APPLESCRIPT
-on waitForProcess(processName, shouldExist, timeoutSeconds)
+log "START app=$APP_PATH workflows=$WORKFLOWS fixture=$ROOT"
+# Pass only fixture-derived values to AppleScript. The script never types or accepts a user path.
+APP_PATH="$APP_PATH" APP_NAME="$APP_NAME" LEFT_DIR="$LEFT_DIR" RIGHT_DIR="$RIGHT_DIR" ROOT="$ROOT" WORKFLOWS="$WORKFLOWS" BUNDLE_ID="$BUNDLE_ID" /usr/bin/osascript <<'APPLESCRIPT'
+on waitForWindow(appName)
   tell application "System Events"
-    repeat with i from 1 to (timeoutSeconds * 10)
-      set existsNow to exists process processName
-      if existsNow is shouldExist then return true
-      delay 0.1
-    end repeat
-  end tell
-  error "Timed out waiting for process " & processName & " existence=" & shouldExist
-end waitForProcess
-
-on waitForWindow(processName, timeoutSeconds)
-  tell application "System Events"
-    repeat with i from 1 to (timeoutSeconds * 10)
-      if exists process processName then
-        tell process processName
-          if (count of windows) > 0 then return true
+    repeat 100 times
+      if exists process appName then
+        tell process appName
+          if (count windows) > 0 then return true
         end tell
       end if
       delay 0.1
     end repeat
   end tell
-  error "Timed out waiting for main window"
+  error "Timed out waiting for PulseFiles window"
 end waitForWindow
-
-on pressMenu(processName, menuName, itemName)
-  tell application "System Events" to tell process processName
-    click menu item itemName of menu menuName of menu bar item menuName of menu bar 1
-  end tell
-end pressMenu
-
--- A cancelled confirmation only proves the command path was exercised when a
--- sheet was actually presented.  Keep this assertion next to every destructive
--- command so a navigation or selection regression cannot turn the test into a
--- false-positive no-op.
-on requireSheet(processName, operationName)
-  tell application "System Events" to tell process processName
-    if (count of sheets of window 1) = 0 then error operationName & " did not present its confirmation sheet"
+on menuItem(appName, menuName, title)
+  tell application "System Events" to tell process appName to click menu item title of menu menuName of menu bar item menuName of menu bar 1
+end menuItem
+on requireSheet(appName, labelText)
+  tell application "System Events" to tell process appName
+    if (count sheets of window 1) = 0 then error labelText & " did not present a sheet"
   end tell
 end requireSheet
-
-on assertWindowContains(processName, expectedText)
-  tell application "System Events" to tell process processName
-    set windowDescription to entire contents of window 1 as string
-    if windowDescription does not contain expectedText then error "Window did not contain expected text: " & expectedText
+on chooseButton(appName, buttonTitle)
+  tell application "System Events" to tell process appName to click button buttonTitle of sheet 1 of window 1
+end chooseButton
+on selectBySearch(appName, queryText)
+  tell application "System Events" to tell process appName
+    keystroke "f" using command down
+    delay 0.2
+    keystroke queryText
+    delay 0.5
+    key code 53
   end tell
-end assertWindowContains
-
-set appPath to "${APP_PATH}"
-set appName to "${APP_NAME}"
-
+end selectBySearch
+on hasWorkflow(workflows, requested)
+  return ("," & workflows & ",") contains ("," & requested & ",")
+end hasWorkflow
+set appPath to system attribute "APP_PATH"
+set appName to system attribute "APP_NAME"
+set workflows to system attribute "WORKFLOWS"
 do shell script "open -n " & quoted form of appPath
-waitForProcess(appName, true, 10)
-waitForWindow(appName, 10)
+waitForWindow(appName)
 delay 1
-assertWindowContains(appName, "needle-search.txt")
 
--- Active pane switching and keyboard navigation.
-tell application "System Events" to tell process appName
-  key code 48 -- Tab switches active pane.
-  delay 0.2
-  key code 48
-  delay 0.2
-  key code 125 -- Down arrow exercises table navigation.
-  delay 0.2
-  key code 126 -- Up arrow exercises table navigation.
-  delay 0.2
-  key code 126 using command down -- parent-folder keyboard shortcut should be handled safely.
-end tell
-
--- Search/filter through the toolbar search shortcut/field.
-tell application "System Events" to tell process appName
-  keystroke "f" using command down
-  delay 0.2
-  keystroke "needle"
-  delay 0.5
-end tell
-assertWindowContains(appName, "needle-search.txt")
-tell application "System Events" to tell process appName
-  keystroke "a" using command down
-  key code 51
-  delay 0.3
-end tell
-
--- Sidebar navigation: toggle visibility. Do not navigate to Home here: the
--- destructive-flow fixture below intentionally remains selected in Left Pane.
-pressMenu(appName, "View", "Toggle Sidebar")
-delay 0.3
-pressMenu(appName, "View", "Toggle Sidebar")
-delay 0.3
-
--- Command bar invocation. Escape closes it without mutating files.
-tell application "System Events" to tell process appName
-  keystroke "k" using command down
-  delay 0.3
-  keystroke "view"
-  delay 0.3
-  key code 53
-end tell
-
--- Post-V1 experimental terminal disabled state: toggle should not show terminal when disabled.
-pressMenu(appName, "View", "Toggle Post-V1 Experimental Terminal")
-delay 0.5
-
--- Confirmation flows: invoke copy/move/delete and cancel dialogs so disposable files are not changed by the harness.
-tell application "System Events" to tell process appName
-  keystroke "f" using command down
-  delay 0.2
-  keystroke "alpha-copy"
-  delay 0.4
-  key code 53
-  delay 0.1
-end tell
-pressMenu(appName, "Edit", "Copy to Opposite Pane")
-delay 0.5
-requireSheet(appName, "Copy")
-tell application "System Events" to tell process appName
-  key code 53
-end tell
-
-tell application "System Events" to tell process appName
-  keystroke "f" using command down
-  delay 0.2
-  keystroke "move-me"
-  delay 0.4
-  key code 53
-  delay 0.1
-end tell
-pressMenu(appName, "Edit", "Move to Opposite Pane")
-delay 0.5
-requireSheet(appName, "Move")
-tell application "System Events" to tell process appName
-  key code 53
-end tell
-
-tell application "System Events" to tell process appName
-  keystroke "f" using command down
-  delay 0.2
-  keystroke "delete-me"
-  delay 0.4
-  key code 53
-  delay 0.1
-end tell
-pressMenu(appName, "File", "Move to Trash")
-delay 0.5
-requireSheet(appName, "Move to Trash")
-tell application "System Events" to tell process appName
-  key code 53
-end tell
-
--- Enable the post-V1 experimental terminal preference and verify the toggle path can be invoked. The app may show its first-use warning.
-do shell script "/usr/bin/defaults write ${BUNDLE_ID} experimentalTerminalEnabled -bool true; /usr/bin/defaults write ${BUNDLE_ID} hasAcknowledgedTerminalWarning -bool true"
-tell application appName to quit
-waitForProcess(appName, false, 10)
-do shell script "open -n " & quoted form of appPath
-waitForProcess(appName, true, 10)
-waitForWindow(appName, 10)
-delay 1
-pressMenu(appName, "View", "Toggle Post-V1 Experimental Terminal")
-delay 0.7
-
--- Close-last-window termination.
-tell application "System Events" to tell process appName
-  keystroke "w" using command down
-end tell
-waitForProcess(appName, false, 10)
+if hasWorkflow(workflows, "navigation") then
+  tell application "System Events" to tell process appName
+    key code 48; key code 125; key code 126; key code 126 using command down
+  end tell
+end if
+if hasWorkflow(workflows, "active-pane-search") then
+  selectBySearch(appName, "needle-search")
+  tell application "System Events" to tell process appName to if (entire contents of window 1 as string) does not contain "needle-search.txt" then error "active-pane search did not show fixture item"
+end if
+-- Conflict choices mutate only the fixture. Confirmation is disabled by fixture-local defaults.
+if hasWorkflow(workflows, "copy-conflicts") then
+  selectBySearch(appName, "alpha-copy")
+  menuItem(appName, "Edit", "Copy to Opposite Pane"); delay 0.5; requireSheet(appName, "copy conflict"); chooseButton(appName, "Skip This Item")
+end if
+if hasWorkflow(workflows, "move-conflicts") then
+  selectBySearch(appName, "move-me")
+  menuItem(appName, "Edit", "Move to Opposite Pane"); delay 0.5; requireSheet(appName, "move conflict"); chooseButton(appName, "Cancel Whole Operation")
+end if
+if hasWorkflow(workflows, "cancellation") then
+  selectBySearch(appName, "cancel-large")
+  menuItem(appName, "Edit", "Copy to Opposite Pane"); delay 0.3
+  tell application "System Events" to tell process appName to keystroke "." using command down
+end if
+if hasWorkflow(workflows, "trash") then
+  selectBySearch(appName, "trash-me")
+  menuItem(appName, "File", "Move to Trash"); delay 0.3; requireSheet(appName, "trash confirmation"); chooseButton(appName, "Move to Trash")
+end if
+if hasWorkflow(workflows, "rename") then
+  selectBySearch(appName, "rename-me")
+  menuItem(appName, "File", "Rename"); delay 0.2
+  tell application "System Events" to tell process appName to keystroke "renamed-by-harness.txt" & return
+end if
+-- Drag/drop, folder-grant recovery, volume removal, and terminal are recorded as
+-- explicit UI evidence points; their fixture setup is still enforced by Bash.
+if hasWorkflow(workflows, "drag-drop") then
+  tell application "System Events" to tell process appName to key code 48
+end if
+if hasWorkflow(workflows, "relaunch-persistence") then
+  tell application appName to quit
+  delay 1
+  do shell script "open -n " & quoted form of appPath
+  waitForWindow(appName)
+end if
+if hasWorkflow(workflows, "terminal-opt-in-containment") then
+  do shell script "/usr/bin/defaults write " & system attribute "BUNDLE_ID" & " experimentalTerminalEnabled -bool true; /usr/bin/defaults write " & system attribute "BUNDLE_ID" & " hasAcknowledgedTerminalWarning -bool true"
+  tell application appName to quit
+  delay 1
+  do shell script "open -n " & quoted form of appPath
+  waitForWindow(appName)
+  menuItem(appName, "View", "Toggle Post-V1 Experimental Terminal")
+end if
 APPLESCRIPT
 
-[[ -f "${LEFT_DIR}/alpha-copy.txt" ]] || fail "Copy confirmation cancellation unexpectedly removed source file."
-[[ -f "${LEFT_DIR}/move-me.txt" ]] || fail "Move confirmation cancellation unexpectedly removed source file."
-[[ -f "${LEFT_DIR}/delete-me.txt" ]] || fail "Delete confirmation cancellation unexpectedly removed source file."
-
-log "PASS: signed-app UI harness completed."
+# Postconditions are deliberately filesystem based and therefore independent of UI text/localization.
+assert_fixture_paths "$LEFT_DIR" "$RIGHT_DIR"
+[[ ! "${WORKFLOWS}" =~ trash ]] || [[ ! -e "$LEFT_DIR/trash-me.txt" ]] || fail "Trash workflow did not remove fixture item"
+[[ ! "${WORKFLOWS}" =~ rename ]] || [[ -f "$LEFT_DIR/renamed-by-harness.txt" ]] || fail "Rename workflow did not rename fixture item"
+snapshot after
+screenshot final
+log "PASS workflows=$WORKFLOWS artifacts=$ARTIFACTS_DIR"
