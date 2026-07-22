@@ -5,15 +5,17 @@ SIGNED_APP="artifacts/release/PulseFiles.app"
 UI_ARTIFACTS_DIR=""
 SKIP_UI_HARNESS=false
 BUILD_RELEASE=false
+RUN_DEBUG_MUTATION_HARNESS=false
 
 usage() {
   cat <<EOF_USAGE
-Usage: scripts/release_validation.sh [--signed-app PATH] [--ui-artifacts-dir PATH] [--build] [--skip-ui-harness]
+Usage: scripts/release_validation.sh [--signed-app PATH] [--ui-artifacts-dir PATH] [--build] [--skip-ui-harness] [--run-debug-mutation-harness]
 
 Runs PulseFiles release validation checks:
   1. swift test
   2. optional release app packaging via scripts/build_release_app.sh --clean when --build is passed
   3. non-mutating signed-app UI smoke harness against the supplied .app bundle (unless skipped), preserving release evidence when requested
+  4. optional disposable DEBUG mutation harness only when --run-debug-mutation-harness is passed
 
 The non-mutating UI smoke harness requires macOS Accessibility automation permission and a valid signed app.
 EOF_USAGE
@@ -36,6 +38,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-ui-harness)
       SKIP_UI_HARNESS=true
+      ;;
+    --run-debug-mutation-harness)
+      RUN_DEBUG_MUTATION_HARNESS=true
       ;;
     -h|--help)
       usage
@@ -74,4 +79,9 @@ else
   else
     qa/ui-harness/run_signed_app_ui_harness.sh "${SIGNED_APP}" --workflows all
   fi
+fi
+
+if [[ "${RUN_DEBUG_MUTATION_HARNESS}" == true ]]; then
+  echo "==> Running opt-in disposable DEBUG mutation harness (not release evidence)"
+  qa/ui-harness/run_debug_disposable_ui_runner.sh --workflows all
 fi

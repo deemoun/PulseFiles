@@ -24,13 +24,17 @@ disk image, and retain the result in release evidence.
 
 ## DEBUG disposable automation runner
 
-Run the mutation-capable automation separately:
+Run the mutation-capable automation through the safe repository entry point:
 
 ```sh
-qa/ui-harness/run_debug_disposable_ui_runner.sh --workflows all
+./scripts/run_automation_tests.sh
 ```
 
-It builds the DEBUG app itself, launches it with
+`scripts/release_validation.sh` is release evidence only: its signed-app suite
+is non-mutating. It runs the DEBUG mutation runner only when explicitly given
+`--run-debug-mutation-harness`, and that opt-in run is not release evidence.
+
+The underlying DEBUG runner builds the DEBUG app itself, launches it with
 `--pulsefiles-enable-experimental-sandbox`, and uses an isolated HOME. The
 runner creates a fresh `AutomationRun.*` child beneath that configured
 experimental sandbox root. Before launch, it canonicalizes and rejects any

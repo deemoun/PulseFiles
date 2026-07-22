@@ -77,6 +77,17 @@ Open the repository folder or `Package.swift` in Xcode. The local environment us
 
 ## Build Notes
 
+Run the complete automated test suite through the safe disposable entry point:
+
+```sh
+./scripts/run_automation_tests.sh
+```
+
+It isolates preferences and all mutation-capable DEBUG UI fixtures, enables the
+experimental sandbox for DEBUG UI automation, and skips AppKit UI automation on
+non-macOS hosts. Release evidence remains separate in
+`scripts/release_validation.sh`; its DEBUG mutation harness is opt-in.
+
 Build a local test `.app` bundle:
 
 ```sh
