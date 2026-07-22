@@ -2,6 +2,8 @@
 
 Use this checklist before publishing a PulseFiles build. Prefer testing with a clean user account or a reset `UserDefaults` domain, and use disposable folders/files for every destructive operation.
 
+Record signed-app results with [`qa/release-evidence-template.md`](qa/release-evidence-template.md). That record is required for the macOS/architecture matrix, clean-account and upgrade coverage, and pass/fail evidence for signed-app-only scenarios.
+
 ## Required build targets
 
 Run both command-line verification and manual app-bundle verification before release:
@@ -335,7 +337,10 @@ version alongside each result.
 
 - [ ] All command-line tests passed.
 - [ ] All signed-release-app-only scenarios passed on a signed `.app`.
+- [ ] Signed-app evidence records cover macOS 13, macOS 14, macOS 15, and the current macOS release, with at least one Apple Silicon and one Intel run.
+- [ ] Signed-app evidence includes at least one clean user account and one upgrade run from the immediately prior released version.
 - [ ] All destructive scenarios used disposable files and folders.
 - [ ] Sandbox, security-scoped grant, terminal, and permanent delete safety expectations were explicitly verified.
 - [ ] The signed-app storage-compatibility scenarios documented above were recorded for cloud, network, removable, package, symbolic-link, Finder-alias, and metadata behavior; unsupported/partial provider behavior is reflected in release notes rather than marketed as supported.
 - [ ] Any failures are documented with app version, build configuration, macOS version, reproduction steps, and whether the failure occurred in `swift run`, unsigned `.app`, or signed release `.app`.
+- [ ] Every unresolved failure is a release blocker unless it is an approved documented limitation with a named owner and target release in the signed-app evidence record.
