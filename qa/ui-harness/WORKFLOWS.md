@@ -1,35 +1,38 @@
-# Disposable signed-app UI workflows
+# UI automation workflows
 
-Run individual workflows with `--workflows NAME` or the complete release set
-with `--workflows all`.  Each run creates a new `mktemp` root, writes startup
-pane preferences only to folders below that root, captures `before.tree.txt`,
-`after.tree.txt`, a concise report, and (where macOS permits) a screenshot.
-Use `--artifacts-dir release-evidence/ui-<build>` to retain evidence.
+## Signed-release smoke suite
 
-| Workflow | Fixture and repeatable check |
+`run_signed_app_ui_harness.sh` is the release-signoff smoke/evidence runner. It
+runs only non-mutating workflows against a signed app: `navigation`,
+`active-pane-search`, `copy-conflicts` (chooses **Skip This Item**),
+`move-conflicts` (chooses **Cancel Whole Operation**), `drag-drop`,
+`relaunch-persistence`, and `terminal-opt-in-containment`. Its temporary
+fixture root exists solely for safe startup paths and observable UI content.
+It does **not** run copy completion, move completion, rename, deletion, or
+Trash. In particular, `FileManager.trashItem` is not fixture-contained merely
+because its source is: macOS relocates the item to a system Trash location.
+
+## DEBUG disposable runner
+
+`run_debug_disposable_ui_runner.sh` builds `artifacts/PulseFiles.app`, launches
+it with `--pulsefiles-enable-experimental-sandbox`, and uses an isolated HOME.
+Each run creates `AutomationRun.*` as a new child of that configured HOME's
+`Library/Application Support/PulseFiles/ExperimentalSandbox` root. Before the
+app launches it canonicalizes and verifies both pane startup folders plus every
+source and destination for an operation that can mutate data.
+
+| Workflow | Behavior |
 | --- | --- |
 | `navigation` | Independent pane tab switching, row navigation, and parent navigation. |
 | `active-pane-search` | Searches `needle-search.txt` after pane focus changes. |
-| `copy-conflicts` | Copies `alpha-copy.txt` onto a fixture conflict and chooses **Skip This Item**. |
-| `move-conflicts` | Moves `move-me.txt` onto a fixture conflict and chooses **Cancel Whole Operation**. |
+| `copy-conflicts` | Chooses **Skip This Item** for a fixture conflict. |
+| `move-conflicts` | Chooses **Cancel Whole Operation** for a fixture conflict. |
 | `cancellation` | Starts transfer of a generated 64 MiB fixture and sends Command-Period. |
-| `drag-drop` | Captures the cross-pane drag/drop accessibility evidence point; run it only against the displayed fixture panes. |
-| `trash` | Confirms trash only for `trash-me.txt` beneath the fixture root. |
+| `drag-drop` | Captures the cross-pane accessibility evidence point. |
 | `rename` | Renames only `rename-me.txt` to `renamed-by-harness.txt`. |
-| `folder-grant-recovery` | Use DEBUG experimental-sandbox mode, select the generated `Outside Sandbox Grant` folder in the grant panel, then relaunch and verify recovery. Never grant a user folder. |
-| `volume-removal-fallback` | Mount a disposable disk image under the fixture root, point one pane at it, detach it, and verify the pane falls back without mutation. |
-| `relaunch-persistence` | Relaunches after fixture pane setup and records the persisted fixture locations. |
-| `terminal-opt-in-containment` | Enables the terminal preference only after launch, toggles it, and verifies its working directory/output references the active fixture pane. Do not run arbitrary shell commands. |
+| `relaunch-persistence` | Relaunches after fixture pane setup. |
+| `terminal-opt-in-containment` | Enables the terminal only after launch; it runs no arbitrary shell command. |
 
-## Destructive guard
-
-The runner canonicalizes every generated source/destination and rejects anything
-outside its own `mktemp` root before launch and again before postcondition
-checks. It accepts no path arguments for a source, destination, grant, volume,
-or terminal command. This makes a typo unable to redirect a destructive flow to
-an arbitrary user path.
-
-Some macOS privacy prompts and disk-image attach/detach timing cannot be fully
-reliably driven by System Events. For the three marked workflows, retain the
-artifact directory and record the visible result in the release evidence
-record; a missing Accessibility entitlement is a harness failure, not a pass.
+The DEBUG runner deliberately has no `trash` workflow. Testing production Trash
+requires equivalent OS-level isolation (for example, a disposable account or
+VM), because the system Trash is outside the fixture root.

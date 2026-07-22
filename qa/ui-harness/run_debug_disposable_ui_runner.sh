@@ -1,50 +1,55 @@
 #!/usr/bin/env bash
-# Signed release UI smoke harness. It deliberately performs no filesystem mutations.
+# DEBUG-only disposable automation runner. Every mutation is constrained to ROOT.
 set -euo pipefail
 
-APP_PATH="artifacts/release/PulseFiles.app"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "$REPO_ROOT"
+
+APP_PATH="artifacts/PulseFiles.app"
 BUNDLE_ID="com.pulsefiles.app"
 APP_NAME="PulseFiles"
-WORKFLOWS="navigation,active-pane-search,copy-conflicts,move-conflicts,drag-drop,relaunch-persistence,terminal-opt-in-containment"
+WORKFLOWS="navigation,active-pane-search,copy-conflicts,move-conflicts,cancellation,drag-drop,rename,relaunch-persistence,terminal-opt-in-containment"
 ARTIFACTS_DIR=""
 KEEP_FIXTURE=false
 
 usage() {
   cat <<'USAGE'
-Usage: qa/ui-harness/run_signed_app_ui_harness.sh [APP] [options]
+Usage: qa/ui-harness/run_debug_disposable_ui_runner.sh [options]
 
 Options:
-  --app PATH              Signed PulseFiles.app (default artifacts/release/PulseFiles.app)
   --workflows LIST        Comma-separated workflow names, or all
   --artifacts-dir PATH    Preserve concise logs, tree snapshots, and screenshots here
   --keep-fixture          Preserve the disposable fixture root for inspection
   --list-workflows        Print supported workflow names
 
-This signed-release smoke suite deliberately performs no filesystem mutations.
-Use run_debug_disposable_ui_runner.sh for disposable DEBUG mutation automation.
+Builds the DEBUG app, enables the experimental sandbox, and creates its fixture
+root below the configured experimental sandbox root. No external app/path input
+is accepted. Every startup, mutating source, and mutating destination must
+canonicalize beneath that per-run child before launch.
 USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --app) APP_PATH="$2"; shift 2 ;;
     --workflows) WORKFLOWS="$2"; shift 2 ;;
     --artifacts-dir) ARTIFACTS_DIR="$2"; shift 2 ;;
     --keep-fixture) KEEP_FIXTURE=true; shift ;;
     --list-workflows) echo "$WORKFLOWS" | tr ',' '\n'; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "Unknown option: $1" >&2; usage >&2; exit 64 ;;
-    *) APP_PATH="$1"; shift ;;
+    *) echo "Unexpected argument: $1" >&2; usage >&2; exit 64 ;;
   esac
 done
 
-ROOT="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesUIHarness.XXXXXX")"
+# Use an isolated home so preferences and the configured experimental root are
+# disposable. The app computes ExperimentalFlags.appSandboxRoot from this HOME.
+PREFERENCES_HOME="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesDebugRunnerHome.XXXXXX")"
+SANDBOX_ROOT="${PREFERENCES_HOME}/Library/Application Support/PulseFiles/ExperimentalSandbox"
+mkdir -p "$SANDBOX_ROOT"
+ROOT="$(mktemp -d "${SANDBOX_ROOT}/AutomationRun.XXXXXX")"
 LEFT_DIR="${ROOT}/Left Pane"
 RIGHT_DIR="${ROOT}/Right Pane"
-# CFFIXED_USER_HOME makes CFPreferences (and therefore UserDefaults.standard)
-# resolve the app's preferences beneath this disposable directory.  Keep HOME in
-# sync as well because some AppKit support code uses it for related state.
-PREFERENCES_HOME="${ROOT}/preferences-home"
 APP_EXECUTABLE="${APP_PATH}/Contents/MacOS/${APP_NAME}"
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-${ROOT}/artifacts}"
 mkdir -p "$ARTIFACTS_DIR"
@@ -70,20 +75,33 @@ screenshot() {
 }
 cleanup() {
   /usr/bin/osascript -e 'tell application "PulseFiles" to quit' >/dev/null 2>&1 || true
-  if [[ "$KEEP_FIXTURE" == true ]]; then log "Fixture retained: $ROOT"; else rm -rf "$ROOT"; fi
+  if [[ "$KEEP_FIXTURE" == true ]]; then
+    log "Fixture retained: $ROOT"
+  else
+    rm -rf "$PREFERENCES_HOME"
+  fi
 }
 trap cleanup EXIT
 
 [[ "$(uname -s)" == Darwin ]] || fail "Requires macOS System Events automation."
-[[ -d "$APP_PATH" && -x "$APP_EXECUTABLE" ]] || fail "Signed app bundle/executable not found: $APP_PATH"
-/usr/bin/codesign --verify --deep --strict "$APP_PATH" >/dev/null 2>&1 || fail "Signed-app verification failed: $APP_PATH"
+scripts/build_app.sh --clean
+[[ -d "$APP_PATH" && -x "$APP_EXECUTABLE" ]] || fail "DEBUG app bundle/executable not found after build: $APP_PATH"
 /usr/bin/osascript -e 'tell application "System Events" to return UI elements enabled' | /usr/bin/grep -q true || fail "Accessibility automation is not enabled."
 
 mkdir -p "$LEFT_DIR/Folder A" "$RIGHT_DIR/Folder B" "$ROOT/Outside Sandbox Grant" "$PREFERENCES_HOME/Library/Preferences"
 printf 'copy-source\n' > "$LEFT_DIR/alpha-copy.txt"; printf 'move-source\n' > "$LEFT_DIR/move-me.txt"
+printf 'rename-source\n' > "$LEFT_DIR/rename-me.txt"
 printf 'needle\n' > "$LEFT_DIR/needle-search.txt"; printf 'left-only\n' > "$LEFT_DIR/left-only.txt"
 printf 'copy-destination\n' > "$RIGHT_DIR/alpha-copy.txt"; printf 'move-destination\n' > "$RIGHT_DIR/move-me.txt"
-assert_fixture_paths "$LEFT_DIR" "$RIGHT_DIR" "$ROOT/Outside Sandbox Grant"
+/usr/bin/mkfile 64m "$LEFT_DIR/cancel-large.bin"
+# Validate every pane startup and every path an automation workflow can mutate
+# before the app process exists. This is deliberately stricter than checking a
+# fixture source: FileManager.trashItem may relocate an item outside its source
+# tree, so this runner never invokes the production Trash workflow.
+MUTATING_SOURCES=("$LEFT_DIR/alpha-copy.txt" "$LEFT_DIR/move-me.txt" "$LEFT_DIR/cancel-large.bin" "$LEFT_DIR/rename-me.txt")
+MUTATING_DESTINATIONS=("$RIGHT_DIR/alpha-copy.txt" "$RIGHT_DIR/move-me.txt" "$RIGHT_DIR/cancel-large.bin" "$LEFT_DIR/renamed-by-harness.txt")
+assert_fixture_paths "$LEFT_DIR" "$RIGHT_DIR" "$ROOT/Outside Sandbox Grant" "${MUTATING_SOURCES[@]}" "${MUTATING_DESTINATIONS[@]}"
+[[ "$(canonical_path "$ROOT")" == "$(canonical_path "$SANDBOX_ROOT")"/* ]] || fail "Run root is not beneath configured experimental sandbox root"
 snapshot before
 
 # All harness preferences are written only into the per-run CFPreferences home.
@@ -97,19 +115,17 @@ for key in defaultSidebarVisible experimentalTerminalEnabled defaultTerminalVisi
   /usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" "$key" -bool false
 done
 /usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" confirmDeleteOperations -bool true
-# Preserve explicit coverage for the named sandbox preference even though this
-# signed release build does not enable the DEBUG-only restriction.
-/usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" restrictFileAccessToAppSandboxRoot -bool false
+/usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" restrictFileAccessToAppSandboxRoot -bool true
 
-if [[ "$WORKFLOWS" == all ]]; then WORKFLOWS="navigation,active-pane-search,copy-conflicts,move-conflicts,drag-drop,relaunch-persistence,terminal-opt-in-containment"; fi
+if [[ "$WORKFLOWS" == all ]]; then WORKFLOWS="navigation,active-pane-search,copy-conflicts,move-conflicts,cancellation,drag-drop,rename,relaunch-persistence,terminal-opt-in-containment"; fi
 IFS=',' read -r -a selected <<< "$WORKFLOWS"
 for workflow in "${selected[@]}"; do
-  case "$workflow" in navigation|active-pane-search|copy-conflicts|move-conflicts|drag-drop|relaunch-persistence|terminal-opt-in-containment) ;; *) fail "Unknown workflow: $workflow" ;; esac
+  case "$workflow" in navigation|active-pane-search|copy-conflicts|move-conflicts|cancellation|drag-drop|rename|relaunch-persistence|terminal-opt-in-containment) ;; *) fail "Unknown workflow: $workflow" ;; esac
   printf '%s\n' "$workflow" > "${ARTIFACTS_DIR}/${workflow}.requested.txt"
   log "WORKFLOW requested=$workflow"
 done
 
-log "START app=$APP_PATH workflows=$WORKFLOWS fixture=$ROOT preferences_home=$PREFERENCES_HOME"
+log "START debug_app=$APP_PATH workflows=$WORKFLOWS sandbox_root=$SANDBOX_ROOT fixture=$ROOT preferences_home=$PREFERENCES_HOME"
 # Pass only fixture-derived values to AppleScript. The script never types or accepts a user path.
 APP_EXECUTABLE="$APP_EXECUTABLE" APP_NAME="$APP_NAME" LEFT_DIR="$LEFT_DIR" RIGHT_DIR="$RIGHT_DIR" ROOT="$ROOT" WORKFLOWS="$WORKFLOWS" BUNDLE_ID="$BUNDLE_ID" PREFERENCES_HOME="$PREFERENCES_HOME" /usr/bin/osascript <<'APPLESCRIPT'
 on waitForWindow(appName)
@@ -153,7 +169,7 @@ set appName to system attribute "APP_NAME"
 set workflows to system attribute "WORKFLOWS"
 set preferencesHome to system attribute "PREFERENCES_HOME"
 on launchIsolatedApp(appExecutable, preferencesHome)
-  do shell script "/usr/bin/env CFFIXED_USER_HOME=" & quoted form of preferencesHome & " HOME=" & quoted form of preferencesHome & " " & quoted form of appExecutable & " >/dev/null 2>&1 &"
+  do shell script "/usr/bin/env CFFIXED_USER_HOME=" & quoted form of preferencesHome & " HOME=" & quoted form of preferencesHome & " " & quoted form of appExecutable & " --pulsefiles-enable-experimental-sandbox >/dev/null 2>&1 &"
 end launchIsolatedApp
 launchIsolatedApp(appExecutable, preferencesHome)
 waitForWindow(appName)
@@ -168,7 +184,7 @@ if hasWorkflow(workflows, "active-pane-search") then
   selectBySearch(appName, "needle-search")
   tell application "System Events" to tell process appName to if (entire contents of window 1 as string) does not contain "needle-search.txt" then error "active-pane search did not show fixture item"
 end if
--- Conflict choices are intentionally non-mutating: Skip and Cancel are chosen.
+-- Conflict choices mutate only the fixture. Confirmation is disabled by fixture-local defaults.
 if hasWorkflow(workflows, "copy-conflicts") then
   selectBySearch(appName, "alpha-copy")
   menuItem(appName, "Edit", "Copy to Opposite Pane"); delay 0.5; requireSheet(appName, "copy conflict"); chooseButton(appName, "Skip This Item")
@@ -177,7 +193,17 @@ if hasWorkflow(workflows, "move-conflicts") then
   selectBySearch(appName, "move-me")
   menuItem(appName, "Edit", "Move to Opposite Pane"); delay 0.5; requireSheet(appName, "move conflict"); chooseButton(appName, "Cancel Whole Operation")
 end if
--- Drag/drop and terminal are recorded as explicit UI smoke points; their
+if hasWorkflow(workflows, "cancellation") then
+  selectBySearch(appName, "cancel-large")
+  menuItem(appName, "Edit", "Copy to Opposite Pane"); delay 0.3
+  tell application "System Events" to tell process appName to keystroke "." using command down
+end if
+if hasWorkflow(workflows, "rename") then
+  selectBySearch(appName, "rename-me")
+  menuItem(appName, "File", "Rename"); delay 0.2
+  tell application "System Events" to tell process appName to keystroke "renamed-by-harness.txt" & return
+end if
+-- Drag/drop and terminal are recorded as explicit UI evidence points; their
 -- fixture setup is still enforced by Bash.
 if hasWorkflow(workflows, "drag-drop") then
   tell application "System Events" to tell process appName to key code 48
@@ -200,6 +226,7 @@ APPLESCRIPT
 
 # Postconditions are deliberately filesystem based and therefore independent of UI text/localization.
 assert_fixture_paths "$LEFT_DIR" "$RIGHT_DIR"
+[[ ! "${WORKFLOWS}" =~ rename ]] || [[ -f "$LEFT_DIR/renamed-by-harness.txt" ]] || fail "Rename workflow did not rename fixture item"
 snapshot after
 screenshot final
 log "PASS workflows=$WORKFLOWS artifacts=$ARTIFACTS_DIR"
