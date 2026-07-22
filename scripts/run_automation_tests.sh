@@ -54,6 +54,14 @@ fi
 echo "==> Running AppKit UI target with DEBUG sandbox configuration"
 swift test -c debug --filter PulseFilesAppKitUITests
 
+# System Events requires macOS Accessibility permission, which hosted runners
+# do not grant. CI-safe mode deliberately retains the Swift and in-process
+# AppKit coverage above while omitting only this external mutation harness.
+if [[ "${PULSEFILES_CI_SAFE_MODE:-0}" == "1" ]]; then
+  echo "==> Skipping System Events mutation harness (CI-safe mode)"
+  exit 0
+fi
+
 # The mutation-capable System Events runner accepts only fixture-derived paths.
 # Reassert the boundary immediately before invoking it, including every
 # canonical source/destination path it creates for its destructive workflows.

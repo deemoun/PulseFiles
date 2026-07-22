@@ -1,0 +1,26 @@
+name: Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Swift and AppKit tests
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Swift 5.9-compatible toolchain
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "5.9"
+
+      - name: Run CI-safe automation tests
+        env:
+          PULSEFILES_CI_SAFE_MODE: "1"
+        run: ./scripts/run_automation_tests.sh
