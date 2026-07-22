@@ -41,6 +41,11 @@ done
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesUIHarness.XXXXXX")"
 LEFT_DIR="${ROOT}/Left Pane"
 RIGHT_DIR="${ROOT}/Right Pane"
+# CFFIXED_USER_HOME makes CFPreferences (and therefore UserDefaults.standard)
+# resolve the app's preferences beneath this disposable directory.  Keep HOME in
+# sync as well because some AppKit support code uses it for related state.
+PREFERENCES_HOME="${ROOT}/preferences-home"
+APP_EXECUTABLE="${APP_PATH}/Contents/MacOS/${APP_NAME}"
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-${ROOT}/artifacts}"
 mkdir -p "$ARTIFACTS_DIR"
 REPORT="${ARTIFACTS_DIR}/ui-harness-report.txt"
@@ -65,17 +70,16 @@ screenshot() {
 }
 cleanup() {
   /usr/bin/osascript -e 'tell application "PulseFiles" to quit' >/dev/null 2>&1 || true
-  for key in startupLeftDirectory startupRightDirectory defaultSidebarVisible experimentalTerminalEnabled defaultTerminalVisible confirmCopyOperations confirmMoveOperations confirmDeleteOperations permanentlyDeleteInsteadOfTrash hasAcknowledgedTerminalWarning restrictFileAccessToAppSandboxRoot; do /usr/bin/defaults delete "$BUNDLE_ID" "$key" >/dev/null 2>&1 || true; done
   if [[ "$KEEP_FIXTURE" == true ]]; then log "Fixture retained: $ROOT"; else rm -rf "$ROOT"; fi
 }
 trap cleanup EXIT
 
 [[ "$(uname -s)" == Darwin ]] || fail "Requires macOS System Events automation."
-[[ -d "$APP_PATH" && -x "$APP_PATH/Contents/MacOS/$APP_NAME" ]] || fail "Signed app bundle/executable not found: $APP_PATH"
+[[ -d "$APP_PATH" && -x "$APP_EXECUTABLE" ]] || fail "Signed app bundle/executable not found: $APP_PATH"
 /usr/bin/codesign --verify --deep --strict "$APP_PATH" >/dev/null 2>&1 || fail "Signed-app verification failed: $APP_PATH"
 /usr/bin/osascript -e 'tell application "System Events" to return UI elements enabled' | /usr/bin/grep -q true || fail "Accessibility automation is not enabled."
 
-mkdir -p "$LEFT_DIR/Folder A" "$RIGHT_DIR/Folder B" "$ROOT/Outside Sandbox Grant"
+mkdir -p "$LEFT_DIR/Folder A" "$RIGHT_DIR/Folder B" "$ROOT/Outside Sandbox Grant" "$PREFERENCES_HOME/Library/Preferences"
 printf 'copy-source\n' > "$LEFT_DIR/alpha-copy.txt"; printf 'move-source\n' > "$LEFT_DIR/move-me.txt"
 printf 'trash-source\n' > "$LEFT_DIR/trash-me.txt"; printf 'rename-source\n' > "$LEFT_DIR/rename-me.txt"
 printf 'needle\n' > "$LEFT_DIR/needle-search.txt"; printf 'left-only\n' > "$LEFT_DIR/left-only.txt"
@@ -84,9 +88,20 @@ printf 'copy-destination\n' > "$RIGHT_DIR/alpha-copy.txt"; printf 'move-destinat
 assert_fixture_paths "$LEFT_DIR" "$RIGHT_DIR" "$ROOT/Outside Sandbox Grant"
 snapshot before
 
-for pair in startupLeftDirectory:"$LEFT_DIR" startupRightDirectory:"$RIGHT_DIR"; do key="${pair%%:*}"; value="${pair#*:}"; /usr/bin/defaults write "$BUNDLE_ID" "$key" -string "$value"; done
-for key in defaultSidebarVisible experimentalTerminalEnabled defaultTerminalVisible confirmCopyOperations confirmMoveOperations permanentlyDeleteInsteadOfTrash; do /usr/bin/defaults write "$BUNDLE_ID" "$key" -bool false; done
-/usr/bin/defaults write "$BUNDLE_ID" confirmDeleteOperations -bool true
+# All harness preferences are written only into the per-run CFPreferences home.
+# This intentionally includes the complete set of keys the harness changes, so
+# neither normal completion nor an interrupted run can alter the user's domain.
+for pair in startupLeftDirectory:"$LEFT_DIR" startupRightDirectory:"$RIGHT_DIR"; do
+  key="${pair%%:*}"; value="${pair#*:}"
+  /usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" "$key" -string "$value"
+done
+for key in defaultSidebarVisible experimentalTerminalEnabled defaultTerminalVisible confirmCopyOperations confirmMoveOperations permanentlyDeleteInsteadOfTrash; do
+  /usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" "$key" -bool false
+done
+/usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" confirmDeleteOperations -bool true
+# Preserve explicit coverage for the named sandbox preference even though this
+# signed release build does not enable the DEBUG-only restriction.
+/usr/bin/env CFFIXED_USER_HOME="$PREFERENCES_HOME" HOME="$PREFERENCES_HOME" /usr/bin/defaults write "$BUNDLE_ID" restrictFileAccessToAppSandboxRoot -bool false
 
 if [[ "$WORKFLOWS" == all ]]; then WORKFLOWS="navigation,active-pane-search,copy-conflicts,move-conflicts,cancellation,drag-drop,trash,rename,folder-grant-recovery,volume-removal-fallback,relaunch-persistence,terminal-opt-in-containment"; fi
 IFS=',' read -r -a selected <<< "$WORKFLOWS"
@@ -96,9 +111,9 @@ for workflow in "${selected[@]}"; do
   log "WORKFLOW requested=$workflow"
 done
 
-log "START app=$APP_PATH workflows=$WORKFLOWS fixture=$ROOT"
+log "START app=$APP_PATH workflows=$WORKFLOWS fixture=$ROOT preferences_home=$PREFERENCES_HOME"
 # Pass only fixture-derived values to AppleScript. The script never types or accepts a user path.
-APP_PATH="$APP_PATH" APP_NAME="$APP_NAME" LEFT_DIR="$LEFT_DIR" RIGHT_DIR="$RIGHT_DIR" ROOT="$ROOT" WORKFLOWS="$WORKFLOWS" BUNDLE_ID="$BUNDLE_ID" /usr/bin/osascript <<'APPLESCRIPT'
+APP_EXECUTABLE="$APP_EXECUTABLE" APP_NAME="$APP_NAME" LEFT_DIR="$LEFT_DIR" RIGHT_DIR="$RIGHT_DIR" ROOT="$ROOT" WORKFLOWS="$WORKFLOWS" BUNDLE_ID="$BUNDLE_ID" PREFERENCES_HOME="$PREFERENCES_HOME" /usr/bin/osascript <<'APPLESCRIPT'
 on waitForWindow(appName)
   tell application "System Events"
     repeat 100 times
@@ -135,10 +150,14 @@ end selectBySearch
 on hasWorkflow(workflows, requested)
   return ("," & workflows & ",") contains ("," & requested & ",")
 end hasWorkflow
-set appPath to system attribute "APP_PATH"
+set appExecutable to system attribute "APP_EXECUTABLE"
 set appName to system attribute "APP_NAME"
 set workflows to system attribute "WORKFLOWS"
-do shell script "open -n " & quoted form of appPath
+set preferencesHome to system attribute "PREFERENCES_HOME"
+on launchIsolatedApp(appExecutable, preferencesHome)
+  do shell script "/usr/bin/env CFFIXED_USER_HOME=" & quoted form of preferencesHome & " HOME=" & quoted form of preferencesHome & " " & quoted form of appExecutable & " >/dev/null 2>&1 &"
+end launchIsolatedApp
+launchIsolatedApp(appExecutable, preferencesHome)
 waitForWindow(appName)
 delay 1
 
@@ -182,14 +201,14 @@ end if
 if hasWorkflow(workflows, "relaunch-persistence") then
   tell application appName to quit
   delay 1
-  do shell script "open -n " & quoted form of appPath
+  launchIsolatedApp(appExecutable, preferencesHome)
   waitForWindow(appName)
 end if
 if hasWorkflow(workflows, "terminal-opt-in-containment") then
-  do shell script "/usr/bin/defaults write " & system attribute "BUNDLE_ID" & " experimentalTerminalEnabled -bool true; /usr/bin/defaults write " & system attribute "BUNDLE_ID" & " hasAcknowledgedTerminalWarning -bool true"
+  do shell script "/usr/bin/env CFFIXED_USER_HOME=" & quoted form of preferencesHome & " HOME=" & quoted form of preferencesHome & " /usr/bin/defaults write " & quoted form of (system attribute "BUNDLE_ID") & " experimentalTerminalEnabled -bool true; /usr/bin/env CFFIXED_USER_HOME=" & quoted form of preferencesHome & " HOME=" & quoted form of preferencesHome & " /usr/bin/defaults write " & quoted form of (system attribute "BUNDLE_ID") & " hasAcknowledgedTerminalWarning -bool true"
   tell application appName to quit
   delay 1
-  do shell script "open -n " & quoted form of appPath
+  launchIsolatedApp(appExecutable, preferencesHome)
   waitForWindow(appName)
   menuItem(appName, "View", "Toggle Post-V1 Experimental Terminal")
 end if
