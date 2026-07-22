@@ -306,6 +306,17 @@ final class MainMenuConstructionTests: XCTestCase {
         XCTAssertTrue(menu.containsItem(titled: "Open With…"))
     }
 
+    func testSupportLinksAreAvailableFromHelpMenu() {
+        let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.supportLinks")!
+        defaults.removePersistentDomain(forName: "MainMenuConstructionTests.supportLinks")
+
+        let menu = AppDelegate(launchArguments: ["PulseFiles"], userDefaults: defaults).buildMainMenu()
+
+        XCTAssertTrue(menu.containsItem(titled: "Get Support"))
+        XCTAssertTrue(menu.containsItem(titled: "Privacy Policy"))
+        XCTAssertTrue(menu.containsItem(titled: "Report an Issue"))
+    }
+
     func testEditSettingsJSONMenuItemIsHiddenByDefault() {
         let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.default")!
         defaults.removePersistentDomain(forName: "MainMenuConstructionTests.default")

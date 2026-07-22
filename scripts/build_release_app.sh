@@ -81,7 +81,7 @@ APP_BUNDLE="${ARTIFACTS_DIR}/${APP_NAME}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
-INFO_PLIST="${REPO_ROOT}/PulseFiles/Info.plist"
+MATERIALIZED_INFO_PLIST="${BUILD_PATH}/PulseFiles-Release-Info.plist"
 APP_RESOURCES_DIR="${REPO_ROOT}/PulseFiles/Resources"
 CONFIGURATION="release"
 
@@ -100,6 +100,10 @@ if [[ "${SIGN_RELEASE}" == true ]]; then
         exit 66
     fi
 fi
+
+"${SCRIPT_DIR}/release_version.sh" validate
+"${SCRIPT_DIR}/release_version.sh" materialize "${MATERIALIZED_INFO_PLIST}"
+echo "Packaging version $("${SCRIPT_DIR}/release_version.sh" marketing-version) (build $("${SCRIPT_DIR}/release_version.sh" build-number))"
 
 echo "Building ${APP_NAME} (${CONFIGURATION})..."
 mkdir -p "${CACHE_PATH}" "${CONFIG_PATH}" "${SECURITY_PATH}" "${CLANG_CACHE_PATH}"
@@ -122,7 +126,7 @@ fi
 echo "Packaging ${APP_BUNDLE}..."
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${EXECUTABLE_PATH}" "${MACOS_DIR}/${APP_NAME}"
-cp "${INFO_PLIST}" "${CONTENTS_DIR}/Info.plist"
+cp "${MATERIALIZED_INFO_PLIST}" "${CONTENTS_DIR}/Info.plist"
 if [[ -d "${APP_RESOURCES_DIR}" ]]; then
     cp -R "${APP_RESOURCES_DIR}/." "${RESOURCES_DIR}/"
 fi

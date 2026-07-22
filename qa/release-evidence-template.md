@@ -24,6 +24,7 @@ run`, an unsigned app, or a DEBUG build.
 | Prior app version/build/SHA (required for upgrade) | |
 | Upgrade result (required for upgrade: pass/fail plus retained settings, bookmarks, and recents result) | |
 | Reset/fixture details and disposable test location | |
+| Release notes/support/privacy/issue links reviewed | |
 
 ## Required coverage
 
@@ -79,7 +80,17 @@ location below.
 | --- | --- | --- | --- | --- |
 | navigation, active-pane search, conflict choices, cancellation, drag/drop, trash, rename, grant recovery, volume fallback, relaunch, terminal opt-in | | | | |
 
-## Failures and documented limitations
+## Release gate summary
+
+| Release gate | Outcome (pass/fail/not run) | Evidence link or artifact | Owner/date | Notes |
+| --- | --- | --- | --- | --- |
+| Commit SHA matches the signed app | | | | |
+| Version and monotonically increasing build number match `release/VERSION` | | | | |
+| macOS versions tested | | | | |
+| Signed-app UI harness | | | | |
+| Storage-provider matrix (cloud, network, removable, package, symlink, alias, metadata) | | | | |
+
+## Known limitations, failures, and documented limitations
 
 An unresolved signed-app-only failure is a **release blocker**. It may be
 released only as a documented limitation when product/release approval accepts
@@ -89,6 +100,15 @@ owner and target release remains a blocker.
 | ID | Scenario/target | Status (blocker or documented limitation) | Impact and reproduction | Evidence/issue link | Owner | Target release | Approval | Customer-facing release-note text |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | | | | | | | | | |
+
+## Rollback plan
+
+| Required field | Value |
+| --- | --- |
+| Rollback decision owner | |
+| Rollback owner/contact | |
+| Previous known-good version/build/SHA | |
+| Distribution rollback steps and communication link | |
 
 ## Sign-off
 

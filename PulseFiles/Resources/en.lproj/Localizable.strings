@@ -1,5 +1,9 @@
 /* English development localization for PulseFiles. */
 
+"Get Support" = "Get Support";
+"Privacy Policy" = "Privacy Policy";
+"Report an Issue" = "Report an Issue";
+
 " · %@ selected" = " · %@ selected";
 "%@ %@:" = "%@ %@:";
 "%@ %@?" = "%@ %@?";

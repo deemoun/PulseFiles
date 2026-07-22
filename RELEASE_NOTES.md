@@ -1,5 +1,17 @@
 # PulseFiles Release Notes Draft
 
+<!-- release-version: 1.0.0; build-number: 1 -->
+
+Release version **1.0.0** (build **1**). The customer-facing marketing version
+and monotonically increasing build number are defined in `release/VERSION`.
+
+## Support, privacy, and feedback
+
+- **Support:** export a reviewable bundle from **Help → Export Diagnostics…**,
+  then open a support request at <https://github.com/deemoun/PulseFiles/issues>.
+- **Privacy policy:** <https://github.com/deemoun/PulseFiles/blob/main/PRIVACY.md>.
+- **Report an issue:** <https://github.com/deemoun/PulseFiles/issues/new/choose>.
+
 ## Overview
 
 PulseFiles is a native macOS file manager built with AppKit and Swift Package Manager. It focuses on a fast, keyboard-first workflow with two independently navigable file panes for comparing, browsing, and operating on files side by side.
