@@ -119,3 +119,9 @@ The Swift package target is named `PulseFiles` and uses AppKit directly. The sou
 Choose **Help → Export Diagnostics…** and select a destination folder. PulseFiles creates a timestamped `PulseFiles-Diagnostics-…` folder locally; it does not collect or upload diagnostics automatically. Review the included `diagnostics.txt` and `REDACTION_POLICY.txt`, then attach the folder (or a zip you create from it) to your support request along with a description of what happened.
 
 The export includes app/version/build and macOS information, sanitized in-memory diagnostic entries, and count-only summaries of recent file-operation results. It excludes filesystem paths, security-scoped bookmark data, clipboard contents, terminal commands/output, and password/token/secret/credential/API-key values. Entries categorized as Terminal, Clipboard, or Bookmark are excluded entirely.
+
+## Support, privacy, and issue reporting
+
+- **Support:** use **Help → Get Support** or file a support request at <https://github.com/deemoun/PulseFiles/issues>.
+- **Privacy policy:** use **Help → Privacy Policy** or read [PRIVACY.md](PRIVACY.md).
+- **Issue reporting:** use **Help → Report an Issue** or open <https://github.com/deemoun/PulseFiles/issues/new/choose>.

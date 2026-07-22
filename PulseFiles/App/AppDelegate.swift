@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private var aboutWindowController: NSWindowController?
 
+    private static let supportURL = URL(string: "https://github.com/deemoun/PulseFiles/issues")!
+    private static let privacyPolicyURL = URL(string: "https://github.com/deemoun/PulseFiles/blob/main/PRIVACY.md")!
+    private static let issueReportingURL = URL(string: "https://github.com/deemoun/PulseFiles/issues/new/choose")!
+
     init(
         launchArguments: [String] = ProcessInfo.processInfo.arguments,
         userDefaults: UserDefaults = .standard,
@@ -319,6 +323,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         helpItem.target = self
         submenu.addItem(helpItem)
         submenu.addItem(.separator())
+        submenu.addItem(menuItem("Get Support".localized, action: #selector(openSupport(_:)), key: "", modifiers: []))
+        submenu.addItem(menuItem("Privacy Policy".localized, action: #selector(openPrivacyPolicy(_:)), key: "", modifiers: []))
+        submenu.addItem(menuItem("Report an Issue".localized, action: #selector(reportIssue(_:)), key: "", modifiers: []))
+        submenu.addItem(.separator())
         submenu.addItem(menuItem("Export Diagnostics…".localized, action: #selector(MainWindowViewController.menuExportDiagnostics(_:)), key: "", modifiers: []))
         item.submenu = submenu
         return item
@@ -345,6 +353,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             alert.runModal()
         }
+    }
+
+    @objc private func openSupport(_ sender: Any?) {
+        NSWorkspace.shared.open(Self.supportURL)
+    }
+
+    @objc private func openPrivacyPolicy(_ sender: Any?) {
+        NSWorkspace.shared.open(Self.privacyPolicyURL)
+    }
+
+    @objc private func reportIssue(_ sender: Any?) {
+        NSWorkspace.shared.open(Self.issueReportingURL)
     }
 
     private func menuItem(_ title: String, action: Selector, key: String, modifiers: NSEvent.ModifierFlags) -> NSMenuItem {

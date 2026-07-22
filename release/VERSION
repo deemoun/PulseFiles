@@ -1,0 +1,5 @@
+# The single source of truth for a distributable PulseFiles release.
+# MARKETING_VERSION is customer-facing. BUILD_NUMBER is CFBundleVersion and
+# must be a positive integer greater than every previously shipped build.
+MARKETING_VERSION=1.0.0
+BUILD_NUMBER=1

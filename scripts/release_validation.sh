@@ -57,6 +57,9 @@ cd "${REPO_ROOT}"
 echo "==> Running Swift tests"
 swift test
 
+echo "==> Validating release version metadata"
+scripts/release_version.sh validate
+
 if [[ "${BUILD_RELEASE}" == true ]]; then
   echo "==> Building release app bundle"
   scripts/build_release_app.sh --clean
