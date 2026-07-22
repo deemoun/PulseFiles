@@ -45,21 +45,44 @@ Use `--skip-ui-harness` only for non-macOS automation or environments that canno
 
 ## Safety notes
 
-The harness only creates and targets folders under a temporary directory. Destructive operation dialogs are opened and cancelled, and the script verifies the disposable source files still exist after the confirmation-flow checks.
+The harness creates a fresh temporary fixture root for every run and rejects
+canonical source/destination paths outside that root. Some workflows deliberately
+mutate only generated fixture files (for conflict, cancellation, trash, and
+rename evidence); no workflow accepts a user-provided mutation path.
 
-## Sections 6–8 and 15 release sign-off
+## Release sign-off limits
 
-The signed-app harness is a smoke gate, not a replacement for the destructive
-manual scenarios in `RELEASE_CHECKLIST.md`. In particular, it deliberately
-cancels its confirmation sheets and therefore does **not** mutate data to test
-multi-item transfers, conflict choices, permanent deletion, in-flight
-cancellation, or volume ejection. Run those scenarios against a signed release
-bundle on macOS using a disposable directory and disk image/external volume,
-then record the outcome (including any UI-versus-service mismatch) in the
-release handoff. Do not treat a Linux or unsigned-bundle run as sign-off.
+The harness is a signed-app smoke/evidence gate, not a replacement for the
+full destructive matrix in `RELEASE_CHECKLIST.md`. Disk-image ejection timing,
+privacy prompts, and manual drag gestures can require a reviewer on macOS.
+Run those signed-release scenarios only with the generated fixture or another
+fresh disposable location, retain the harness artifacts, and record any
+UI-versus-service mismatch in the release handoff. Linux or unsigned-bundle
+runs are never release sign-off.
 
-The confirmation smoke coverage intentionally stays on the initial disposable
-pane instead of navigating to Home before it runs. It also asserts that every
-requested destructive action produced a sheet; this prevents a missing
-selection or a navigation regression from being reported as a successful
-cancelled-operation check.
+## Reproducible disposable workflows and retained evidence
+
+The harness now exposes individually selectable workflows rather than only a
+confirmation smoke test. Run the complete set and retain its evidence with:
+
+```sh
+scripts/release_validation.sh \
+  --signed-app artifacts/release/PulseFiles.app \
+  --ui-artifacts-dir release-evidence/ui-$(git rev-parse --short HEAD)
+```
+
+Or focus a single workflow while diagnosing a release candidate:
+
+```sh
+qa/ui-harness/run_signed_app_ui_harness.sh artifacts/release/PulseFiles.app \
+  --workflows copy-conflicts --artifacts-dir /tmp/pulsefiles-ui-evidence
+```
+
+See [WORKFLOWS.md](WORKFLOWS.md) for the navigation, search, conflict,
+cancellation, drag/drop, trash, rename, grant recovery, volume fallback,
+relaunch, and terminal workflows. The runner canonicalizes every mutation path
+and rejects paths outside the newly-created fixture root; it never accepts a
+user-provided source/destination path. When Accessibility automation is
+available, `release_validation.sh` runs `--workflows all` and the retained
+report, fixture tree snapshots, and screenshot are ready to attach to the
+release-evidence record.
