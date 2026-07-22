@@ -15,6 +15,8 @@ Run both command-line verification and manual app-bundle verification before rel
 
 > **Signed release app required:** Scenarios involving macOS security-scoped folder grants, persisted file access, Finder/Open With behavior, app relaunch persistence, release unrestricted mode, and any behavior affected by code signing, entitlements, quarantine, or TCC must be verified on a signed release `.app`, not only with `swift run`. The external harness in `qa/ui-harness/` is the automated signed-app smoke gate for these flows and requires Accessibility permission for the invoking terminal or CI runner.
 
+> **Automation boundary:** The signed-app harness is non-mutating. It must not run Trash, rename, completed copy/move, or delete because fixture-root checks do not isolate OS Trash or other system-managed destinations. Run mutation automation with `qa/ui-harness/run_debug_disposable_ui_runner.sh` under DEBUG experimental sandbox mode. Perform signed-app destructive checks only with equivalent OS-level isolation (for example a disposable account, VM, or disk image).
+
 ## Manual scenarios
 
 ### 1. First launch

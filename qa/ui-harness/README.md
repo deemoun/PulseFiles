@@ -1,88 +1,50 @@
-# PulseFiles signed-app UI harness
+# PulseFiles UI automation
 
-This folder contains an external macOS UI harness for release validation. It drives a built, signed `PulseFiles.app` with `System Events` instead of SwiftPM/XCTest so the same app bundle that users receive is exercised.
+PulseFiles keeps disposable DEBUG mutation automation separate from signed
+release-signoff validation.
 
-## What it covers
+## Signed-release smoke suite
 
-`run_signed_app_ui_harness.sh` creates disposable source and destination folders, writes PulseFiles startup preferences to point both panes at those folders, launches the supplied app bundle, and checks these release-critical flows:
-
-- app launch and close-last-window termination
-- active pane switching with Tab
-- keyboard navigation with arrow keys and Command-Up
-- search/filter using the toolbar search shortcut
-- sidebar visibility entry points
-- command bar invocation and dismissal
-- terminal disabled state, then enabled state after an explicit preference flip
-- copy, move, and delete confirmation entry points using disposable files, cancelling each prompt to prove the harness does not mutate real user data; each flow now fails unless its confirmation sheet was actually displayed
-
-## Prerequisites
-
-1. Run on macOS with a signed app bundle. The harness fails if `codesign --verify --deep --strict` does not pass.
-2. Grant Accessibility permission to the terminal or CI runner that invokes the script: **System Settings → Privacy & Security → Accessibility**.
-3. Build and sign the release bundle, for example:
-
-   ```sh
-   ./scripts/build_release_app.sh --clean --sign --sign-identity "Developer ID Application: Example Corp (TEAMID)"
-   ```
-
-## Running directly
-
-```sh
-qa/ui-harness/run_signed_app_ui_harness.sh artifacts/release/PulseFiles.app
-```
-
-If no path is supplied, the script uses `artifacts/release/PulseFiles.app`.
-
-## Release validation integration
-
-The repository-level release validation wrapper can run the harness after command-line tests and release packaging:
+`run_signed_app_ui_harness.sh` drives a signed release `PulseFiles.app` through
+System Events. It verifies signing and Accessibility automation, creates
+fixture-only startup paths and isolated preferences, then runs **non-mutating**
+smoke workflows only. Copy and move confirmation checks explicitly select Skip
+or Cancel; it never completes copy/move, renames, deletes, or invokes Trash.
 
 ```sh
 scripts/release_validation.sh --signed-app artifacts/release/PulseFiles.app
 ```
 
-Use `--skip-ui-harness` only for non-macOS automation or environments that cannot grant Accessibility automation. A final release candidate should still run this harness on a signed app before publication.
+The signed-app suite remains an evidence gate, not a substitute for the manual
+destructive matrix in `RELEASE_CHECKLIST.md`. Production Trash is excluded:
+`FileManager.trashItem` can move a fixture source into the OS Trash, which is
+not contained by a fixture-root guard. Perform signed-release destructive QA
+only with equivalent OS-level isolation such as a disposable account, VM, or
+disk image, and retain the result in release evidence.
 
-## Safety notes
+## DEBUG disposable automation runner
 
-The harness creates a fresh temporary fixture root for every run and rejects
-canonical source/destination paths outside that root. Some workflows deliberately
-mutate only generated fixture files (for conflict, cancellation, trash, and
-rename evidence); no workflow accepts a user-provided mutation path.
-
-## Release sign-off limits
-
-The harness is a signed-app smoke/evidence gate, not a replacement for the
-full destructive matrix in `RELEASE_CHECKLIST.md`. Disk-image ejection timing,
-privacy prompts, and manual drag gestures can require a reviewer on macOS.
-Run those signed-release scenarios only with the generated fixture or another
-fresh disposable location, retain the harness artifacts, and record any
-UI-versus-service mismatch in the release handoff. Linux or unsigned-bundle
-runs are never release sign-off.
-
-## Reproducible disposable workflows and retained evidence
-
-The harness now exposes individually selectable workflows rather than only a
-confirmation smoke test. Run the complete set and retain its evidence with:
+Run the mutation-capable automation separately:
 
 ```sh
-scripts/release_validation.sh \
-  --signed-app artifacts/release/PulseFiles.app \
-  --ui-artifacts-dir release-evidence/ui-$(git rev-parse --short HEAD)
+qa/ui-harness/run_debug_disposable_ui_runner.sh --workflows all
 ```
 
-Or focus a single workflow while diagnosing a release candidate:
+It builds the DEBUG app itself, launches it with
+`--pulsefiles-enable-experimental-sandbox`, and uses an isolated HOME. The
+runner creates a fresh `AutomationRun.*` child beneath that configured
+experimental sandbox root. Before launch, it canonicalizes and rejects any
+pane startup path or mutating source/destination outside that child. It accepts
+no app, source, or destination path argument. It exercises fixture-contained
+rename and cancellation behavior, but intentionally has no Trash workflow.
 
-```sh
-qa/ui-harness/run_signed_app_ui_harness.sh artifacts/release/PulseFiles.app \
-  --workflows copy-conflicts --artifacts-dir /tmp/pulsefiles-ui-evidence
-```
+Use `--artifacts-dir PATH` to retain logs, tree snapshots, and screenshots, or
+`--keep-fixture` to inspect the isolated HOME after a run. See
+[WORKFLOWS.md](WORKFLOWS.md) for the exact workflow partition.
 
-See [WORKFLOWS.md](WORKFLOWS.md) for the navigation, search, conflict,
-cancellation, drag/drop, trash, rename, grant recovery, volume fallback,
-relaunch, and terminal workflows. The runner canonicalizes every mutation path
-and rejects paths outside the newly-created fixture root; it never accepts a
-user-provided source/destination path. When Accessibility automation is
-available, `release_validation.sh` runs `--workflows all` and the retained
-report, fixture tree snapshots, and screenshot are ready to attach to the
-release-evidence record.
+## Prerequisites
+
+Both runners require macOS and Accessibility permission for the invoking
+terminal or CI runner. The signed runner additionally requires a valid signed
+bundle (`codesign --verify --deep --strict`). Linux and unsigned-bundle runs
+are never signed-release sign-off.

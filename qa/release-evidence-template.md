@@ -78,7 +78,7 @@ location below.
 
 | Harness workflow set | Pass/fail | Artifact directory or attachment | Tester/date | Notes |
 | --- | --- | --- | --- | --- |
-| navigation, active-pane search, conflict choices, cancellation, drag/drop, trash, rename, grant recovery, volume fallback, relaunch, terminal opt-in | | | | |
+| navigation, active-pane search, non-mutating conflict choices, drag/drop, relaunch, terminal opt-in | | | | |
 
 ## Release gate summary
 
