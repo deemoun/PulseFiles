@@ -267,6 +267,10 @@
 "Choose another folder" = "Choose another folder";
 
 "Undo" = "Undo";
+"Undo Copy" = "Undo Copy";
+"Undo Move" = "Undo Move";
+"Undo Rename" = "Undo Rename";
+"Undo Move to Trash" = "Undo Move to Trash";
 "Undo Unavailable" = "Undo Unavailable";
 "The last operation cannot be safely undone." = "The last operation cannot be safely undone.";
 "This operation can no longer be safely undone." = "This operation can no longer be safely undone.";

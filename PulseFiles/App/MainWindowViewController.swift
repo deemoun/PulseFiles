@@ -1419,7 +1419,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func delete(items: [FileItem], permanently: Bool) {
         let operationName = permanently ? "Permanently Delete".localized : "Move to Trash".localized
-        startFileOperation(named: operationName) { [fileOperations] progressHandler in
+        // Every mutation invalidates an older recovery. Permanent deletion
+        // deliberately supplies no recovery, while Trash may supply one.
+        startFileOperation(named: operationName, captureRecovery: true) { [fileOperations] progressHandler in
             if permanently {
                 return try await fileOperations.delete(items.map(\.url), progressHandler: progressHandler)
             }
@@ -1428,7 +1430,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func copySelectedItems() {
-        performFileTransfer(kind: "Copy".localized, shouldConfirm: settings.confirmCopyOperations) { [fileOperations] request, conflictHandler, progressHandler in
+        performFileTransfer(kind: "Copy".localized, shouldConfirm: settings.confirmCopyOperations, captureRecovery: true) { [fileOperations] request, conflictHandler, progressHandler in
             try await fileOperations.copy(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
         }
     }
@@ -1526,7 +1528,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             sources: payload.urls,
             destinationDirectory: targetPane().currentDirectory,
             shouldConfirm: shouldConfirm,
-            captureRecovery: payload.operation == .move
+            captureRecovery: true
         ) { [fileOperations] request, conflictHandler, progressHandler in
             switch payload.operation {
             case .copy:
@@ -1605,7 +1607,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         let kind = copy ? "Copy".localized : "Move".localized
         let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
         let start: () -> Void = { [weak self, fileOperations] in
-            self?.startFileOperation(named: kind, captureRecovery: !copy) { [weak self] progressHandler in
+            self?.startFileOperation(named: kind, captureRecovery: true) { [weak self] progressHandler in
                 if copy {
                     return try await fileOperations.copy(request, conflictHandler: { destination in
                         guard let self else { return .cancel }
@@ -1734,7 +1736,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             return
         }
         undoRecovery = nil
-        startFileOperation(named: "Undo".localized) { [fileOperations] progressHandler in
+        startFileOperation(named: recovery.undoTitle.localized) { [fileOperations] progressHandler in
             try await fileOperations.undo(recovery, progressHandler: progressHandler)
         }
     }
@@ -2117,6 +2119,9 @@ extension MainWindowViewController: NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(menuUndo(_:)) {
+            menuItem.title = undoRecovery?.undoTitle.localized ?? "Undo".localized
+        }
         if menuItem.action == #selector(menuToggleSidebar(_:)) {
             menuItem.state = isSidebarInstalled ? .on : .off
             return true
