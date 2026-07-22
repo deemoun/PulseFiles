@@ -431,6 +431,18 @@ final class MainWindowViewController: NSViewController {
         }
     }
 
+    /// Opens a directory that has already been authorized by the application
+    /// delegate for an external Finder/Launch Services event. The active pane
+    /// is deliberate: one event changes one visible destination, while any
+    /// additional folders in the same event are left untouched.
+    func openAcceptedFolderFromExternalEvent(_ directory: URL) {
+        activeFilterText = ""
+        let pane = targetPane()
+        pane.setSearchQuery("")
+        pane.navigate(to: directory)
+        view.window?.makeFirstResponder(pane.tableView)
+    }
+
     private func targetPane(useInactive: Bool = false) -> FilePaneViewController {
         let paneID = useInactive ? activePaneID.opposite : activePaneID
         return paneID == .left ? leftPane : rightPane

@@ -6,13 +6,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let launchArguments: [String]
     private let userDefaults: UserDefaults
+    private let accessPolicy: SandboxFileAccessPolicy
+    private let fileManager: FileManager
+    private let mainWindowControllerFactory: () -> MainWindowController
 
     private var mainWindowController: MainWindowController?
     private var aboutWindowController: NSWindowController?
 
-    init(launchArguments: [String] = ProcessInfo.processInfo.arguments, userDefaults: UserDefaults = .standard) {
+    init(
+        launchArguments: [String] = ProcessInfo.processInfo.arguments,
+        userDefaults: UserDefaults = .standard,
+        accessPolicy: SandboxFileAccessPolicy = .current,
+        fileManager: FileManager = .default,
+        mainWindowControllerFactory: @escaping () -> MainWindowController = { MainWindowController() }
+    ) {
         self.launchArguments = launchArguments
         self.userDefaults = userDefaults
+        self.accessPolicy = accessPolicy
+        self.fileManager = fileManager
+        self.mainWindowControllerFactory = mainWindowControllerFactory
         super.init()
     }
 
@@ -22,13 +34,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApplication.shared.applicationIconImage = icon
         }
         NSApplication.shared.mainMenu = buildMainMenu()
-        let controller = MainWindowController()
-        controller.showWindow(nil)
-        mainWindowController = controller
+        showMainWindow()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    /// Finder and Launch Services deliver document-open events here. PulseFiles
+    /// registers only for folders, but handles file URLs defensively because an
+    /// event can still be forwarded by another app or automation tool.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let result = OpenEventRouter.route(urls, accessPolicy: accessPolicy, fileManager: fileManager)
+        guard let directory = result.firstAcceptedFolder else { return }
+
+        let controller = showMainWindow()
+        controller.contentViewController?.view.layoutSubtreeIfNeeded()
+        (controller.contentViewController as? MainWindowViewController)?.openAcceptedFolderFromExternalEvent(directory)
+    }
+
+    /// Reopen recreates or brings forward the main file-manager window. This is
+    /// intentionally independent of the open-event path so a Dock reopen does
+    /// not alter either pane's current directory.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        _ = showMainWindow()
+        return true
+    }
+
+    @discardableResult
+    private func showMainWindow() -> MainWindowController {
+        let controller: MainWindowController
+        if let existing = mainWindowController, existing.window != nil {
+            controller = existing
+        } else {
+            controller = mainWindowControllerFactory()
+            mainWindowController = controller
+        }
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        return controller
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
