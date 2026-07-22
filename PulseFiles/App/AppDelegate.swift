@@ -313,6 +313,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         helpItem.keyEquivalentModifierMask = [.command]
         helpItem.target = self
         submenu.addItem(helpItem)
+        submenu.addItem(.separator())
+        submenu.addItem(menuItem("Export Diagnostics…".localized, action: #selector(MainWindowViewController.menuExportDiagnostics(_:)), key: "", modifiers: []))
         item.submenu = submenu
         return item
     }
