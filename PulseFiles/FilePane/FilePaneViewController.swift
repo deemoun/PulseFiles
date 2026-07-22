@@ -179,6 +179,19 @@ final class FilePaneViewController: NSViewController {
         }
     }
 
+    /// Selection commands intentionally operate only on real file rows; the
+    /// synthetic parent row is navigation, not a filesystem item.
+    func selectAllItems() {
+        let rows = IndexSet(integersIn: realRowOffset..<tableView.numberOfRows)
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+    }
+
+    func invertSelection() {
+        let allRows = Set(realRowOffset..<tableView.numberOfRows)
+        let inverted = IndexSet(allRows.subtracting(tableView.selectedRowIndexes))
+        tableView.selectRowIndexes(inverted, byExtendingSelection: false)
+    }
+
     func toggleHiddenFiles() {
         viewModel.toggleHiddenFiles()
     }
@@ -1269,6 +1282,8 @@ extension FilePaneViewController: FileTableViewActionDelegate {
                 menu.addItem(openWithMenu(for: rowItem.url))
             }
             menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
+            menu.addItem(contextMenuItem("Duplicate", action: #selector(contextDuplicate)))
+            menu.addItem(contextMenuItem("Get Info", action: #selector(contextGetInfo)))
             if hasOppositePane {
                 menu.addItem(.separator())
                 menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
@@ -1283,6 +1298,8 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             menu.addItem(contextMenuItem("New Folder", action: #selector(contextNewFolder)))
             menu.addItem(.separator())
             menu.addItem(contextMenuItem("Refresh", action: #selector(contextRefresh)))
+            menu.addItem(contextMenuItem("Select All", action: #selector(contextSelectAll)))
+            menu.addItem(contextMenuItem("Invert Selection", action: #selector(contextInvertSelection)))
             menu.addItem(contextMenuItem(viewModel.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", action: #selector(contextToggleHidden)))
         }
         return menu
@@ -1291,6 +1308,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     private func contextMenuItem(_ title: String, action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
+        item.setAccessibilityLabel(title)
         return item
     }
 
@@ -1326,12 +1344,16 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     @objc private func contextOpen() { onCommand?(.open) }
     @objc private func contextOpenWith() { onCommand?(.openWith) }
     @objc private func contextRename() { onCommand?(.rename) }
+    @objc private func contextDuplicate() { onCommand?(.duplicate) }
+    @objc private func contextGetInfo() { onCommand?(.getInfo) }
     @objc private func contextCopy() { onCommand?(.copy) }
     @objc private func contextMove() { onCommand?(.move) }
     @objc private func contextTrash() { onCommand?(.trash) }
     @objc private func contextNewFile() { onCommand?(.newFile) }
     @objc private func contextNewFolder() { onCommand?(.newFolder) }
     @objc private func contextRefresh() { onCommand?(.refresh) }
+    @objc private func contextSelectAll() { onCommand?(.selectAll) }
+    @objc private func contextInvertSelection() { onCommand?(.invertSelection) }
     @objc private func contextReveal() { onCommand?(.reveal) }
     @objc private func contextToggleHidden() { onCommand?(.toggleHiddenFiles) }
     @objc private func contextOpenWithDefault(_ sender: NSMenuItem) {

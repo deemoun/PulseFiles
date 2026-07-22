@@ -102,15 +102,15 @@ struct MainCommandRouter {
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
-        case .open, .quickLook, .rename, .reveal:
+        case .open, .quickLook, .rename, .getInfo, .reveal:
             return focusedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: [$0])
             }
-        case .openWith, .trash:
+        case .openWith, .trash, .duplicate:
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
-        case .refresh, .toggleHiddenFiles, .sortByName, .sortByKind, .sortBySize, .sortByModified, .sortAscending, .sortDescending, .back, .forward, .parent:
+        case .refresh, .toggleHiddenFiles, .sortByName, .sortByKind, .sortBySize, .sortByModified, .sortAscending, .sortDescending, .back, .forward, .parent, .selectAll, .invertSelection:
             return .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
         default:
             return .enabled(command: command)
@@ -133,6 +133,8 @@ struct MainCommandRouter {
         if command && !shift && !option && !control && keyCode == 8 { return .copyToClipboard }
         if command && !shift && !option && !control && keyCode == 7 { return .cutToClipboard }
         if command && !shift && !option && !control && keyCode == 9 { return .pasteFromClipboard }
+        if command && !shift && !option && !control && keyCode == 0 { return .selectAll }
+        if command && shift && !option && !control && keyCode == 34 { return .invertSelection }
         if command && !shift && !option && !control && keyCode == 47 { return .cancelOperation }
         if command && !shift && !option && !control && keyCode == 50 { return .toggleTerminal }
         if command && !shift && !option && !control && keyCode == 17 { return .togglePaneLayout }
@@ -175,7 +177,7 @@ struct MainCommandRouter {
 extension MainCommand {
     var conflictsWithFileOperation: Bool {
         switch self {
-        case .newFile, .newFolder, .rename, .undo, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
+        case .newFile, .newFolder, .rename, .duplicate, .undo, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
             return true
         default:
             return false
