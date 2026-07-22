@@ -30,6 +30,7 @@ enum MainCommand: Equatable {
     case forward
     case parent
     case goToFolder
+    case searchDescendants
     case home
     case downloads
     case applications

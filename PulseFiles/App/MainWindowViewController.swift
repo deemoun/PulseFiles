@@ -81,6 +81,8 @@ final class MainWindowViewController: NSViewController {
 
     private let settings = SettingsService()
     private let accessPolicy = SandboxFileAccessPolicy.current
+    private lazy var descendantSearch = DescendantSearchService(accessPolicy: accessPolicy)
+    private var descendantSearchTask: Task<Void, Never>?
     private let fileSystemScheduler = FileSystemOperationScheduler.shared
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: fileSystemScheduler)
     private lazy var fileOperations = FileOperationService(accessPolicy: accessPolicy)
@@ -538,6 +540,8 @@ final class MainWindowViewController: NSViewController {
             targetPane().goParent()
         case .goToFolder:
             promptForGoToFolder()
+        case .searchDescendants:
+            promptForDescendantSearch()
         case .home, .downloads, .applications:
             targetPane().navigate(to: MainCommandDestinationResolver.destination(for: command))
         case .switchPane:
@@ -1316,6 +1320,65 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         } else {
             handleResponse(alert.runModal())
         }
+    }
+
+    /// Recursive search is intentionally separate from the toolbar's cheap
+    /// current-folder filter. The pane never navigates while results are shown,
+    /// so closing this sheet is an explicit, reliable return to its original
+    /// directory.
+    private func promptForDescendantSearch() {
+        let pane = targetPane()
+        // A selected folder is the search root; otherwise search the directory
+        // currently displayed by the active pane.
+        let root = pane.focusedItem.flatMap { $0.isDirectory ? $0.url : nil } ?? pane.currentDirectory
+        let alert = NSAlert()
+        alert.messageText = "Search This Folder".localized
+        alert.informativeText = "Searches descendants of %@ without following symbolic links. Results are limited for safety.".localized(with: root.path)
+        alert.addButton(withTitle: "Search".localized)
+        alert.addButton(withTitle: "Cancel".localized)
+        let field = NSTextField(string: "")
+        field.placeholderString = "Filename contains".localized
+        field.frame = NSRect(x: 0, y: 0, width: 420, height: 24)
+        alert.accessoryView = field
+        let start: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let query = field.stringValue
+            self.descendantSearchTask?.cancel()
+            self.descendantSearchTask = Task { [weak self, descendantSearch] in
+                guard let self else { return }
+                do {
+                    let result = try await descendantSearch.search(query: query, rootURL: root)
+                    guard !Task.isCancelled else { return }
+                    self.presentDescendantSearchResults(result, root: root, query: query)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self.showError(message: "Could Not Search Folder".localized, detail: error.localizedDescription)
+                }
+            }
+        }
+        if let window = view.window { alert.beginSheetModal(for: window, completionHandler: start) } else { start(alert.runModal()) }
+    }
+
+    private func presentDescendantSearchResults(_ result: DescendantSearchResult, root: URL, query: String) {
+        let alert = NSAlert()
+        alert.messageText = "Search Results".localized
+        var notes: [String] = []
+        if result.hitItemLimit { notes.append("item limit reached".localized) }
+        if result.hitDepthLimit { notes.append("depth limit reached".localized) }
+        if result.timedOut { notes.append("time limit reached".localized) }
+        if !result.inaccessibleURLs.isEmpty { notes.append("%@ inaccessible location(s) skipped".localized(with: result.inaccessibleURLs.count)) }
+        alert.informativeText = "%@ result(s) for “%@” below %@.%@".localized(with: result.items.count, query, root.path, notes.isEmpty ? "" : " Partial: " + notes.joined(separator: ", ") + ".")
+        alert.addButton(withTitle: "Return to Original Folder".localized)
+        let text = NSTextView(frame: NSRect(x: 0, y: 0, width: 620, height: 280))
+        text.isEditable = false
+        text.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        text.string = result.items.map { "\($0.name) — \($0.typeDescription)\n\($0.pathContext)" }.joined(separator: "\n\n")
+        let scroll = NSScrollView(frame: text.frame)
+        scroll.hasVerticalScroller = true
+        scroll.documentView = text
+        alert.accessoryView = scroll
+        if let window = view.window { alert.beginSheetModal(for: window) { _ in } } else { _ = alert.runModal() }
     }
 
     private func goToFolder(path rawPath: String) {
@@ -2130,6 +2193,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuForward(_ sender: Any?) { performCommand(.forward) }
     @objc func menuParent(_ sender: Any?) { performCommand(.parent) }
     @objc func menuGoToFolder(_ sender: Any?) { performCommand(.goToFolder) }
+    @objc func menuSearchDescendants(_ sender: Any?) { performCommand(.searchDescendants) }
     @objc func menuHome(_ sender: Any?) { performCommand(.home) }
     @objc func menuDownloads(_ sender: Any?) { performCommand(.downloads) }
     @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
@@ -2269,6 +2333,7 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuForward(_:)): self = .forward
         case #selector(MainWindowViewController.menuParent(_:)): self = .parent
         case #selector(MainWindowViewController.menuGoToFolder(_:)): self = .goToFolder
+        case #selector(MainWindowViewController.menuSearchDescendants(_:)): self = .searchDescendants
         case #selector(MainWindowViewController.menuHome(_:)): self = .home
         case #selector(MainWindowViewController.menuDownloads(_:)): self = .downloads
         case #selector(MainWindowViewController.menuApplications(_:)): self = .applications
