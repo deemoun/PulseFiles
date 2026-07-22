@@ -87,6 +87,7 @@ final class MainWindowViewController: NSViewController {
     private lazy var volumeChangeMonitor = VolumeChangeMonitor()
     private lazy var fileSystemProbe: any FileSystemProbing = FileSystemProbeService(scheduler: fileSystemScheduler)
     private let recentLocations = RecentLocationService()
+    private var recentOperationSummaries: [DiagnosticOperationSummary] = []
 
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
     private lazy var rightStartupResolution = settings.startupDirectoryResolution(for: .right)
@@ -561,6 +562,8 @@ final class MainWindowViewController: NSViewController {
             cancelActiveFileOperation()
         case .debugLogs:
             presentDebugLogs(nil)
+        case .exportDiagnostics:
+            exportDiagnostics()
         }
     }
 
@@ -1771,6 +1774,32 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         _ = retainedOperationTasks[generation]
     }
 
+    private func recordOperationSummary(_ operation: String, result: FileOperationResult) {
+        recentOperationSummaries.append(DiagnosticOperationSummary(operation: operation, result: result))
+        if recentOperationSummaries.count > 20 { recentOperationSummaries.removeFirst(recentOperationSummaries.count - 20) }
+    }
+
+    private func exportDiagnostics() {
+        let panel = NSOpenPanel()
+        panel.title = "Export Diagnostics".localized
+        panel.message = "Choose a folder for a local support bundle. Review it before attaching it to a support request.".localized
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        do {
+            let bundle = try DiagnosticsExportService().export(
+                to: destination,
+                entries: DiagnosticLogService.shared.entries,
+                operationSummaries: recentOperationSummaries
+            )
+            NSWorkspace.shared.activateFileViewerSelecting([bundle])
+        } catch {
+            showError(message: "Could Not Export Diagnostics".localized, detail: error.localizedDescription)
+        }
+    }
+
     private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult, refresh: ((FileOperationResult) -> Void)? = nil, completion: ((FileOperationResult) -> Void)? = nil) {
         guard !isFileOperationActive else { return }
         fileOperationGeneration += 1
@@ -1807,6 +1836,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                 }
                 guard self.currentFileOperationGeneration == generation else { return }
                 if captureRecovery { self.undoRecovery = result.succeededCompletely ? result.recovery : nil }
+                self.recordOperationSummary(operationName, result: result)
                 self.clearClipboardFeedback()
                 if let refresh {
                     refresh(result)
@@ -2109,6 +2139,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
     @objc func menuShowDebugLogs(_ sender: Any?) { performCommand(.debugLogs) }
+    @objc func menuExportDiagnostics(_ sender: Any?) { performCommand(.exportDiagnostics) }
     @objc func menuEditSettingsJSON(_ sender: Any?) {
         do {
             let url = try settings.writeSettingsJSON()
@@ -2246,6 +2277,7 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuFocusRightPane(_:)): self = .focusRightPane
         case #selector(MainWindowViewController.menuCancelOperation(_:)): self = .cancelOperation
         case #selector(MainWindowViewController.menuShowDebugLogs(_:)): self = .debugLogs
+        case #selector(MainWindowViewController.menuExportDiagnostics(_:)): self = .exportDiagnostics
         default: return nil
         }
     }

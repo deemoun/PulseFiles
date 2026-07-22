@@ -38,6 +38,7 @@ enum MainCommand: Equatable {
     case focusRightPane
     case cancelOperation
     case debugLogs
+    case exportDiagnostics
 
     init(commandBarAction: CommandBarAction) {
         switch commandBarAction {
