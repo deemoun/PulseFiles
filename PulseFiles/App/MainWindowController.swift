@@ -1,8 +1,16 @@
 import AppKit
 
 final class MainWindowController: NSWindowController {
-    init() {
-        let content = MainWindowViewController()
+    init(
+        settings: SettingsService = SettingsService(),
+        accessPolicy: SandboxFileAccessPolicy = .current,
+        sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
+    ) {
+        let content = MainWindowViewController(
+            settings: settings,
+            accessPolicy: accessPolicy,
+            sandboxRootEnsurer: sandboxRootEnsurer
+        )
         let window = NSWindow(contentViewController: content)
         window.title = "PulseFiles"
         window.setFrame(NSRect(x: 120, y: 120, width: 1280, height: 820), display: false)

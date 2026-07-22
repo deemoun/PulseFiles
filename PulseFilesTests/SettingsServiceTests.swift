@@ -5,16 +5,19 @@ import XCTest
 final class SettingsServiceTests: XCTestCase {
     private var fixture: IsolatedDefaultsFixture!
     private var settings: SettingsService!
+    private var settingsJSONFixture: TemporaryDirectoryFixture!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         fixture = try IsolatedDefaultsFixture(prefix: "SettingsServiceTests", testCase: self)
-        settings = SettingsService(defaults: fixture.defaults)
+        settingsJSONFixture = try TemporaryDirectoryFixture(named: "SettingsServiceJSONTests", testCase: self)
+        settings = makeSettings()
     }
 
     override func tearDownWithError() throws {
         fixture.cleanup()
         settings = nil
+        settingsJSONFixture = nil
         fixture = nil
         try super.tearDownWithError()
     }
@@ -38,7 +41,7 @@ final class SettingsServiceTests: XCTestCase {
         settings.startupLeftDirectory = startupLeft
         settings.startupRightDirectory = startupRight
 
-        let reloaded = SettingsService(defaults: fixture.defaults)
+        let reloaded = makeSettings()
         XCTAssertEqual(reloaded.lastLeftDirectory, lastLeft)
         XCTAssertEqual(reloaded.lastRightDirectory, lastRight)
         XCTAssertEqual(reloaded.startupLeftDirectory, startupLeft)
@@ -48,8 +51,8 @@ final class SettingsServiceTests: XCTestCase {
 
         reloaded.startupLeftDirectory = nil
         reloaded.startupRightDirectory = nil
-        XCTAssertNil(SettingsService(defaults: fixture.defaults).startupLeftDirectory)
-        XCTAssertNil(SettingsService(defaults: fixture.defaults).startupRightDirectory)
+        XCTAssertNil(makeSettings().startupLeftDirectory)
+        XCTAssertNil(makeSettings().startupRightDirectory)
     }
 
 
@@ -155,7 +158,7 @@ final class SettingsServiceTests: XCTestCase {
     func testExperimentalSandboxDefaultsUseSandboxPaneDirectoriesOnlyWhenEnabled() {
         settings.experimentalSandboxEnabled = true
 
-        let sandboxedSettings = SettingsService(defaults: fixture.defaults)
+        let sandboxedSettings = makeSettings()
 
         #if DEBUG
         XCTAssertEqual(sandboxedSettings.lastLeftDirectory, ExperimentalFlags.appSandboxRoot.appendingPathComponent("Left Pane", isDirectory: true))
@@ -172,12 +175,12 @@ final class SettingsServiceTests: XCTestCase {
 
         settings.defaultSidebarVisible = false
 
-        let reloaded = SettingsService(defaults: fixture.defaults)
+        let reloaded = makeSettings()
         XCTAssertFalse(reloaded.defaultSidebarVisible)
         XCTAssertFalse(reloaded.isSidebarVisible)
 
         reloaded.isSidebarVisible = true
-        XCTAssertTrue(SettingsService(defaults: fixture.defaults).defaultSidebarVisible)
+        XCTAssertTrue(makeSettings().defaultSidebarVisible)
     }
 
     func testTerminalVisibilityAndExperimentalEnablementDefaultAndRoundTrip() {
@@ -186,19 +189,19 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertFalse(settings.isTerminalVisible)
 
         settings.defaultTerminalVisible = true
-        XCTAssertFalse(SettingsService(defaults: fixture.defaults).defaultTerminalVisible)
+        XCTAssertFalse(makeSettings().defaultTerminalVisible)
 
         settings.experimentalTerminalEnabled = true
         settings.defaultTerminalVisible = true
 
-        let reloaded = SettingsService(defaults: fixture.defaults)
+        let reloaded = makeSettings()
         XCTAssertTrue(reloaded.experimentalTerminalEnabled)
         XCTAssertTrue(reloaded.defaultTerminalVisible)
         XCTAssertTrue(reloaded.isTerminalVisible)
 
         reloaded.experimentalTerminalEnabled = false
-        XCTAssertFalse(SettingsService(defaults: fixture.defaults).experimentalTerminalEnabled)
-        XCTAssertFalse(SettingsService(defaults: fixture.defaults).defaultTerminalVisible)
+        XCTAssertFalse(makeSettings().experimentalTerminalEnabled)
+        XCTAssertFalse(makeSettings().defaultTerminalVisible)
     }
 
     func testManualTerminalVisibilityDoesNotChangeDefaultStartupVisibility() {
@@ -209,14 +212,14 @@ final class SettingsServiceTests: XCTestCase {
 
         XCTAssertTrue(settings.isTerminalVisible)
         XCTAssertFalse(settings.defaultTerminalVisible)
-        XCTAssertFalse(SettingsService(defaults: fixture.defaults).defaultTerminalVisible)
+        XCTAssertFalse(makeSettings().defaultTerminalVisible)
 
         settings.defaultTerminalVisible = true
         settings.isTerminalVisible = false
 
         XCTAssertFalse(settings.isTerminalVisible)
         XCTAssertTrue(settings.defaultTerminalVisible)
-        XCTAssertTrue(SettingsService(defaults: fixture.defaults).defaultTerminalVisible)
+        XCTAssertTrue(makeSettings().defaultTerminalVisible)
     }
 
     func testSinglePaneModeDefaultAndRoundTrip() {
@@ -224,7 +227,7 @@ final class SettingsServiceTests: XCTestCase {
 
         settings.defaultSinglePaneMode = true
 
-        XCTAssertTrue(SettingsService(defaults: fixture.defaults).defaultSinglePaneMode)
+        XCTAssertTrue(makeSettings().defaultSinglePaneMode)
     }
 
     func testHiddenFileDefaultAndRoundTrip() {
@@ -232,7 +235,7 @@ final class SettingsServiceTests: XCTestCase {
 
         settings.showHiddenFilesByDefault = true
 
-        XCTAssertTrue(SettingsService(defaults: fixture.defaults).showHiddenFilesByDefault)
+        XCTAssertTrue(makeSettings().showHiddenFilesByDefault)
     }
 
     func testDefaultSortDescriptorDefaultAndRoundTrip() {
@@ -241,7 +244,7 @@ final class SettingsServiceTests: XCTestCase {
         let descriptor = FileSortDescriptor(key: .modified, ascending: false)
         settings.defaultSortDescriptor = descriptor
 
-        XCTAssertEqual(SettingsService(defaults: fixture.defaults).defaultSortDescriptor, descriptor)
+        XCTAssertEqual(makeSettings().defaultSortDescriptor, descriptor)
     }
 
     func testConfirmationPreferencesDefaultAndRoundTrip() {
@@ -255,7 +258,7 @@ final class SettingsServiceTests: XCTestCase {
         settings.confirmDeleteOperations = false
         settings.permanentlyDeleteInsteadOfTrash = true
 
-        let reloaded = SettingsService(defaults: fixture.defaults)
+        let reloaded = makeSettings()
         XCTAssertFalse(reloaded.confirmCopyOperations)
         XCTAssertFalse(reloaded.confirmMoveOperations)
         XCTAssertFalse(reloaded.confirmDeleteOperations)
@@ -266,13 +269,13 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertFalse(settings.experimentalSandboxEnabled)
 
         settings.experimentalSandboxEnabled = false
-        XCTAssertFalse(SettingsService(defaults: fixture.defaults).experimentalSandboxEnabled)
+        XCTAssertFalse(makeSettings().experimentalSandboxEnabled)
 
         settings.experimentalSandboxEnabled = true
         #if DEBUG
-        XCTAssertTrue(SettingsService(defaults: fixture.defaults).experimentalSandboxEnabled)
+        XCTAssertTrue(makeSettings().experimentalSandboxEnabled)
         #else
-        XCTAssertFalse(SettingsService(defaults: fixture.defaults).experimentalSandboxEnabled)
+        XCTAssertFalse(makeSettings().experimentalSandboxEnabled)
         #endif
     }
 
@@ -287,9 +290,7 @@ final class SettingsServiceTests: XCTestCase {
         settings.experimentalSandboxEnabled = true
 
         let jsonURL = try settings.writeSettingsJSON()
-        addTeardownBlock {
-            try? FileManager.default.removeItem(at: jsonURL)
-        }
+        XCTAssertEqual(jsonURL, settingsJSONURL)
 
         let document = try decodedSettingsJSONDocument(at: jsonURL)
         let exportedSandboxValue = document["settings"]?["experimentalSandboxEnabled"] as? Bool
@@ -302,28 +303,28 @@ final class SettingsServiceTests: XCTestCase {
     }
 
     func testLegacyExperimentalSandboxJSONImportIsIgnoredInRelease() throws {
-        try withTemporaryStandardSettingsJSON(
+        try writeSettingsJSON(
             settings: [
                 "defaultSidebarVisible": false,
                 "experimentalSandboxEnabled": true
             ]
-        ) {
-            UserDefaults.standard.removeObject(forKey: "defaultSidebarVisible")
-            UserDefaults.standard.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+        )
+        fixture.defaults.removeObject(forKey: "settingsJSONLastImportedModificationTime")
+        fixture.defaults.removeObject(forKey: "defaultSidebarVisible")
+        fixture.defaults.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
 
-            let importedSettings = SettingsService(defaults: .standard)
+        let importedSettings = makeSettings()
 
-            XCTAssertFalse(importedSettings.defaultSidebarVisible)
-            #if DEBUG
-            XCTAssertTrue(importedSettings.experimentalSandboxEnabled)
-            #else
-            XCTAssertFalse(importedSettings.experimentalSandboxEnabled)
-            XCTAssertNil(UserDefaults.standard.object(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey))
+        XCTAssertFalse(importedSettings.defaultSidebarVisible)
+        #if DEBUG
+        XCTAssertTrue(importedSettings.experimentalSandboxEnabled)
+        #else
+        XCTAssertFalse(importedSettings.experimentalSandboxEnabled)
+        XCTAssertNil(fixture.defaults.object(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey))
 
-            let reexportedDocument = try decodedSettingsJSONDocument(at: SettingsService.jsonSettingsURL)
-            XCTAssertNil(reexportedDocument["settings"]?["experimentalSandboxEnabled"])
-            #endif
-        }
+        let reexportedDocument = try decodedSettingsJSONDocument(at: settingsJSONURL)
+        XCTAssertNil(reexportedDocument["settings"]?["experimentalSandboxEnabled"])
+        #endif
     }
 
     func testFileColorSchemeDefaultAndRoundTrip() {
@@ -336,7 +337,7 @@ final class SettingsServiceTests: XCTestCase {
         ])
         settings.fileColorScheme = scheme
 
-        let reloaded = SettingsService(defaults: fixture.defaults).fileColorScheme
+        let reloaded = makeSettings().fileColorScheme
         assertColor(reloaded.color(for: .folder), equals: scheme.color(for: .folder))
         assertColor(reloaded.color(for: .sourceCode), equals: scheme.color(for: .sourceCode))
     }
@@ -364,48 +365,28 @@ final class SettingsServiceTests: XCTestCase {
         return ["settings": settings]
     }
 
-    private func withTemporaryStandardSettingsJSON(
-        settings: [String: Any],
-        run body: () throws -> Void
-    ) throws {
-        let url = SettingsService.jsonSettingsURL
-        let fileManager = FileManager.default
-        let originalData = fileManager.contents(atPath: url.path)
-        let originalImportTime = UserDefaults.standard.object(forKey: "settingsJSONLastImportedModificationTime")
-        let originalSidebar = UserDefaults.standard.object(forKey: "defaultSidebarVisible")
-        let originalSandbox = UserDefaults.standard.object(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
+    private var settingsJSONURL: URL {
+        settingsJSONFixture.path("Settings.json")
+    }
 
-        defer {
-            if let originalData {
-                try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? originalData.write(to: url, options: .atomic)
-            } else {
-                try? fileManager.removeItem(at: url)
-            }
-            restore(originalImportTime, forKey: "settingsJSONLastImportedModificationTime")
-            restore(originalSidebar, forKey: "defaultSidebarVisible")
-            restore(originalSandbox, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
-        }
+    private func makeSettings() -> SettingsService {
+        SettingsService(
+            defaults: fixture.defaults,
+            jsonSettingsURLProvider: { [settingsJSONURL] in settingsJSONURL }
+        )
+    }
 
-        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    private func writeSettingsJSON(settings: [String: Any]) throws {
         let document: [String: Any] = [
             "version": 1,
             "settings": settings
         ]
         let data = try JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: url, options: .atomic)
-        let futureDate = Date().addingTimeInterval(60)
-        try fileManager.setAttributes([.modificationDate: futureDate], ofItemAtPath: url.path)
-        UserDefaults.standard.set(0, forKey: "settingsJSONLastImportedModificationTime")
-
-        try body()
+        try data.write(to: settingsJSONURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(60)],
+            ofItemAtPath: settingsJSONURL.path
+        )
     }
 
-    private func restore(_ value: Any?, forKey key: String) {
-        if let value {
-            UserDefaults.standard.set(value, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-    }
 }

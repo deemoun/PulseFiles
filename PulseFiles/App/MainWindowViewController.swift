@@ -79,8 +79,9 @@ final class MainWindowViewController: NSViewController {
         static let contentMinWidth: CGFloat = 620
     }
 
-    private let settings = SettingsService()
-    private let accessPolicy = SandboxFileAccessPolicy.current
+    private let settings: SettingsService
+    private let accessPolicy: SandboxFileAccessPolicy
+    private let sandboxRootEnsurer: () -> Void
     private lazy var descendantSearch = DescendantSearchService(accessPolicy: accessPolicy)
     private var descendantSearchTask: Task<Void, Never>?
     private let fileSystemScheduler = FileSystemOperationScheduler.shared
@@ -169,6 +170,21 @@ final class MainWindowViewController: NSViewController {
         }
     }
 
+    init(
+        settings: SettingsService = SettingsService(),
+        accessPolicy: SandboxFileAccessPolicy = .current,
+        sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
+    ) {
+        self.settings = settings
+        self.accessPolicy = accessPolicy
+        self.sandboxRootEnsurer = sandboxRootEnsurer
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
     override func loadView() {
         view = NSView()
         view.wantsLayer = true
@@ -178,7 +194,7 @@ final class MainWindowViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         #if DEBUG
-        ExperimentalFlags.ensureAppSandboxRootExists()
+        sandboxRootEnsurer()
         #endif
         buildLayout()
         bindPaneCallbacks()
@@ -891,7 +907,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         leftPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
         rightPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
         #if DEBUG
-        ExperimentalFlags.ensureAppSandboxRootExists()
+        sandboxRootEnsurer()
         #endif
         if accessPolicy.isEnabled {
             if !accessPolicy.canAccess(leftPane.currentDirectory) {

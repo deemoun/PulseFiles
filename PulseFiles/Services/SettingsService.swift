@@ -45,6 +45,7 @@ final class SettingsService {
 
     private let defaults: UserDefaults
     private let syncsJSON: Bool
+    private let jsonSettingsURLProvider: () -> URL
     private let accessPolicyOverride: SandboxFileAccessPolicy?
     private let grantService: FolderAccessGrantService
     private let homeDirectoryProvider: () -> URL
@@ -56,6 +57,7 @@ final class SettingsService {
     init(
         defaults: UserDefaults = .standard,
         accessPolicy: SandboxFileAccessPolicy? = nil,
+        jsonSettingsURLProvider: (() -> URL)? = nil,
         homeDirectoryProvider: @escaping () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         documentsDirectoryProvider: @escaping () -> URL = {
             FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -68,7 +70,8 @@ final class SettingsService {
         }
     ) {
         self.defaults = defaults
-        self.syncsJSON = defaults === UserDefaults.standard
+        self.syncsJSON = defaults === UserDefaults.standard || jsonSettingsURLProvider != nil
+        self.jsonSettingsURLProvider = jsonSettingsURLProvider ?? { Self.jsonSettingsURL }
         self.grantService = FolderAccessGrantService(defaults: defaults)
         self.grantService.resolveStoredBookmarks()
         self.accessPolicyOverride = accessPolicy
@@ -358,7 +361,7 @@ final class SettingsService {
 
     func importJSONIfChanged() {
         guard syncsJSON else { return }
-        let url = Self.jsonSettingsURL
+        let url = jsonSettingsURLProvider()
         guard FileManager.default.fileExists(atPath: url.path),
               let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               let modificationDate = attributes[.modificationDate] as? Date else { return }
@@ -373,7 +376,7 @@ final class SettingsService {
 
     @discardableResult
     func writeSettingsJSON() throws -> URL {
-        let url = Self.jsonSettingsURL
+        let url = jsonSettingsURLProvider()
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let document = SettingsJSONDocument(version: 1, settings: makeJSONSettings())
         let encoder = JSONEncoder()
