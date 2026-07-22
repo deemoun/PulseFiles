@@ -7,6 +7,10 @@ enum MainCommand: Equatable {
     case newFile
     case newFolder
     case rename
+    case duplicate
+    case getInfo
+    case selectAll
+    case invertSelection
     case undo
     case copy
     case move

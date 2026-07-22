@@ -491,6 +491,14 @@ final class MainWindowViewController: NSViewController {
             promptForNewFolder()
         case .rename:
             beginInlineRename()
+        case .duplicate:
+            confirmDuplicateSelectedItems()
+        case .getInfo:
+            showInfoForFocusedItem()
+        case .selectAll:
+            targetPane().selectAllItems()
+        case .invertSelection:
+            targetPane().invertSelection()
         case .undo:
             undoLastOperation()
         case .copy:
@@ -1444,6 +1452,55 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
     }
 
+    private func confirmDuplicateSelectedItems() {
+        let urls = targetPane().selectedItems.map(\.url)
+        guard !urls.isEmpty else {
+            showError(message: "Nothing Selected".localized, detail: "Select one or more items to duplicate.".localized)
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Duplicate %d Item(s)?".localized(with: urls.count)
+        alert.informativeText = "Copies are created in the current folder. Existing names are preserved by adding a copy suffix.".localized
+        alert.addButton(withTitle: "Duplicate".localized)
+        alert.addButton(withTitle: "Cancel".localized)
+        let performDuplicate: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            self.startFileOperation(named: "Duplicate".localized, captureRecovery: true) { [fileOperations] progressHandler in
+                try await fileOperations.copy(
+                    FileOperationRequest(sources: urls, destinationDirectory: urls[0].deletingLastPathComponent()),
+                    conflictHandler: { _ in .keepBoth },
+                    progressHandler: progressHandler
+                )
+            }
+        }
+        if let window = view.window {
+            alert.beginSheetModal(for: window, completionHandler: performDuplicate)
+        } else {
+            performDuplicate(alert.runModal())
+        }
+    }
+
+    private func showInfoForFocusedItem() {
+        guard let item = targetPane().focusedItem else {
+            showError(message: "Nothing Selected".localized, detail: "Select one item to view its information.".localized)
+            return
+        }
+        do {
+            try accessPolicy.validateAccess(to: item.url)
+            let values = try item.url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+            let size = values.fileSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "Unknown".localized
+            let modified = values.contentModificationDate.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) } ?? "Unknown".localized
+            let alert = NSAlert()
+            alert.messageText = item.name
+            alert.informativeText = "Location: %@\nKind: %@\nSize: %@\nModified: %@".localized(with: item.url.path, values.isDirectory == true ? "Folder".localized : "File".localized, size, modified)
+            alert.addButton(withTitle: "OK".localized)
+            if let window = view.window { alert.beginSheetModal(for: window) } else { alert.runModal() }
+        } catch {
+            showError(message: "Information Unavailable".localized, detail: error.localizedDescription)
+        }
+    }
+
     private func confirmDeleteSelectedItems() {
         let items = targetPane().selectedItems
         guard !items.isEmpty else {
@@ -2169,6 +2226,10 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
+    @objc func menuDuplicate(_ sender: Any?) { performCommand(.duplicate) }
+    @objc func menuGetInfo(_ sender: Any?) { performCommand(.getInfo) }
+    @objc func menuSelectAll(_ sender: Any?) { performCommand(.selectAll) }
+    @objc func menuInvertSelection(_ sender: Any?) { performCommand(.invertSelection) }
     @objc func menuUndo(_ sender: Any?) { performCommand(.undo) }
     @objc func menuOpenWith(_ sender: Any?) { performCommand(.openWith) }
     @objc func menuCopy(_ sender: Any?) { performCommand(.copy) }
@@ -2309,6 +2370,10 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuNewFile(_:)): self = .newFile
         case #selector(MainWindowViewController.menuNewFolder(_:)): self = .newFolder
         case #selector(MainWindowViewController.menuRename(_:)): self = .rename
+        case #selector(MainWindowViewController.menuDuplicate(_:)): self = .duplicate
+        case #selector(MainWindowViewController.menuGetInfo(_:)): self = .getInfo
+        case #selector(MainWindowViewController.menuSelectAll(_:)): self = .selectAll
+        case #selector(MainWindowViewController.menuInvertSelection(_:)): self = .invertSelection
         case #selector(MainWindowViewController.menuUndo(_:)): self = .undo
         case #selector(MainWindowViewController.menuOpenWith(_:)): self = .openWith
         case #selector(MainWindowViewController.menuCopy(_:)): self = .copy

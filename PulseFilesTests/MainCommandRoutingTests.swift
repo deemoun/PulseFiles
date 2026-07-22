@@ -12,6 +12,8 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.route(.open, in: state), .activePane(command: .open, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.openWith, in: state), .activePane(command: .openWith, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.rename, in: state), .activePane(command: .rename, pane: .left, urls: [selected]))
+        XCTAssertEqual(router.route(.duplicate, in: state), .activePane(command: .duplicate, pane: .left, urls: [selected]))
+        XCTAssertEqual(router.route(.getInfo, in: state), .activePane(command: .getInfo, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.trash, in: state), .activePane(command: .trash, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.reveal, in: state), .activePane(command: .reveal, pane: .left, urls: [selected]))
         XCTAssertEqual(router.route(.refresh, in: state), .activePane(command: .refresh, pane: .left, urls: [selected]))
@@ -70,10 +72,10 @@ final class MainCommandRoutingTests: XCTestCase {
     func testSelectionCommandsAreDisabledWhenNoSelectionExists() {
         let state = makeState(activePaneID: .left)
 
-        for command in [MainCommand.openWith, .trash, .copy, .move, .copyToClipboard, .cutToClipboard] {
+        for command in [MainCommand.openWith, .trash, .duplicate, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noSelection))
         }
-        for command in [MainCommand.open, .rename, .reveal, .quickLook] {
+        for command in [MainCommand.open, .rename, .getInfo, .reveal, .quickLook] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noFocusedItem))
         }
     }
@@ -82,7 +84,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let selected = URL(fileURLWithPath: "/outside-sandbox/secret.txt")
         let state = makeState(activePaneID: .left, leftSelection: [selected], sandboxAllowsSelectedURLs: false)
 
-        for command in [MainCommand.open, .openWith, .rename, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
+        for command in [MainCommand.open, .openWith, .rename, .duplicate, .getInfo, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .sandboxRejectedSelection))
         }
     }
@@ -161,6 +163,15 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.commandForKeyDown(keyCode: 9, command: true), .pasteFromClipboard)
     }
 
+    func testSelectionShortcutsAndRoutesRespectTextInputFocus() {
+        let state = makeState(activePaneID: .left)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 0, command: true), .selectAll)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 34, command: true, shift: true), .invertSelection)
+        XCTAssertNil(router.commandForKeyDown(keyCode: 0, command: true, isTextInputFocused: true))
+        XCTAssertEqual(router.route(.selectAll, in: state), .activePane(command: .selectAll, pane: .left, urls: []))
+        XCTAssertEqual(router.route(.invertSelection, in: state), .activePane(command: .invertSelection, pane: .left, urls: []))
+    }
+
     func testClipboardSelectionCommandsRouteToActivePane() {
         let selected = URL(fileURLWithPath: "/sandbox/left/file.txt")
         let state = makeState(activePaneID: .left, leftSelection: [selected])
@@ -177,6 +188,7 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.route(.newFile, in: state), .disabled(command: .newFile, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.newFolder, in: state), .disabled(command: .newFolder, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.rename, in: state), .disabled(command: .rename, reason: .fileOperationInProgress))
+        XCTAssertEqual(router.route(.duplicate, in: state), .disabled(command: .duplicate, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.copy, in: state), .disabled(command: .copy, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.move, in: state), .disabled(command: .move, reason: .fileOperationInProgress))
         XCTAssertEqual(router.route(.cutToClipboard, in: state), .disabled(command: .cutToClipboard, reason: .fileOperationInProgress))
