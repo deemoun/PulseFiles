@@ -506,7 +506,7 @@ final class SidebarViewController: NSViewController {
 
     nonisolated private static func calculateTotalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy) -> Int64 {
         guard accessPolicy.canAccess(url, logDecision: false) else { return fallback }
-        return accessPolicy.withAccess(to: [url]) {
+        return (try? accessPolicy.withValidatedAccess(to: url) {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return fallback }
             guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { return fallback }
@@ -517,7 +517,7 @@ final class SidebarViewController: NSViewController {
                 total += Int64(values.fileSize ?? 0)
             }
             return total
-        }
+        }) ?? fallback
     }
 
     private static func gpsLocation(for url: URL) -> String? {

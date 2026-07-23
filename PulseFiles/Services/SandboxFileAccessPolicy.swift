@@ -194,6 +194,34 @@ struct SandboxFileAccessPolicy {
     }
 
 
+    /// Validates a read path and keeps any matching security-scoped bookmark
+    /// active for the complete filesystem operation.  Use this rather than
+    /// separating `validateAccess` from a later read: a bookmark scope opened
+    /// merely for validation is intentionally closed before validation returns.
+    func withValidatedAccess<T>(to url: URL, _ body: () throws -> T) throws -> T {
+        try withValidatedAccess(to: [url], body)
+    }
+
+    func withValidatedAccess<T>(to urls: [URL], _ body: () throws -> T) throws -> T {
+        for url in urls {
+            try validateAccess(to: url)
+        }
+        return try grantService.withSecurityScopedAccess(to: urls, body)
+    }
+
+    func withValidatedAccess<T>(to url: URL, _ body: () async throws -> T) async throws -> T {
+        try await withValidatedAccess(to: [url], body)
+    }
+
+    func withValidatedAccess<T>(to urls: [URL], _ body: () async throws -> T) async throws -> T {
+        for url in urls {
+            try validateAccess(to: url)
+        }
+        return try await grantService.withSecurityScopedAccess(to: urls, body)
+    }
+
+    /// Opens scopes without validation for mutation code that has already
+    /// completed its preflight. Read paths should use `withValidatedAccess`.
     func withAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
         try grantService.withSecurityScopedAccess(to: urls, body)
     }

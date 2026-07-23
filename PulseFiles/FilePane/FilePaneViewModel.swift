@@ -304,7 +304,9 @@ final class FilePaneViewModel {
             do {
                 let directoryContents: DirectoryContentsResult
                 if !forceRefresh, let snapshot = snapshotCache.snapshot(for: snapshotKey) {
-                    let metadata = try await fileSystem.directorySnapshotMetadata(at: directory)
+                    let metadata = try await accessPolicy.withValidatedAccess(to: directory) {
+                        try await fileSystem.directorySnapshotMetadata(at: directory)
+                    }
                     guard !Task.isCancelled else {
                         finishCancelledLoad(loadID: loadID, changeGeneration: loadChangeGeneration)
                         return
@@ -315,16 +317,24 @@ final class FilePaneViewModel {
                         directoryContents = DirectoryContentsResult(items: snapshot.items, itemReadFailures: [])
                         DiagnosticLogger.log(.debug, category: "FilePane", "Directory snapshot validated: path=\(DiagnosticLogger.sanitizedPath(directory)); itemCount=\(directoryContents.items.count)")
                     } else {
-                        directoryContents = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
+                        directoryContents = try await accessPolicy.withValidatedAccess(to: directory) {
+                            try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
+                        }
                         if directoryContents.isComplete {
-                            let refreshedMetadata = try await fileSystem.directorySnapshotMetadata(at: directory)
+                            let refreshedMetadata = try await accessPolicy.withValidatedAccess(to: directory) {
+                                try await fileSystem.directorySnapshotMetadata(at: directory)
+                            }
                             snapshotCache.store(directoryContents.items, metadata: refreshedMetadata, for: snapshotKey)
                         }
                     }
                 } else {
-                    directoryContents = try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
+                    directoryContents = try await accessPolicy.withValidatedAccess(to: directory) {
+                        try await fileSystem.contentsOfDirectory(at: directory, includingHidden: includeHidden, sort: sort)
+                    }
                     if directoryContents.isComplete {
-                        let metadata = try await fileSystem.directorySnapshotMetadata(at: directory)
+                        let metadata = try await accessPolicy.withValidatedAccess(to: directory) {
+                            try await fileSystem.directorySnapshotMetadata(at: directory)
+                        }
                         snapshotCache.store(directoryContents.items, metadata: metadata, for: snapshotKey)
                     }
                 }

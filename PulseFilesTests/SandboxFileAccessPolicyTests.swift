@@ -56,6 +56,54 @@ final class SandboxFileAccessPolicyTests: XCTestCase {
         XCTAssertNoThrow(try policy.validateAccess(to: externalFile))
     }
 
+    func testValidatedAccessKeepsGrantActiveForBodyAndStopsAfterError() throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let defaultsFixture = try IsolatedDefaultsFixture(prefix: "SandboxValidatedAccess", testCase: self)
+        defer { defaultsFixture.cleanup() }
+        var starts = 0
+        var stops = 0
+        let grants = FolderAccessGrantService(
+            defaults: defaultsFixture.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in starts += 1; return true },
+            stopSecurityScopedAccess: { _ in stops += 1 }
+        )
+        try grants.grantAccess(to: fixture.externalDirectory)
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root, grantService: grants)
+
+        XCTAssertThrowsError(try policy.withValidatedAccess(to: fixture.externalDirectory) {
+            XCTAssertGreaterThanOrEqual(starts, 2) // validation then operation scope
+            XCTAssertEqual(stops, starts - 1)
+            throw CocoaError(.fileReadNoPermission)
+        })
+        XCTAssertEqual(starts, stops)
+    }
+
+    func testValidatedAsyncAccessStopsScopeAfterCancellation() async throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let defaultsFixture = try IsolatedDefaultsFixture(prefix: "SandboxValidatedAccessCancellation", testCase: self)
+        defer { defaultsFixture.cleanup() }
+        var activeScopes = 0
+        let grants = FolderAccessGrantService(
+            defaults: defaultsFixture.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in activeScopes += 1; return true },
+            stopSecurityScopedAccess: { _ in activeScopes -= 1 }
+        )
+        try grants.grantAccess(to: fixture.externalDirectory)
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root, grantService: grants)
+
+        do {
+            _ = try await policy.withValidatedAccess(to: fixture.externalDirectory) {
+                XCTAssertGreaterThan(activeScopes, 0)
+                throw CancellationError()
+            }
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            XCTAssertEqual(activeScopes, 0)
+        }
+    }
+
     func testResolvedGrantIsDeniedWhenInjectedProbeCannotReadIt() throws {
         let fixture = try SandboxFixture(testCase: self)
         let defaultsFixture = try IsolatedDefaultsFixture(prefix: "SandboxFileAccessPolicyInaccessibleGrant", testCase: self)

@@ -670,11 +670,14 @@ final class MainWindowViewController: NSViewController {
 
         quickLookProbeGeneration += 1
         let generation = quickLookProbeGeneration
+        let policy = accessPolicy
         Task { [weak self, fileSystemProbe] in
-            let answer = await fileSystemProbe.exists(item.url, deadline: .milliseconds(250))
+            let answer = try? await policy.withValidatedAccess(to: item.url) {
+                await fileSystemProbe.exists(item.url, deadline: .milliseconds(250))
+            }
             guard let self, generation == self.quickLookProbeGeneration,
                   self.targetPane().focusedItem?.url == item.url else { return }
-            guard case .value(true) = answer else {
+            guard case .some(.value(true)) = answer else {
                 self.showError(message: "Preview Unavailable".localized, detail: "The selected item is unavailable or no longer exists.".localized)
                 return
             }
@@ -1201,8 +1204,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func populateSuggestedCreationName(in directory: URL, base: String, isDirectory: Bool, textField: NSTextField) {
+        let accessPolicy = accessPolicy
         Task { [weak textField] in
-            let suggestion = await Self.uniqueCreationName(in: directory, base: base, isDirectory: isDirectory)
+            let suggestion = await Self.uniqueCreationName(in: directory, base: base, isDirectory: isDirectory, accessPolicy: accessPolicy)
             guard let textField, textField.stringValue == base else { return }
             textField.stringValue = suggestion
         }
@@ -1211,19 +1215,21 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     /// Avoid an unbounded existence-probe loop in a directory with many
     /// similarly named items. This is advisory only; the operation service
     /// performs the authoritative collision check immediately before creation.
-    private nonisolated static func uniqueCreationName(in directory: URL, base: String, isDirectory: Bool) async -> String {
+    private nonisolated static func uniqueCreationName(in directory: URL, base: String, isDirectory: Bool, accessPolicy: SandboxFileAccessPolicy) async -> String {
         await Task.detached(priority: .utility) {
-            let fileManager = FileManager.default
-            let fileExtension = isDirectory ? "" : ".txt"
-            let stem = isDirectory ? base : "Untitled"
-            for index in 1...10_000 {
-                if Task.isCancelled { return base }
-                let candidate = index == 1 ? base : "\(stem) \(index)\(fileExtension)"
-                if !fileManager.fileExists(atPath: directory.appendingPathComponent(candidate, isDirectory: isDirectory).path) {
-                    return candidate
+            (try? accessPolicy.withValidatedAccess(to: directory) {
+                let fileManager = FileManager.default
+                let fileExtension = isDirectory ? "" : ".txt"
+                let stem = isDirectory ? base : "Untitled"
+                for index in 1...10_000 {
+                    if Task.isCancelled { return base }
+                    let candidate = index == 1 ? base : "\(stem) \(index)\(fileExtension)"
+                    if !fileManager.fileExists(atPath: directory.appendingPathComponent(candidate, isDirectory: isDirectory).path) {
+                        return candidate
+                    }
                 }
-            }
-            return "\(stem) \(UUID().uuidString)\(fileExtension)"
+                return "\(stem) \(UUID().uuidString)\(fileExtension)"
+            }) ?? base
         }.value
     }
 
@@ -1257,8 +1263,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
         do {
             for item in selectedFiles {
-                try accessPolicy.validateAccess(to: item.url)
-                guard FileManager.default.fileExists(atPath: item.url.path) else {
+                let exists = try accessPolicy.withValidatedAccess(to: item.url) {
+                    FileManager.default.fileExists(atPath: item.url.path)
+                }
+                guard exists else {
                     throw FileOperationError.sourceMissing(item.url)
                 }
             }
@@ -1293,8 +1301,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func openFile(_ fileURL: URL, with applicationURL: URL?) {
         do {
-            try accessPolicy.validateAccess(to: fileURL)
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            let fileExists = try accessPolicy.withValidatedAccess(to: fileURL) {
+                FileManager.default.fileExists(atPath: fileURL.path)
+            }
+            guard fileExists else {
                 throw FileOperationError.sourceMissing(fileURL)
             }
 
@@ -1442,8 +1452,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
 
         let url = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
-        try accessPolicy.validateAccess(to: url)
-        let directoryAnswer = await probe.isDirectory(url, deadline: .milliseconds(250))
+        let directoryAnswer = try await accessPolicy.withValidatedAccess(to: url) {
+            await probe.isDirectory(url, deadline: .milliseconds(250))
+        }
         guard case .value(let isDirectory) = directoryAnswer else {
             throw FileOperationError.destinationDirectoryMissing(url)
         }
@@ -1503,8 +1514,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             return
         }
         do {
-            try accessPolicy.validateAccess(to: item.url)
-            let values = try item.url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+            let values = try accessPolicy.withValidatedAccess(to: item.url) {
+                try item.url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+            }
             let size = values.fileSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "Unknown".localized
             let modified = values.contentModificationDate.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) } ?? "Unknown".localized
             let alert = NSAlert()
@@ -1768,8 +1780,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func validateDroppedItems(_ urls: [URL], destinationDirectory: URL, probe: any FileSystemProbing) async throws {
-        try accessPolicy.validateAccess(to: destinationDirectory)
-        let destinationAnswer = await probe.isDirectory(destinationDirectory, deadline: .milliseconds(250))
+        let destinationAnswer = try await accessPolicy.withValidatedAccess(to: destinationDirectory) {
+            await probe.isDirectory(destinationDirectory, deadline: .milliseconds(250))
+        }
         guard case .value(let isDirectory) = destinationAnswer else {
             throw FileOperationError.destinationDirectoryMissing(destinationDirectory)
         }
@@ -1778,8 +1791,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         }
 
         for url in urls {
-            try accessPolicy.validateAccess(to: url)
-            let sourceAnswer = await probe.exists(url, deadline: .milliseconds(250))
+            let sourceAnswer = try await accessPolicy.withValidatedAccess(to: url) {
+                await probe.exists(url, deadline: .milliseconds(250))
+            }
             guard case .value(true) = sourceAnswer else {
                 throw FileOperationError.sourceMissing(url)
             }

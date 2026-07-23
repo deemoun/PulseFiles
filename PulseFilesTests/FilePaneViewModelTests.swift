@@ -3,6 +3,27 @@ import XCTest
 
 @MainActor
 final class FilePaneViewModelTests: XCTestCase {
+    func testDirectoryReadsRunWhilePersistedGrantScopeIsActive() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let defaults = try IsolatedDefaultsFixture(prefix: "PaneScopedReads", testCase: self)
+        defer { defaults.cleanup() }
+        var activeScopes = 0
+        let grants = FolderAccessGrantService(
+            defaults: defaults.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in activeScopes += 1; return true },
+            stopSecurityScopedAccess: { _ in activeScopes -= 1 }
+        )
+        try grants.grantAccess(to: sandbox.externalDirectory)
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandbox.root, grantService: grants)
+        let fileSystem = ScopeAssertingFileSystem { activeScopes > 0 }
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.externalDirectory, fileSystem: fileSystem, accessPolicy: policy)
+
+        await load(viewModel)
+
+        XCTAssertTrue(fileSystem.allReadsHadActiveScope)
+        XCTAssertEqual(activeScopes, 0)
+    }
     func testInitialLoadReadsFixtureDirectoryContents() async throws {
         let fixture = try PaneFixture(testCase: self)
         try fixture.sandbox.temporaryDirectory.file("AllowedSandbox/Allowed/Welcome.txt", contents: "hello")
@@ -379,6 +400,25 @@ final class FilePaneViewModelTests: XCTestCase {
         while fileSystem.requestCount < count {
             await Task.yield()
         }
+    }
+}
+
+private final class ScopeAssertingFileSystem: FileSystemServicing {
+    private let isScopeActive: () -> Bool
+    private(set) var allReadsHadActiveScope = true
+
+    init(isScopeActive: @escaping () -> Bool) {
+        self.isScopeActive = isScopeActive
+    }
+
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
+        allReadsHadActiveScope = allReadsHadActiveScope && isScopeActive()
+        return DirectoryContentsResult(items: [], itemReadFailures: [])
+    }
+
+    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
+        allReadsHadActiveScope = allReadsHadActiveScope && isScopeActive()
+        return DirectorySnapshotMetadata(resourceIdentifier: url.path, changeDate: .distantPast)
     }
 }
 

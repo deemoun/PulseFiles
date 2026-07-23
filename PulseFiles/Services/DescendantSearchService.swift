@@ -40,10 +40,9 @@ final class DescendantSearchService {
     }
 
     func search(query: String, rootURL: URL, limits: DescendantSearchLimits = .init()) async throws -> DescendantSearchResult {
-        try accessPolicy.validateAccess(to: rootURL)
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return DescendantSearchResult(items: [], wasCancelled: false, hitItemLimit: false, hitDepthLimit: false, timedOut: false, inaccessibleURLs: []) }
-        return try await accessPolicy.withAccess(to: [rootURL]) {
+        return try await accessPolicy.withValidatedAccess(to: rootURL) {
             let worker = Task.detached(priority: .userInitiated) { [fileManager, accessPolicy] in
                 let started = Date()
                 var items: [DescendantSearchItem] = []
