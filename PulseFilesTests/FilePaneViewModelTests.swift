@@ -382,6 +382,56 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.loadFailure)
     }
 
+    func testDeallocationCancelsSuspendedLoadAndStopsDirectoryMonitoring() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let fileSystem = SuspendedFileSystem()
+        let monitorFactory = PaneMonitorSourceFactory()
+        let monitor = DirectoryMonitor(sourceFactory: monitorFactory)
+        var viewModel: FilePaneViewModel? = FilePaneViewModel(
+            initialDirectory: sandbox.allowedDirectory,
+            fileSystem: fileSystem,
+            accessPolicy: sandbox.policy,
+            directoryMonitor: monitor
+        )
+
+        viewModel?.loadCurrentDirectory()
+        await fileSystem.waitForRead()
+        fileSystem.resume(items: [TestFileSystem.item(named: "Initial.txt", in: sandbox.allowedDirectory)])
+        await waitUntilLoaded(try XCTUnwrap(viewModel))
+        let source = try XCTUnwrap(monitorFactory.sources.first)
+
+        viewModel?.loadCurrentDirectory(forceRefresh: true)
+        await fileSystem.waitForRead()
+        weak var weakViewModel = viewModel
+        viewModel = nil
+
+        XCTAssertNil(weakViewModel)
+        XCTAssertTrue(source.wasCancelled)
+        fileSystem.resume(items: [TestFileSystem.item(named: "Late.txt", in: sandbox.allowedDirectory)])
+        await Task.yield()
+        XCTAssertTrue(fileSystem.lastResumedReadObservedCancellation)
+    }
+
+    func testSuspendedLateCompletionCannotReplaceNewerPaneState() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let first = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/First")
+        let second = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Second")
+        let fileSystem = SuspendedFileSystem()
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+
+        viewModel.navigate(to: first)
+        await fileSystem.waitForRead()
+        viewModel.navigate(to: second)
+        await fileSystem.waitForRead()
+        fileSystem.resumeNewest(items: [TestFileSystem.item(named: "New.txt", in: second)])
+        await waitUntilLoaded(viewModel)
+        fileSystem.resume(items: [TestFileSystem.item(named: "Old.txt", in: first)])
+        await Task.yield()
+
+        XCTAssertEqual(viewModel.currentDirectory, second)
+        XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["New.txt"])
+    }
+
     private func load(_ viewModel: FilePaneViewModel) async {
         await withCheckedContinuation { continuation in
             viewModel.loadCurrentDirectory {
@@ -474,4 +524,54 @@ private final class NeverCompletingFileSystem: FileSystemServicing {
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
         DirectorySnapshotMetadata(resourceIdentifier: url.path, changeDate: .distantPast)
     }
+}
+
+private final class SuspendedFileSystem: FileSystemServicing {
+    private var continuations: [CheckedContinuation<[FileItem], Never>] = []
+    private(set) var lastResumedReadObservedCancellation = false
+
+    func waitForRead() async {
+        while continuations.isEmpty {
+            await Task.yield()
+        }
+    }
+
+    func resume(items: [FileItem]) {
+        guard !continuations.isEmpty else { return }
+        let continuation = continuations.removeFirst()
+        continuation.resume(returning: items)
+    }
+
+    func resumeNewest(items: [FileItem]) {
+        guard let continuation = continuations.popLast() else { return }
+        continuation.resume(returning: items)
+    }
+
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
+        let items = await withCheckedContinuation { continuations.append($0) }
+        lastResumedReadObservedCancellation = Task.isCancelled
+        return DirectoryContentsResult(items: FileSystemService.sorted(items, descriptor: sort), itemReadFailures: [])
+    }
+
+    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
+        DirectorySnapshotMetadata(resourceIdentifier: url.path, changeDate: .distantPast)
+    }
+}
+
+private final class PaneMonitorSourceFactory: DirectoryMonitorSourceFactory {
+    private(set) var sources: [PaneMonitorSource] = []
+
+    func makeSource(for url: URL, queue: DispatchQueue) -> DirectoryMonitorSourceHandle? {
+        let source = PaneMonitorSource()
+        sources.append(source)
+        return DirectoryMonitorSourceHandle(fileDescriptor: -1, source: source)
+    }
+}
+
+private final class PaneMonitorSource: DirectoryMonitorSource {
+    private(set) var wasCancelled = false
+    func setEventHandler(_ handler: @escaping () -> Void) {}
+    func setCancelHandler(_ handler: @escaping () -> Void) {}
+    func resume() {}
+    func cancel() { wasCancelled = true }
 }
