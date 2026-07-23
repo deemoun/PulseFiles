@@ -268,6 +268,9 @@ struct OpenDirectoryCapability {
 
     let fileDescriptor: Int32
     let identity: Identity
+    /// Retained only for diagnostics and test-copier compatibility. Mutation
+    /// callers must use `fileDescriptor` with an `*at` syscall.
+    let directoryURL: URL
 
     init(directory url: URL) throws {
         let components = url.standardizedFileURL.pathComponents
@@ -288,6 +291,7 @@ struct OpenDirectoryCapability {
             guard (status.st_mode & S_IFMT) == S_IFDIR else { throw POSIXError(.ENOTDIR) }
             fileDescriptor = descriptor
             identity = Identity(device: status.st_dev, inode: status.st_ino)
+            directoryURL = url
         } catch {
             Darwin.close(descriptor)
             throw error
@@ -324,5 +328,45 @@ struct OpenDirectoryCapability {
     }
 
     func close() { Darwin.close(fileDescriptor) }
+
+    func createDirectory(named name: String, mode: mode_t = 0o755) throws {
+        try revalidate(); try Self.validateName(name)
+        guard name.withCString({ Darwin.mkdirat(fileDescriptor, $0, mode) }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    func createSymbolicLink(named name: String, destination: String) throws {
+        try revalidate(); try Self.validateName(name)
+        guard name.withCString({ namePointer in destination.withCString { Darwin.symlinkat($0, fileDescriptor, namePointer) } }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    func openNewRegularFile(named name: String, mode: mode_t = 0o644) throws -> Int32 {
+        try revalidate(); try Self.validateName(name)
+        let descriptor = name.withCString { Darwin.openat(fileDescriptor, $0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode) }
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        return descriptor
+    }
+
+    func renameItem(named name: String, to destination: OpenDirectoryCapability, named destinationName: String) throws {
+        try requireItem(named: name)
+        try destination.revalidate(); try Self.validateName(destinationName)
+        guard name.withCString({ source in destinationName.withCString { Darwin.renameat(fileDescriptor, source, destination.fileDescriptor, $0) } }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    func removeItem(named name: String) throws {
+        // `fstatat(..., AT_SYMLINK_NOFOLLOW)` deliberately inspects the link
+        // object. A staged copy may itself be a symlink, which must be
+        // removable without resolving its target.
+        try revalidate(); try Self.validateName(name)
+        var status = stat()
+        guard name.withCString({ Darwin.fstatat(fileDescriptor, $0, &status, AT_SYMLINK_NOFOLLOW) }) == 0 else { throw POSIXError(.ENOENT) }
+        let flags: Int32 = (status.st_mode & S_IFMT) == S_IFDIR ? AT_REMOVEDIR : 0
+        guard name.withCString({ Darwin.unlinkat(fileDescriptor, $0, flags) }) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
 }
 #endif

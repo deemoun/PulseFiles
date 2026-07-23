@@ -339,10 +339,28 @@ protocol FileOperationStreamingCopying {
     ) async throws
 }
 
+#if os(macOS)
+extension FileOperationStreamingCopying {
+    /// The production copier overrides this path so creation is relative to a
+    /// checked directory descriptor.  The URL fallback keeps test copiers
+    /// source-compatible; it is never used by `FileHandleStreamingCopier`.
+    func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        try parent.revalidate()
+        try OpenDirectoryCapability.validateName(name)
+        try await copyFile(from: source, to: parent.directoryURL.appendingPathComponent(name), progress: progress)
+    }
+}
+#endif
+
 final class FileHandleStreamingCopier: FileOperationStreamingCopying {
     private let chunkSize = 1_048_576
 
     func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        #if os(macOS)
+        let parent = try OpenDirectoryCapability(directory: destination.deletingLastPathComponent())
+        defer { parent.close() }
+        try await copyFile(from: source, toParent: parent, named: destination.lastPathComponent, progress: progress)
+        #else
         // FileHandle reads and writes can block, particularly for network
         // volumes. Use a detached executor even when this copier is used
         // independently of FileOperationService.
@@ -367,7 +385,29 @@ final class FileHandleStreamingCopier: FileOperationStreamingCopying {
         } onCancel: {
             worker.cancel()
         }
+        #endif
     }
+
+    #if os(macOS)
+    func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        try parent.revalidate()
+        try OpenDirectoryCapability.validateName(name)
+        let destinationFD = try parent.openNewRegularFile(named: name)
+        let worker = Task.detached(priority: .utility) { [chunkSize = self.chunkSize] in
+            let reader = try FileHandle(forReadingFrom: source)
+            defer { try? reader.close() }
+            let writer = FileHandle(fileDescriptor: destinationFD, closeOnDealloc: true)
+            defer { try? writer.close() }
+            while true {
+                try Task.checkCancellation()
+                guard let data = try reader.read(upToCount: chunkSize), !data.isEmpty else { break }
+                try writer.write(contentsOf: data)
+                try await progress(data.count)
+            }
+        }
+        try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+    }
+    #endif
 }
 
 extension FileManager: FileOperationFileManaging {
@@ -1277,7 +1317,7 @@ final class FileOperationService: FileOperationServicing {
                 visitedItemCount += 1
                 switch try sourceItemKind(at: source) {
                 case .symbolicLink(let linkDestination):
-                    try fileManager.createSymbolicLink(atPath: destination.path, withDestinationPath: linkDestination)
+                    try descriptorCreateSymbolicLink(at: destination, destination: linkDestination)
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                     warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
@@ -1288,7 +1328,7 @@ final class FileOperationService: FileOperationServicing {
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                 case .directory:
-                    try fileManager.createDirectory(at: destination, withIntermediateDirectories: false)
+                    try descriptorCreateDirectory(at: destination)
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                     try Task.checkCancellation() // Check immediately before directory read.
@@ -1299,11 +1339,30 @@ final class FileOperationService: FileOperationServicing {
                         work.append(.enter(source: child, destination: destination.appendingPathComponent(child.lastPathComponent), depth: depth + 1))
                     }
                 case .file:
+                    #if os(macOS)
+                    if fileManager is FileManager {
+                        let parent = try OpenDirectoryCapability(directory: destination.deletingLastPathComponent())
+                        defer { parent.close() }
+                        let name = destination.lastPathComponent
+                        try await streamingCopier.copyFile(from: source, toParent: parent, named: name) { [source] byteCount in
+                            try Task.checkCancellation()
+                            recursiveProgress.completedByteCount += Int64(byteCount)
+                            await self.emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
+                        }
+                    } else {
+                        try await streamingCopier.copyFile(from: source, to: destination) { [source] byteCount in
+                            try Task.checkCancellation()
+                            recursiveProgress.completedByteCount += Int64(byteCount)
+                            await self.emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
+                        }
+                    }
+                    #else
                     try await streamingCopier.copyFile(from: source, to: destination) { [source] byteCount in
                         try Task.checkCancellation()
                         recursiveProgress.completedByteCount += Int64(byteCount)
                         await self.emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                     }
+                    #endif
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                     warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
@@ -1443,18 +1502,18 @@ final class FileOperationService: FileOperationServicing {
 
     private func placeStagedItem(_ stagedURL: URL, at destination: URL) throws -> [FileOperationCleanupWarning] {
         guard fileManager.fileExists(atPath: destination.path) else {
-            try fileManager.moveItem(at: stagedURL, to: destination)
+            try descriptorRename(stagedURL, to: destination)
             return []
         }
 
         let backupURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-backup")
-        try fileManager.moveItem(at: destination, to: backupURL)
+        try descriptorRename(destination, to: backupURL)
         do {
-            try fileManager.moveItem(at: stagedURL, to: destination)
+            try descriptorRename(stagedURL, to: destination)
         } catch {
             try? removeIfExists(stagedURL)
             do {
-                try fileManager.moveItem(at: backupURL, to: destination)
+                try descriptorRename(backupURL, to: destination)
             } catch {
                 throw FileOperationError.unsafeReplacement(destination: destination, backup: backupURL)
             }
@@ -1462,7 +1521,7 @@ final class FileOperationService: FileOperationServicing {
         }
 
         do {
-            try fileManager.removeItem(at: backupURL)
+            try descriptorRemove(backupURL)
             return []
         } catch {
             DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove replacement backup at \(DiagnosticLogger.sanitizedPath(backupURL)); reason=\(error.localizedDescription)")
@@ -1722,8 +1781,23 @@ final class FileOperationService: FileOperationServicing {
     }
 
     private func removeIfExists(_ url: URL) throws {
+        #if os(macOS)
+        guard fileManager is FileManager else {
+            guard fileManager.fileExists(atPath: url.path) else { return }
+            try fileManager.removeItem(at: url)
+            return
+        }
+        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
+        defer { parent.close() }
+        do {
+            try parent.removeItem(named: url.lastPathComponent)
+        } catch let error as POSIXError where error.code == .ENOENT {
+            return
+        }
+        #else
         guard fileManager.fileExists(atPath: url.path) else { return }
         try fileManager.removeItem(at: url)
+        #endif
     }
 
     /// Mutations never use a path after it has been checked. Each parent is
@@ -1755,13 +1829,7 @@ final class FileOperationService: FileOperationServicing {
         let destinationName = destination.lastPathComponent
         let sourceIdentity = try sourceParent.itemIdentity(named: sourceName)
         try sourceParent.requireItem(named: sourceName, identity: sourceIdentity)
-        try destinationParent.revalidate()
-        try OpenDirectoryCapability.validateName(destinationName)
-        guard sourceName.withCString({ sourcePointer in
-            destinationName.withCString { destinationPointer in
-                Darwin.renameat(sourceParent.fileDescriptor, sourcePointer, destinationParent.fileDescriptor, destinationPointer)
-            }
-        }) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        try sourceParent.renameItem(named: sourceName, to: destinationParent, named: destinationName)
         #else
         try fileManager.moveItem(at: source, to: destination)
         #endif
@@ -1773,16 +1841,7 @@ final class FileOperationService: FileOperationServicing {
         let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
         defer { parent.close() }
         let name = url.lastPathComponent
-        let identity = try parent.itemIdentity(named: name)
-        try parent.requireItem(named: name, identity: identity)
-        var status = stat()
-        guard name.withCString({ Darwin.fstatat(parent.fileDescriptor, $0, &status, AT_SYMLINK_NOFOLLOW) }) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT)
-        }
-        let flags: Int32 = (status.st_mode & S_IFMT) == S_IFDIR ? AT_REMOVEDIR : 0
-        guard name.withCString({ Darwin.unlinkat(parent.fileDescriptor, $0, flags) }) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
+        try parent.removeItem(named: name)
         #else
         try fileManager.removeItem(at: url)
         #endif
@@ -1797,19 +1856,25 @@ final class FileOperationService: FileOperationServicing {
         }
         let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
         defer { parent.close() }
-        try parent.revalidate()
         let name = url.lastPathComponent
-        try OpenDirectoryCapability.validateName(name)
-        let result: Int32 = name.withCString { pointer in
-            if isDirectory { return Darwin.mkdirat(parent.fileDescriptor, pointer, 0o755) }
-            let descriptor = Darwin.openat(parent.fileDescriptor, pointer, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o644)
-            if descriptor >= 0 { Darwin.close(descriptor); return 0 }
-            return -1
-        }
-        guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        if isDirectory { try parent.createDirectory(named: name) }
+        else { Darwin.close(try parent.openNewRegularFile(named: name)) }
         #else
         if isDirectory { try fileManager.createDirectory(at: url, withIntermediateDirectories: false) }
         else { try fileManager.createEmptyFile(at: url) }
+        #endif
+    }
+
+    private func descriptorCreateDirectory(at url: URL) throws { try descriptorCreate(url, isDirectory: true) }
+
+    private func descriptorCreateSymbolicLink(at url: URL, destination: String) throws {
+        #if os(macOS)
+        guard fileManager is FileManager else { try fileManager.createSymbolicLink(atPath: url.path, withDestinationPath: destination); return }
+        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
+        defer { parent.close() }
+        try parent.createSymbolicLink(named: url.lastPathComponent, destination: destination)
+        #else
+        try fileManager.createSymbolicLink(atPath: url.path, withDestinationPath: destination)
         #endif
     }
 
