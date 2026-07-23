@@ -74,7 +74,7 @@ PulseFiles persists user preferences through its settings service, including:
 
 - Last and startup directories for each pane.
 - Sidebar visibility default.
-- Post-V1 experimental terminal enablement and default visibility (not a V1 supported feature).
+- Experimental Terminal enablement and default visibility.
 - Single-pane mode preference.
 - Hidden-file visibility default.
 - Default sort descriptor.
@@ -85,14 +85,14 @@ PulseFiles persists user preferences through its settings service, including:
 
 Settings are stored with UserDefaults-backed app preferences, with import/export support where available in the app.
 
-## Post-V1 Experimental Terminal (Excluded from V1)
+## Experimental Terminal
 
-Terminal support is explicitly **out of scope for the V1 release commitment**. The bundled terminal is a post-V1 experimental preview, not a supported shell environment or security boundary, and it must not be marketed as a V1 capability.
+The Experimental Terminal is an opt-in feature, not a supported shell environment or security boundary.
 
-- It is disabled and hidden by default; its menu, toolbar, shortcut help, settings, and in-panel label identify it as post-V1/experimental.
-- Users must explicitly enable the post-V1 experimental terminal setting before it can appear.
+- It is disabled and hidden by default; its menu, toolbar, shortcut help, settings, and in-panel label use the Experimental Terminal label.
+- Users must explicitly enable the Experimental Terminal setting before it can appear.
 - A command launches through the configured shell in the active pane directory only after `SandboxFileAccessPolicy` authorizes that directory; an unavailable or unauthorized directory falls back to the policy root or is rejected before launch.
-- The preview holds any security-scoped folder access only for the command lifetime, streams bounded combined output and error text, reports startup errors and non-zero exit statuses, and cleans up its output handler and access scope at completion.
+- The Experimental Terminal holds any security-scoped folder access only for the command lifetime, streams bounded combined output and error text, reports startup errors and non-zero exit statuses, and cleans up its output handler and access scope at completion.
 - Hiding the panel or tearing down the window sends best-effort termination to the active process. This is cancellation only, not rollback; commands can leave partial or destructive filesystem changes.
 - First use requires acknowledgement that shell commands can modify or delete files macOS permits PulseFiles to access, including granted folders when experimental restrictions are disabled.
 
@@ -117,9 +117,9 @@ PulseFiles is intended to behave like a normal file manager in release builds wh
 - **Finder aliases:** not supported for mutation in 1.0. PulseFiles detects Finder aliases before mutation where macOS identifies them and leaves them unchanged; users should use Finder to manage the alias or operate on its original item. An alias is not a symbolic link.
 - **Metadata:** content transfers make a best-effort attempt to preserve permissions, ownership IDs where permitted, timestamps, Finder tags/labels, extended attributes, and ACLs. A metadata failure is surfaced as a cleanup warning rather than silently claimed as complete; users must verify destination metadata before deleting the source. Provider-specific metadata is not guaranteed.
 - Long-running operations and unusual failure modes may depend on macOS filesystem behavior, permissions prompts, and volume availability.
-- The post-V1 terminal preview is excluded from V1 and must not be presented as a supported shell environment or security boundary.
+- The Experimental Terminal is opt-in and must not be presented as a supported shell environment or security boundary.
 - The DEBUG experimental sandbox is a development/testing safeguard, not a substitute for a production App Sandbox entitlement model.
 
 ## Suggested Release Body Summary
 
-PulseFiles is a native AppKit dual-pane file manager for macOS 13+ focused on keyboard-first navigation, predictable file operations, active-pane search/filtering, configurable hidden-file visibility, and persisted user preferences. Version 1.0 supports locally available cloud folders, mounted writable network/removable volumes, package directory trees, and symbolic links without traversing their targets. It preserves standard metadata on a best-effort basis and clearly reports metadata warnings. Finder alias mutation and provider-specific cloud metadata are not supported promises. The post-V1 experimental terminal preview is excluded from this release commitment; it remains opt-in and clearly labeled while DEBUG sandbox testing stays separate from normal release-build file-manager behavior.
+PulseFiles is a native AppKit dual-pane file manager for macOS 13+ focused on keyboard-first navigation, predictable file operations, active-pane search/filtering, configurable hidden-file visibility, and persisted user preferences. Version 1.0 supports locally available cloud folders, mounted writable network/removable volumes, package directory trees, and symbolic links without traversing their targets. It preserves standard metadata on a best-effort basis and clearly reports metadata warnings. Finder alias mutation and provider-specific cloud metadata are not supported promises. The Experimental Terminal remains opt-in and clearly labeled while DEBUG sandbox testing stays separate from normal release-build file-manager behavior.

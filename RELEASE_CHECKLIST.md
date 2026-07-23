@@ -28,7 +28,7 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] Remove or reset prior PulseFiles preferences for the test account.
 - [ ] Launch PulseFiles from the built `.app` bundle.
 - [ ] Observe the initial window, panes, sidebar, command bar, menus, and toolbar state.
-- [ ] Confirm no post-V1 experimental terminal is visible on first launch.
+- [ ] Confirm no Experimental Terminal is visible on first launch.
 
 **Expected results**
 
@@ -36,7 +36,7 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] Two file panes are visible unless a persisted single-pane setting was intentionally restored.
 - [ ] One pane is clearly active.
 - [ ] Initial directories load without crashing or silently mutating files.
-- [ ] The post-V1 experimental terminal is disabled and hidden by default.
+- [ ] The Experimental Terminal is disabled and hidden by default.
 - [ ] Closing the last window terminates the app.
 
 ### 2. Dual-pane navigation
@@ -251,7 +251,7 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] Access still routes through macOS permission and security-scoped grant behavior where required.
 - [ ] No debug-only sandbox warning or forced sandbox root appears in normal release use.
 
-### 13. Post-V1 experimental terminal containment
+### 13. Experimental Terminal containment
 
 **Run on:** signed release app and debug app.
 
@@ -260,15 +260,15 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] Launch with reset preferences.
 - [ ] Confirm terminal UI is hidden.
 - [ ] Try menu, toolbar, or command-bar terminal entry points, if present.
-- [ ] Enable the post-V1 experimental terminal setting intentionally.
+- [ ] Enable the Experimental Terminal setting intentionally.
 - [ ] Toggle terminal visibility and observe the first-use warning.
 - [ ] Disable the setting again and relaunch.
 
 **Expected results**
 
-- [ ] The post-V1 experimental terminal is disabled and hidden by default.
-- [ ] Terminal entry points are visibly labeled post-V1/experimental and do not show an active shell until the experimental setting is enabled.
-- [ ] First use warns that this post-V1 preview can modify or delete files and may affect files outside the experimental sandbox when restrictions are disabled.
+- [ ] The Experimental Terminal is disabled and hidden by default.
+- [ ] Terminal entry points use the Experimental Terminal label and do not show an active shell until the experimental setting is enabled.
+- [ ] First use warns that the Experimental Terminal can modify or delete files and may access any locations macOS has authorized for PulseFiles.
 - [ ] When enabled, the preview uses an authorized active-pane working directory; denied directories are rejected and access scopes end with the command.
 - [ ] Hiding the panel or closing the window terminates an active command on a best-effort basis without claiming rollback; disabling the setting prevents the terminal from appearing after relaunch.
 

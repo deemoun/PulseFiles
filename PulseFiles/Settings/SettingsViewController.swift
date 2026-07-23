@@ -43,8 +43,8 @@ final class SettingsViewController: NSViewController {
     private let settings: SettingsService
     private let liquidGlassCheckbox = NSButton(checkboxWithTitle: "Enable liquid glass interface".localized, target: nil, action: nil)
     private let sidebarCheckbox = NSButton(checkboxWithTitle: "Show sidebar by default".localized, target: nil, action: nil)
-    private let terminalEnabledCheckbox = NSButton(checkboxWithTitle: "Enable post-V1 experimental terminal".localized, target: nil, action: nil)
-    private let terminalCheckbox = NSButton(checkboxWithTitle: "Show post-V1 terminal by default".localized, target: nil, action: nil)
+    private let terminalEnabledCheckbox = NSButton(checkboxWithTitle: "Enable Experimental Terminal".localized, target: nil, action: nil)
+    private let terminalCheckbox = NSButton(checkboxWithTitle: "Show Experimental Terminal by default".localized, target: nil, action: nil)
     private let singlePaneCheckbox = NSButton(checkboxWithTitle: "Use single pane by default".localized, target: nil, action: nil)
     private let hiddenFilesCheckbox = NSButton(checkboxWithTitle: "Show hidden files by default".localized, target: nil, action: nil)
     private let confirmCopyCheckbox = NSButton(checkboxWithTitle: "Confirm copy operations".localized, target: nil, action: nil)
@@ -262,7 +262,7 @@ final class SettingsViewController: NSViewController {
                         liquidGlassCheckbox,
                         terminalEnabledCheckbox,
                         terminalCheckbox,
-                        postV1TerminalStatusView(),
+                        experimentalTerminalStatusView(),
                         singlePaneCheckbox,
                         sidebarWidthRow()
                     ]
@@ -422,10 +422,10 @@ final class SettingsViewController: NSViewController {
     }
 
 
-    private func postV1TerminalStatusView() -> NSView {
+    private func experimentalTerminalStatusView() -> NSView {
         let message = settings.experimentalTerminalEnabled
-            ? "Post-V1 experimental terminal is enabled. It is not part of the V1 product commitment; commands can modify or delete files in the active pane folder.".localized
-            : "Post-V1 experimental terminal is disabled and hidden. It is not part of the V1 product commitment; enable it only if you accept that shell commands can modify or delete files.".localized
+            ? "Experimental Terminal is enabled. Shell commands can modify or delete files in the active pane folder.".localized
+            : "Experimental Terminal is disabled and hidden. Enable it only if you accept that shell commands can modify or delete files.".localized
         let label = NSTextField(wrappingLabelWithString: message)
         label.textColor = .secondaryLabelColor
         return label
