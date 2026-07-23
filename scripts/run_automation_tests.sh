@@ -6,13 +6,58 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$REPO_ROOT"
 
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+skip_system_events=false
+skip_system_events_reason=""
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/run_automation_tests.sh [--skip-system-events]
+
+Options:
+  --skip-system-events  Run Swift unit and AppKit UI tests, but skip the
+                        external System Events mutation harness. Intended for
+                        CI runners without Accessibility permission.
+
+Environment:
+  PULSEFILES_SKIP_SYSTEM_EVENTS=1  Same as --skip-system-events.
+EOF
+}
+
+for argument in "$@"; do
+  case "$argument" in
+    --skip-system-events)
+      skip_system_events=true
+      skip_system_events_reason="--skip-system-events was requested"
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      fail "Unknown option: $argument"
+      ;;
+  esac
+done
+
+if [[ "${PULSEFILES_SKIP_SYSTEM_EVENTS:-0}" == "1" ]]; then
+  skip_system_events=true
+  skip_system_events_reason="PULSEFILES_SKIP_SYSTEM_EVENTS=1"
+elif [[ "${PULSEFILES_CI_SAFE_MODE:-0}" == "1" ]]; then
+  # Retain the older CI setting for existing callers while making the
+  # System Events behavior explicit in the preferred flag above.
+  skip_system_events=true
+  skip_system_events_reason="PULSEFILES_CI_SAFE_MODE=1 (legacy CI-safe mode)"
+fi
+
 PREFERENCES_HOME="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesAutomationPreferences.XXXXXX")"
 SANDBOX_ROOT="${PREFERENCES_HOME}/Library/Application Support/PulseFiles/ExperimentalSandbox"
 mkdir -p "$SANDBOX_ROOT"
 FIXTURE_ROOT="$(mktemp -d "${SANDBOX_ROOT}/AutomationRun.XXXXXX")"
 
 canonical_path() { /usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
-fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 assert_fixture_path() {
   local candidate root
   candidate="$(canonical_path "$1")"
@@ -55,10 +100,11 @@ echo "==> Running AppKit UI target with DEBUG sandbox configuration"
 swift test -c debug --filter PulseFilesAppKitUITests
 
 # System Events requires macOS Accessibility permission, which hosted runners
-# do not grant. CI-safe mode deliberately retains the Swift and in-process
-# AppKit coverage above while omitting only this external mutation harness.
-if [[ "${PULSEFILES_CI_SAFE_MODE:-0}" == "1" ]]; then
-  echo "==> Skipping System Events mutation harness (CI-safe mode)"
+# do not grant. The explicit CI mode deliberately retains the Swift and
+# in-process AppKit coverage above while omitting only this external mutation
+# harness.
+if [[ "$skip_system_events" == true ]]; then
+  echo "==> Skipping System Events mutation harness: $skip_system_events_reason"
   exit 0
 fi
 

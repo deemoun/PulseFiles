@@ -88,6 +88,18 @@ experimental sandbox for DEBUG UI automation, and skips AppKit UI automation on
 non-macOS hosts. Release evidence remains separate in
 `scripts/release_validation.sh`; its DEBUG mutation harness is opt-in.
 
+For non-destructive macOS CI, retain the Swift unit and in-process AppKit UI
+coverage while skipping the external System Events mutation harness (which
+requires Accessibility permission):
+
+```sh
+./scripts/run_automation_tests.sh --skip-system-events
+# Or: PULSEFILES_SKIP_SYSTEM_EVENTS=1 ./scripts/run_automation_tests.sh
+```
+
+Without this option or environment variable, the System Events runner remains
+enabled for local macOS automation.
+
 Build a local test `.app` bundle:
 
 ```sh
