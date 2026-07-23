@@ -55,7 +55,9 @@ rename and cancellation behavior, but intentionally has no Trash workflow.
 
 Use `--artifacts-dir PATH` to retain logs, tree snapshots, and screenshots, or
 `--keep-fixture` to inspect the isolated HOME after a run. See
-[WORKFLOWS.md](WORKFLOWS.md) for the exact workflow partition.
+[WORKFLOWS.md](WORKFLOWS.md) for the exact workflow partition and
+[TEST_CASES.md](TEST_CASES.md) for runnable test cases, expected outcomes, and
+safety boundaries.
 
 ## Prerequisites
 
