@@ -36,19 +36,25 @@ enum OpenEventRouter {
         var deniedURLCount = 0
 
         for url in urls {
-            guard url.isFileURL, accessPolicy.canAccess(url) else {
+            guard url.isFileURL else {
                 deniedURLCount += 1
                 continue
             }
 
-            var isDirectory = ObjCBool(false)
-            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            do {
+                let isDirectory = try accessPolicy.withValidatedAccess(to: url) {
+                    var value = ObjCBool(false)
+                    guard fileManager.fileExists(atPath: url.path, isDirectory: &value) else {
+                        throw CocoaError(.fileNoSuchFile)
+                    }
+                    return value.boolValue
+                }
+                guard isDirectory else {
+                    ignoredFileCount += 1
+                    continue
+                }
+            } catch {
                 deniedURLCount += 1
-                continue
-            }
-
-            guard isDirectory.boolValue else {
-                ignoredFileCount += 1
                 continue
             }
 

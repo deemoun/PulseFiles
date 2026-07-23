@@ -104,6 +104,24 @@ final class FolderAccessGrantServiceTests: XCTestCase {
         XCTAssertEqual(stopped.map(\.path), [parent.path])
     }
 
+    func testWithSecurityScopedAccessStopsAfterThrownBody() throws {
+        let folder = try temporaryDirectory.folder("ThrowingScope")
+        var events: [String] = []
+        let service = FolderAccessGrantService(
+            defaults: fixture.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in events.append("start"); return true },
+            stopSecurityScopedAccess: { _ in events.append("stop") }
+        )
+        try service.grantAccess(to: folder)
+
+        XCTAssertThrowsError(try service.withSecurityScopedAccess(to: [folder]) {
+            XCTAssertEqual(events, ["start"])
+            throw CocoaError(.fileReadNoPermission)
+        })
+        XCTAssertEqual(events, ["start", "stop"])
+    }
+
     func testGrantStatusReportsStaleWhenMatchingBookmarkCannotResolve() throws {
         let folder = try temporaryDirectory.folder("Unresolvable")
         let service = FolderAccessGrantService(defaults: fixture.defaults, resolver: FakeFolderAccessBookmarkResolver())

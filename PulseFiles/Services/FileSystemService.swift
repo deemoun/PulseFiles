@@ -52,10 +52,9 @@ final class FileSystemService: FileSystemServicing {
     }
 
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
-        try accessPolicy.validateAccess(to: url)
-        return try await accessPolicy.withAccess(to: [url]) {
-            try await self.scheduler.submit(priority: .visiblePane) {
-                try self.accessPolicy.validateAccess(to: url)
+        // FilePaneViewModel owns the validated operation scope so snapshot
+        // metadata and enumeration do not start nested bookmark scopes.
+        return try await self.scheduler.submit(priority: .visiblePane) {
                 let keys: Set<URLResourceKey> = [
                 .nameKey,
                 .localizedNameKey,
@@ -92,22 +91,17 @@ final class FileSystemService: FileSystemServicing {
                     items: Self.sorted(items, descriptor: sort),
                     itemReadFailures: itemReadFailures
                 )
-            }
         }
     }
 
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
-        try accessPolicy.validateAccess(to: url)
-        return try await accessPolicy.withAccess(to: [url]) {
-            try await self.scheduler.submit(priority: .visiblePane) {
-                try self.accessPolicy.validateAccess(to: url)
+        return try await self.scheduler.submit(priority: .visiblePane) {
                 let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey, .contentModificationDateKey])
                 let identifier = values.fileResourceIdentifier.map { String(describing: $0) }
                 return DirectorySnapshotMetadata(
                     resourceIdentifier: identifier,
                     changeDate: values.contentModificationDate
                 )
-            }
         }
     }
 
