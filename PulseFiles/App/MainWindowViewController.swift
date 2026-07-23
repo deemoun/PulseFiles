@@ -1508,7 +1508,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             let size = values.fileSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "Unknown".localized
             let modified = values.contentModificationDate.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) } ?? "Unknown".localized
             let alert = NSAlert()
-            alert.messageText = item.name
+            alert.messageText = item.displayName
             alert.informativeText = "Location: %@\nKind: %@\nSize: %@\nModified: %@".localized(with: item.url.path, values.isDirectory == true ? "Folder".localized : "File".localized, size, modified)
             alert.addButton(withTitle: "OK".localized)
             if let window = view.window { alert.beginSheetModal(for: window) } else { alert.runModal() }
