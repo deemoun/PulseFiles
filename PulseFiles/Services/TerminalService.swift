@@ -89,14 +89,10 @@ struct TerminalWarningState: Equatable {
     let isDebugBuild: Bool
 
     var messageText: String {
-        "Post-V1 experimental terminal warning".localized
+        "Experimental Terminal warning".localized
     }
 
     var informativeText: String {
-        if isDebugBuild, areSandboxRestrictionsEnabled {
-            return "The terminal runs shell commands in the selected folder. Commands can modify or delete files inside the PulseFiles experimental sandbox.".localized
-        }
-
-        return "The terminal runs shell commands in the selected folder. Commands can modify or delete files outside PulseFiles when sandbox restrictions are disabled, including folders macOS permits PulseFiles to access or folders you have granted with security-scoped access.".localized
+        "Experimental Terminal runs shell commands in the selected folder. Shell commands can modify or delete files and may access any locations macOS has authorized for PulseFiles.".localized
     }
 }

@@ -7,7 +7,7 @@ PulseFiles is a native macOS AppKit file manager scaffolded for a fast, keyboard
 Phase 1 is implemented:
 
 - AppKit application entry point and main window.
-- Unified toolbar with back, forward, search, a clearly labeled post-V1 experimental terminal, sidebar, view, and settings controls.
+- Unified toolbar with back, forward, search, a clearly labeled Experimental Terminal, sidebar, view, and settings controls.
 - Dual independently loading `NSTableView` file panes.
 - Breadcrumb headers with clickable path components.
 - Native file icons and `Name`, `Size`, and `Modified` columns.
@@ -15,7 +15,7 @@ Phase 1 is implemented:
 - Directory navigation by double-click, Return, Backspace, and Command-Up.
 - Active-pane switching with Tab.
 - Right shortcuts/recent sidebar.
-- The post-V1 experimental terminal is excluded from the V1 feature commitment, hidden by default, and requires the explicit “Enable post-V1 experimental terminal” setting before it can be shown.
+- The Experimental Terminal is hidden by default and requires the explicit “Enable Experimental Terminal” setting before it can be shown.
 - Bottom command bar.
 - Model, service, controller, view, command, and utility separation.
 - Unit tests for navigation history, sorting, path utilities, and bookmark persistence.
@@ -37,7 +37,7 @@ PulseFiles is licensed under the [GNU General Public License v3.0 or later](LICE
 | Command-N / Command-Shift-N | Create a new folder / file |
 | Command-C / Command-X / Command-V | Copy / cut / paste with the clipboard |
 | Command-Shift-. | Show or hide hidden files |
-| Command-` | Toggle the post-V1 experimental terminal after enabling it in Settings |
+| Command-` | Toggle the Experimental Terminal after enabling it in Settings |
 | Command-Period | Cancel the active file operation |
 
 ## Experimental sandbox access
@@ -54,11 +54,11 @@ When `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` is enabled in DEBUG,
 
 Restricted DEBUG browsing and file operations should stay inside that root unless the user explicitly grants an outside folder through the app's access policy flow.
 
-## Post-V1 experimental terminal policy
+## Experimental Terminal policy
 
-Terminal support is **not in the V1 product scope**. The integrated terminal remains a post-V1 experimental preview, not a supported shell, security boundary, or release feature claim. It is hidden and disabled by default. Every visible entry point is labeled **post-V1** or **experimental**; to try it, enable **Enable post-V1 experimental terminal** in Settings, then optionally enable **Show post-V1 terminal by default**.
+The Experimental Terminal is an opt-in feature, not a security boundary or a supported shell environment. It is hidden and disabled by default. Every visible entry point uses the **Experimental Terminal** label; to try it, enable **Enable Experimental Terminal** in Settings, then optionally enable **Show Experimental Terminal by default**.
 
-The preview runs a non-interactive shell command in the active pane folder when that folder is authorized by `SandboxFileAccessPolicy`; otherwise it falls back to the policy root or rejects the launch. It keeps the applicable access scope only while the command runs, streams bounded combined output/error text, reports startup and non-zero-exit failures in the panel, and terminates the active process when the panel is removed or the window is torn down. Cancellation is best-effort process termination, not a transactional rollback: shell commands may already have changed files. First use requires acknowledgement that commands can modify or delete files that macOS permits PulseFiles to access, including security-scoped folder grants when sandbox restrictions are disabled.
+The Experimental Terminal runs a non-interactive shell command in the active pane folder when that folder is authorized by `SandboxFileAccessPolicy`; otherwise it falls back to the policy root or rejects the launch. It keeps the applicable access scope only while the command runs, streams bounded combined output/error text, reports startup and non-zero-exit failures in the panel, and terminates the active process when the panel is removed or the window is torn down. Cancellation is best-effort process termination, not a transactional rollback: shell commands may already have changed files. First use requires acknowledgement that commands can modify or delete files that macOS permits PulseFiles to access, including security-scoped folder grants when sandbox restrictions are disabled.
 
 ## Version 1.0 storage compatibility
 

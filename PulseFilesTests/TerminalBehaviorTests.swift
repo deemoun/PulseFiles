@@ -90,12 +90,13 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertEqual(workingDirectory, sandboxFixture.externalDirectory)
     }
 
-    func testSandboxDisabledModeIsRepresentedInWarningState() {
+    func testFirstUseWarningDescribesAuthorizedLocationRisk() {
         let warning = service.warningState(settings: settings, accessPolicy: sandboxFixture.unrestrictedPolicy)
 
         XCTAssertFalse(warning.areSandboxRestrictionsEnabled)
-        XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("outside PulseFiles"))
-        XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("sandbox restrictions are disabled"))
+        XCTAssertEqual(warning.messageText, "Experimental Terminal warning".localized)
+        XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("modify or delete files"))
+        XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("any locations macOS has authorized for PulseFiles"))
     }
 
     @MainActor
@@ -146,7 +147,7 @@ final class TerminalBehaviorTests: XCTestCase {
 
         XCTAssertFalse(process.didRun)
         XCTAssertNil(process.currentDirectoryURL)
-        XCTAssertTrue(controller.terminalTextForTesting.contains("Acknowledge the post-V1 experimental terminal warning"))
+        XCTAssertTrue(controller.terminalTextForTesting.contains("Acknowledge the Experimental Terminal warning"))
     }
 
     @MainActor

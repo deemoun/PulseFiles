@@ -740,7 +740,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             toolbarSearchField = item.searchField
             return item
         case .toggleTerminal:
-            let item = toolbarItem(itemIdentifier, label: "Post-V1 Terminal".localized, symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
+            let item = toolbarItem(itemIdentifier, label: "Experimental Terminal".localized, symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
             item.view?.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.terminalToggle)
             return item
         case .toggleSidebar:
@@ -1034,8 +1034,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func showTerminalDisabledAlert() {
         let alert = NSAlert()
-        alert.messageText = "Post-V1 experimental terminal is disabled".localized
-        alert.informativeText = "Enable the post-V1 experimental terminal in Settings before opening it. Shell commands can modify or delete files.".localized
+        alert.messageText = "Experimental Terminal is disabled".localized
+        alert.informativeText = "Enable the Experimental Terminal in Settings before opening it. Shell commands can modify or delete files.".localized
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK".localized)
         if let window = view.window {

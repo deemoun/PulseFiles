@@ -194,7 +194,7 @@ if hasWorkflow(workflows, "terminal-opt-in-containment") then
   delay 1
   launchIsolatedApp(appExecutable, preferencesHome)
   waitForWindow(appName)
-  menuItem(appName, "View", "Toggle Post-V1 Experimental Terminal")
+  menuItem(appName, "View", "Toggle Experimental Terminal")
 end if
 APPLESCRIPT
 
