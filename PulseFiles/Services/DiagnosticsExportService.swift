@@ -55,7 +55,7 @@ struct DiagnosticsExportService {
     }
 
     func export(to parentDirectory: URL, entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) throws -> URL {
-        let bundleURL = parentDirectory.appendingPathComponent("PulseFiles-Diagnostics-\(timestamp(dateProvider()))", isDirectory: true)
+        let bundleURL = parentDirectory.appendingPathComponent("PulseFiles-Diagnostics-\(Self.timestamp(dateProvider()))", isDirectory: true)
         try fileManager.createDirectory(at: bundleURL, withIntermediateDirectories: false)
         try renderedDiagnostics(entries: entries, operationSummaries: operationSummaries)
             .write(to: bundleURL.appendingPathComponent("diagnostics.txt"), atomically: true, encoding: .utf8)

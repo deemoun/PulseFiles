@@ -78,8 +78,8 @@ final class DescendantSearchService {
                 }
                 return DescendantSearchResult(items: items, wasCancelled: cancelled, hitItemLimit: itemLimit, hitDepthLimit: depthLimit, timedOut: timedOut, inaccessibleURLs: inaccessible.sorted { $0.path < $1.path })
             }
-            return try await withTaskCancellationHandler(operation: {
-                try await worker.value
+            return await withTaskCancellationHandler(operation: {
+                await worker.value
             }, onCancel: {
                 worker.cancel()
             })
