@@ -21,6 +21,10 @@ Phase 1 is implemented:
 - Unit tests for navigation history, sorting, path utilities, and bookmark persistence.
 - Release builds default to normal file-manager access behavior, subject to macOS permissions and any user-granted folders. DEBUG builds are unrestricted by default too, but can opt into the experimental sandbox with `--pulsefiles-enable-experimental-sandbox` or the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key. When that flag is enabled, browsing and file operations are restricted to `~/Library/Application Support/PulseFiles/ExperimentalSandbox` unless the user explicitly grants access to an outside folder.
 
+## License
+
+PulseFiles is licensed under the [GNU General Public License v3.0 or later](LICENSE) (`GPL-3.0-or-later`). Redistributions of modified versions must provide the corresponding source code under that license.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |

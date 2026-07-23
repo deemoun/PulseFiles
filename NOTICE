@@ -1,0 +1,13 @@
+PulseFiles
+Copyright (c) 2026 Dmitry Yarygin
+
+Dmitry Yarygin is the original author and copyright holder of PulseFiles.
+
+Third-party notices
+-------------------
+Release review found no third-party Swift package dependencies or vendored
+third-party source or binary components in this repository. PulseFiles uses
+macOS system frameworks supplied by Apple and does not redistribute them.
+Accordingly, no additional third-party notices are required for the current
+source distribution. Reassess this notice and include any required notices
+before adding or redistributing third-party components.
