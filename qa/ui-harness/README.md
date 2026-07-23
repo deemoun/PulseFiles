@@ -30,6 +30,17 @@ Run the mutation-capable automation through the safe repository entry point:
 ./scripts/run_automation_tests.sh
 ```
 
+For non-destructive macOS CI that cannot grant Accessibility permission, run
+the same isolated Swift unit tests and `PulseFilesAppKitUITests` while skipping
+only the external System Events mutation harness:
+
+```sh
+./scripts/run_automation_tests.sh --skip-system-events
+# Or: PULSEFILES_SKIP_SYSTEM_EVENTS=1 ./scripts/run_automation_tests.sh
+```
+
+The System Events runner remains enabled by default for local macOS use.
+
 `scripts/release_validation.sh` is release evidence only: its signed-app suite
 is non-mutating. It runs the DEBUG mutation runner only when explicitly given
 `--run-debug-mutation-harness`, and that opt-in run is not release evidence.
