@@ -54,5 +54,24 @@ final class DescriptorRelativeMutationTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: replacement.appendingPathComponent(name).path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: parent.appendingPathComponent(name).path))
     }
+
+    func testStagingCandidateSymlinkCannotRedirectDescriptorRelativeCreation() throws {
+        let staging = root.appendingPathComponent("staging")
+        let outside = root.appendingPathComponent("outside")
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let protectedFile = outside.appendingPathComponent("protected")
+        try Data("unchanged".utf8).write(to: protectedFile)
+
+        // This models an attacker replacing a selected staging name after
+        // preflight but before the creation syscall.
+        let candidate = staging.appendingPathComponent(".pulsefiles-copy-candidate")
+        try FileManager.default.createSymbolicLink(at: candidate, withDestinationURL: protectedFile)
+        let capability = try OpenDirectoryCapability(directory: staging)
+        defer { capability.close() }
+
+        XCTAssertThrowsError(try capability.openNewRegularFile(named: candidate.lastPathComponent))
+        XCTAssertEqual(try String(contentsOf: protectedFile), "unchanged")
+    }
 }
 #endif
