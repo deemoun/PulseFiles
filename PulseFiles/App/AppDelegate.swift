@@ -127,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 430))
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 460))
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
@@ -153,12 +153,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         descriptionLabel.alignment = .center
         descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        let attributionLabel = NSTextField(labelWithString: "Created by Dmitry Yarygin".localized)
+        attributionLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        attributionLabel.textColor = .secondaryLabelColor
+        attributionLabel.alignment = .center
+        attributionLabel.translatesAutoresizingMaskIntoConstraints = false
+
         let doneButton = NSButton(title: "Done".localized, target: self, action: #selector(closeAbout(_:)))
         doneButton.bezelStyle = .rounded
         doneButton.keyEquivalent = "\r"
         doneButton.translatesAutoresizingMaskIntoConstraints = false
 
-        [iconView, nameLabel, versionLabel, descriptionLabel, doneButton].forEach(contentView.addSubview)
+        [iconView, nameLabel, versionLabel, descriptionLabel, attributionLabel, doneButton].forEach(contentView.addSubview)
 
         NSLayoutConstraint.activate([
             iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 28),
@@ -178,7 +184,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             descriptionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
             descriptionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
 
-            doneButton.topAnchor.constraint(greaterThanOrEqualTo: descriptionLabel.bottomAnchor, constant: 24),
+            attributionLabel.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 8),
+            attributionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+            attributionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+
+            doneButton.topAnchor.constraint(greaterThanOrEqualTo: attributionLabel.bottomAnchor, constant: 24),
             doneButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             doneButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24)
         ])
