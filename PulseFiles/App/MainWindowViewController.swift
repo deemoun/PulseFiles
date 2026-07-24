@@ -1486,19 +1486,36 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             showError(message: "Nothing Selected".localized, detail: "Select one item to view its information.".localized)
             return
         }
-        do {
-            let values = try accessPolicy.withValidatedAccess(to: item.url) {
-                try item.url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+
+        let accessPolicy = accessPolicy
+        Task { [weak self] in
+            do {
+                let details = try await Task.detached(priority: .userInitiated) {
+                    try accessPolicy.withValidatedAccess(to: item.url) {
+                        let values = try item.url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
+                        let size = try SystemFileSizeService().size(of: item.url)
+                        return (isDirectory: values.isDirectory == true, modificationDate: values.contentModificationDate, size: size)
+                    }
+                }.value
+                guard let self else { return }
+
+                let size = ByteCountFormatter.string(fromByteCount: details.size, countStyle: .file)
+                let modified = details.modificationDate.map {
+                    DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short)
+                } ?? "Unknown".localized
+                let alert = NSAlert()
+                alert.messageText = item.displayName
+                alert.informativeText = "Location: %@\nKind: %@\nSize: %@\nModified: %@".localized(
+                    with: item.url.path,
+                    details.isDirectory ? "Folder".localized : "File".localized,
+                    size,
+                    modified
+                )
+                alert.addButton(withTitle: "OK".localized)
+                if let window = self.view.window { alert.beginSheetModal(for: window) } else { alert.runModal() }
+            } catch {
+                self?.showError(message: "Information Unavailable".localized, detail: error.localizedDescription)
             }
-            let size = values.fileSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "Unknown".localized
-            let modified = values.contentModificationDate.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) } ?? "Unknown".localized
-            let alert = NSAlert()
-            alert.messageText = item.displayName
-            alert.informativeText = "Location: %@\nKind: %@\nSize: %@\nModified: %@".localized(with: item.url.path, values.isDirectory == true ? "Folder".localized : "File".localized, size, modified)
-            alert.addButton(withTitle: "OK".localized)
-            if let window = view.window { alert.beginSheetModal(for: window) } else { alert.runModal() }
-        } catch {
-            showError(message: "Information Unavailable".localized, detail: error.localizedDescription)
         }
     }
 
