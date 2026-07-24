@@ -57,6 +57,7 @@ final class SettingsService {
     init(
         defaults: UserDefaults = .standard,
         accessPolicy: SandboxFileAccessPolicy? = nil,
+        folderAccessBookmarkResolver: FolderAccessBookmarkResolving = SystemFolderAccessBookmarkResolver(),
         jsonSettingsURLProvider: (() -> URL)? = nil,
         homeDirectoryProvider: @escaping () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         documentsDirectoryProvider: @escaping () -> URL = {
@@ -72,8 +73,7 @@ final class SettingsService {
         self.defaults = defaults
         self.syncsJSON = defaults === UserDefaults.standard || jsonSettingsURLProvider != nil
         self.jsonSettingsURLProvider = jsonSettingsURLProvider ?? { Self.jsonSettingsURL }
-        self.grantService = FolderAccessGrantService(defaults: defaults)
-        self.grantService.resolveStoredBookmarks()
+        self.grantService = FolderAccessGrantService(defaults: defaults, resolver: folderAccessBookmarkResolver)
         self.accessPolicyOverride = accessPolicy
         self.homeDirectoryProvider = homeDirectoryProvider
         self.documentsDirectoryProvider = documentsDirectoryProvider
@@ -238,9 +238,9 @@ final class SettingsService {
     }
 
     var folderAccessGrants: [FolderAccessGrant] {
-        get { FolderAccessGrantService(defaults: defaults).grants }
+        get { grantService.grants }
         set {
-            FolderAccessGrantService(defaults: defaults).grants = newValue
+            grantService.grants = newValue
             writeSettingsJSONIfNeeded()
         }
     }
