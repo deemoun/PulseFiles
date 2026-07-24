@@ -85,7 +85,7 @@ final class CommandBarView: NSVisualEffectView {
             view.removeFromSuperview()
         }
 
-        let actions: [CommandBarAction] = [.rename, .view, .edit, .copy, .move, isShowingShiftActions ? .newFile : .newFolder, .delete]
+        let actions: [CommandBarAction] = [.rename, .view, .copy, .move, isShowingShiftActions ? .newFile : .newFolder, .delete]
         for action in actions {
             let button = CommandBarActionButton(commandAction: action)
             button.target = self
@@ -242,7 +242,7 @@ extension CommandBarAction {
         switch self {
         case .delete:
             return true
-        case .rename, .view, .edit, .copy, .move, .newFolder, .newFile, .cancelOperation:
+        case .rename, .view, .copy, .move, .newFolder, .newFile, .cancelOperation:
             return false
         }
     }
@@ -255,7 +255,7 @@ extension CommandBarAction {
         switch self {
         case .view, .copy, .move, .delete:
             return .mustHold
-        case .rename, .edit, .newFolder, .newFile:
+        case .rename, .newFolder, .newFile:
             return .detachOnlyIfNecessary
         case .cancelOperation:
             return .mustHold

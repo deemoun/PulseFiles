@@ -140,6 +140,7 @@ struct MainCommandRouter {
         if command && !shift && !option && !control && keyCode == 17 { return .togglePaneLayout }
         if plain && keyCode == 49 { return .quickLook }
         if plain && keyCode == 48 { return .switchPane }
+        if plain && (keyCode == 99 || keyCode == 118) { return .open }
         if shiftOnly && keyCode == 98 { return .newFile }
         if plain && keyCode == 98 { return .newFolder }
         if plain && keyCode == 120 { return .rename }

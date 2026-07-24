@@ -54,7 +54,7 @@ enum MainCommand: Equatable {
         case .move: self = .move
         case .delete: self = .trash
         case .cancelOperation: self = .cancelOperation
-        case .view, .edit: self = .open
+        case .view: self = .open
         }
     }
 }

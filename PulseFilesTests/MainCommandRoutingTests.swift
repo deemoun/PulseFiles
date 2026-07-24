@@ -149,6 +149,16 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.route(.quickLook, in: state), .activePane(command: .quickLook, pane: .left, urls: [focused]))
     }
 
+    func testF3AndF4OpenFocusedItem() {
+        let focused = URL(fileURLWithPath: "/sandbox/left/focused.txt")
+        let state = makeState(activePaneID: .left, leftFocusedURL: focused)
+
+        for keyCode: UInt16 in [99, 118] {
+            XCTAssertEqual(router.commandForKeyDown(keyCode: keyCode), .open)
+            XCTAssertEqual(router.route(.open, in: state), .activePane(command: .open, pane: .left, urls: [focused]))
+        }
+    }
+
     func testQuickLookUsesFocusedItemRatherThanSelection() {
         let selected = URL(fileURLWithPath: "/sandbox/left/selected.txt")
         let focused = URL(fileURLWithPath: "/sandbox/left/focused.png")
