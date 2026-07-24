@@ -100,26 +100,26 @@ final class TerminalBehaviorTests: XCTestCase {
     }
 
     @MainActor
-    func testStoppingRunningTerminalCommandClearsHandlerTerminatesAndReportsTermination() {
+    func testStopTerminatesPersistentSessionAndReportsTermination() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(processFactory: { process })
         controller.loadView()
         controller.viewDidLoad()
 
-        controller.runCommandForTesting("sleep 10")
+        controller.runCommandForTesting("cd /tmp")
+        controller.runCommandForTesting("pwd")
 
         XCTAssertTrue(process.didRun)
-        XCTAssertNotNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
+        XCTAssertEqual(process.writes, ["cd /tmp\n", "pwd\n"])
 
         controller.stopRunningCommand()
 
-        XCTAssertNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
         XCTAssertTrue(process.didTerminate)
         XCTAssertTrue(controller.terminalTextForTesting.contains("[terminated]"))
     }
 
     @MainActor
-    func testStoppingFinishedTerminalCommandClearsHandlerWithoutTerminationMessage() {
+    func testStoppingFinishedTerminalSessionDoesNotReportTermination() {
         let process = FakeTerminalProcess()
         process.isRunning = false
         let controller = TerminalViewController(processFactory: { process })
@@ -129,7 +129,6 @@ final class TerminalBehaviorTests: XCTestCase {
         controller.runCommandForTesting("echo done")
         controller.stopRunningCommand()
 
-        XCTAssertNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
         XCTAssertFalse(process.didTerminate)
         XCTAssertFalse(controller.terminalTextForTesting.contains("[terminated]"))
     }
@@ -149,7 +148,7 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertFalse(controller.terminalTextForTesting.contains("sleep 10"))
         XCTAssertFalse(controller.terminalTextForTesting.contains("previous command output"))
         XCTAssertFalse(controller.terminalTextForTesting.contains("[terminated]"))
-        XCTAssertTrue(controller.terminalTextForTesting.hasSuffix("$ "))
+        XCTAssertTrue(controller.terminalTextForTesting.contains("[terminal reset]"))
     }
 
     @MainActor
@@ -224,7 +223,7 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertLessThanOrEqual(text.count, TerminalViewController.maximumRetainedOutputCharacters)
         XCTAssertLessThanOrEqual(text.filter { $0 == "\n" }.count, TerminalViewController.maximumRetainedOutputLines)
         XCTAssertTrue(text.contains("[Earlier terminal output truncated]"))
-        XCTAssertTrue(text.hasSuffix("$ "))
+        XCTAssertTrue(text.contains("[shell exited]"))
     }
 
     @MainActor
@@ -241,7 +240,6 @@ final class TerminalBehaviorTests: XCTestCase {
 
         controller.stopRunningCommand()
 
-        XCTAssertNil(process.outputPipe?.fileHandleForReading.readabilityHandler)
         XCTAssertNil(process.terminationHandler)
         XCTAssertFalse(controller.hasRunningAccessScopeForTesting)
     }
@@ -264,22 +262,21 @@ private final class FakeTerminalProcess: TerminalProcess {
     var isRunning = true
     var terminationStatus: Int32 = 0
     var terminationReason: Process.TerminationReason = .exit
+    var outputHandler: ((Data) -> Void)?
     var terminationHandler: ((TerminalProcess) -> Void)?
 
     private(set) var didRun = false
     private(set) var didTerminate = false
-    private(set) var outputPipe: Pipe?
     private(set) var currentDirectoryURL: URL?
+    private(set) var writes: [String] = []
 
     func configure(
         executableURL: URL,
         arguments: [String],
         environment: [String: String],
         currentDirectoryURL: URL,
-        outputPipe: Pipe
     ) {
         self.currentDirectoryURL = currentDirectoryURL
-        self.outputPipe = outputPipe
     }
 
     func run() throws {
@@ -290,6 +287,12 @@ private final class FakeTerminalProcess: TerminalProcess {
         didTerminate = true
         isRunning = false
     }
+
+    func write(_ data: Data) {
+        writes.append(String(decoding: data, as: UTF8.self))
+    }
+
+    func resize(columns: Int, rows: Int) {}
 
     func complete(status: Int32 = 0) {
         terminationStatus = status
