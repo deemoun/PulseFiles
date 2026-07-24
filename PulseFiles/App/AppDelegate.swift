@@ -77,7 +77,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        configureSortMenuTargets(for: controller)
         return controller
+    }
+
+    /// Sort commands must always reach the main window controller. Depending on
+    /// which AppKit control is first responder, responder-chain dispatch can
+    /// stop before reaching the content view controller, leaving the View menu
+    /// items enabled but with no effect. Other file commands intentionally use
+    /// normal responder-chain routing; these display preferences are scoped to
+    /// the active pane and have one unambiguous window-level handler.
+    private func configureSortMenuTargets(for controller: MainWindowController) {
+        guard let contentController = controller.contentViewController as? MainWindowViewController,
+              let mainMenu = NSApplication.shared.mainMenu else {
+            return
+        }
+
+        setSortMenuTarget(contentController, in: mainMenu)
+    }
+
+    private func setSortMenuTarget(_ target: MainWindowViewController, in menu: NSMenu) {
+        for item in menu.items {
+            if isSortMenuAction(item.action) {
+                item.target = target
+            }
+            if let submenu = item.submenu {
+                setSortMenuTarget(target, in: submenu)
+            }
+        }
+    }
+
+    private func isSortMenuAction(_ action: Selector?) -> Bool {
+        switch action {
+        case #selector(MainWindowViewController.menuSortByName(_:)),
+             #selector(MainWindowViewController.menuSortByKind(_:)),
+             #selector(MainWindowViewController.menuSortBySize(_:)),
+             #selector(MainWindowViewController.menuSortByModified(_:)),
+             #selector(MainWindowViewController.menuSortAscending(_:)),
+             #selector(MainWindowViewController.menuSortDescending(_:)):
+            true
+        default:
+            false
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
