@@ -111,6 +111,7 @@ final class FilePaneViewModel {
     var isAccessRestrictedToExperimentalSandbox: Bool { accessPolicy.isEnabled }
     var sortDescriptor: FileSortDescriptor { state.sort }
     var showsHiddenFiles: Bool { state.showsHiddenFiles }
+    var backDestination: URL? { state.history.backStack.last }
     var visibleItems: [FileItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }
@@ -123,6 +124,12 @@ final class FilePaneViewModel {
 
     func validateAccess(to url: URL) throws {
         try accessPolicy.validateAccess(to: url)
+    }
+
+    /// Keeps parent-row presentation and keyboard navigation subject to the
+    /// same access policy as every other directory navigation.
+    func canNavigate(to directory: URL) -> Bool {
+        accessPolicy.canAccess(directory)
     }
 
     func loadCurrentDirectory(forceRefresh: Bool = false, onLoaded: (() -> Void)? = nil) {

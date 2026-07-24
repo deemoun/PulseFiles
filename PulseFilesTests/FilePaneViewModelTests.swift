@@ -108,6 +108,14 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertFalse(fixture.accessPolicy.canAccess(fixture.root.deletingLastPathComponent().deletingLastPathComponent()))
     }
 
+    func testParentNavigationAvailabilityUsesTheAccessPolicy() throws {
+        let fixture = try PaneFixture(testCase: self)
+        let parent = fixture.root.deletingLastPathComponent()
+
+        XCTAssertFalse(fixture.viewModel.canNavigate(to: parent))
+        XCTAssertTrue(fixture.viewModel.canNavigate(to: fixture.root))
+    }
+
     func testFailedNavigationToMissingFolderPreservesCurrentDirectoryAndItems() async throws {
         let sandbox = try SandboxFixture(testCase: self)
         let fileSystem = TestFileSystem()
