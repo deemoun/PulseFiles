@@ -177,11 +177,14 @@ final class PaneContentOverlayView: NSVisualEffectView {
         }
 
         if visibleItems.isEmpty {
-            passesEmptyStateEventsThrough = true
+            // An empty folder's synthetic parent row is obscured by this
+            // overlay. Keep pointer events here whenever a parent-navigation
+            // action is available so the button can be used.
+            passesEmptyStateEventsThrough = actions.isEmpty
             isHidden = false
             titleLabel.stringValue = "This folder is empty".localized
             detailLabel.stringValue = ""
-            actionStack.isHidden = true
+            actionStack.isHidden = actions.isEmpty
             return
         }
 

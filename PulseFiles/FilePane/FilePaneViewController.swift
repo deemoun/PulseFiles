@@ -687,8 +687,32 @@ final class FilePaneViewController: NSViewController {
             isLoading: viewModel.isLoading,
             visibleItems: viewModel.visibleItems,
             errorMessage: viewModel.errorMessage,
-            actions: recoveryActions()
+            actions: contentOverlayActions()
         )
+    }
+
+    /// The empty-state overlay covers the synthetic `..` table row, so expose
+    /// parent navigation directly in the overlay when it is safe to do so.
+    /// Going through `goParent()` preserves the pending-selection behavior and
+    /// the sandbox access check used by the regular parent-row interaction.
+    private func contentOverlayActions() -> [PaneStatusView.Action] {
+        var actions = recoveryActions()
+        guard viewModel.visibleItems.isEmpty,
+              !viewModel.isLoading,
+              viewModel.errorMessage == nil,
+              canNavigateToParent else {
+            return actions
+        }
+
+        actions.insert(
+            PaneStatusView.Action(
+                title: "Parent Folder".localized,
+                accessibilityLabel: "Open parent folder".localized,
+                handler: { [weak self] in self?.goParent() }
+            ),
+            at: 0
+        )
+        return actions
     }
 
     private func recoveryActions() -> [PaneStatusView.Action] {
