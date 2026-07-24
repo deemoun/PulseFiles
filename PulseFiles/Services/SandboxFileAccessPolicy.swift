@@ -99,6 +99,14 @@ struct SandboxFileAccessPolicy {
         }
     }
 
+    /// Determines whether a protected-folder consent read may be attempted.
+    /// Normal mode leaves the actual decision to macOS/TCC; experimental sandbox
+    /// mode must still reject paths outside its root unless separately granted.
+    func canAttemptProtectedFolderAccess(_ url: URL) -> Bool {
+        guard isEnabled else { return true }
+        return canAccess(url)
+    }
+
     func validateDestinationAccess(to destination: URL) throws {
         let parentDirectory = destination.deletingLastPathComponent()
         let allowed: Bool
