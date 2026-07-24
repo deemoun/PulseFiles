@@ -92,6 +92,21 @@ final class TerminalViewController: NSViewController {
         endRunningAccessScope()
     }
 
+    /// Ends the current terminal session and removes all prior command output.
+    ///
+    /// The terminal panel is retained while hidden so that it can be shown again
+    /// without rebuilding its view hierarchy. Resetting here prevents a hidden
+    /// session, including a termination message, from appearing as an active
+    /// session when the panel is reopened.
+    func resetSession() {
+        stopRunningCommand()
+        discardBufferedOutput()
+        terminalView.string = ""
+        promptStartIndex = 0
+        terminalView.currentPromptStart = 0
+        appendPrompt()
+    }
+
     func runCommandForTesting(_ command: String) {
         run(command)
     }
@@ -262,6 +277,12 @@ final class TerminalViewController: NSViewController {
 
         guard !output.isEmpty else { return }
         append(output)
+    }
+
+    private func discardBufferedOutput() {
+        outputLock.lock()
+        pendingOutput = ""
+        outputLock.unlock()
     }
 
     private func boundedPendingOutput(_ output: String) -> String {
