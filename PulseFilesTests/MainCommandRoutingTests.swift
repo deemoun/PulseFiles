@@ -159,6 +159,32 @@ final class MainCommandRoutingTests: XCTestCase {
         }
     }
 
+    func testSupportedFunctionKeyShortcutsResolveToCommands() {
+        let shortcuts: [(keyCode: UInt16, shift: Bool, command: MainCommand)] = [
+            (120, false, .rename), // F2
+            (99, false, .open), // F3
+            (118, false, .open), // F4
+            (96, false, .copy), // F5
+            (97, false, .move), // F6
+            (98, false, .newFolder), // F7
+            (98, true, .newFile), // Shift-F7
+            (100, false, .trash) // F8
+        ]
+
+        for shortcut in shortcuts {
+            XCTAssertEqual(
+                router.commandForKeyDown(keyCode: shortcut.keyCode, shift: shortcut.shift),
+                shortcut.command
+            )
+        }
+    }
+
+    func testUnsupportedFunctionKeyCodesDoNotResolveToCommands() {
+        for keyCode: UInt16 in [122, 101, 109, 103, 111] { // F1, F9, F10, F11, F12
+            XCTAssertNil(router.commandForKeyDown(keyCode: keyCode))
+        }
+    }
+
     func testQuickLookUsesFocusedItemRatherThanSelection() {
         let selected = URL(fileURLWithPath: "/sandbox/left/selected.txt")
         let focused = URL(fileURLWithPath: "/sandbox/left/focused.png")

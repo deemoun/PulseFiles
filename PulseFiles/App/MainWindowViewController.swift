@@ -632,10 +632,6 @@ final class MainWindowViewController: NSViewController {
             performCommand(routedCommand)
             return true
         }
-        if event.isFunctionKey {
-            return true
-        }
-
         return false
     }
 
