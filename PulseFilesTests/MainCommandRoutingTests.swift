@@ -159,6 +159,15 @@ final class MainCommandRoutingTests: XCTestCase {
         }
     }
 
+    func testReturnOpensFocusedItemInsteadOfStartingRename() {
+        let focused = URL(fileURLWithPath: "/sandbox/left/focused-folder", isDirectory: true)
+        let state = makeState(activePaneID: .left, leftFocusedURL: focused)
+
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 36), .open)
+        XCTAssertEqual(router.route(.open, in: state), .activePane(command: .open, pane: .left, urls: [focused]))
+        XCTAssertNotEqual(router.commandForKeyDown(keyCode: 36), .rename)
+    }
+
     func testSupportedFunctionKeyShortcutsResolveToCommands() {
         let shortcuts: [(keyCode: UInt16, shift: Bool, command: MainCommand)] = [
             (120, false, .rename), // F2
