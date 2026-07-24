@@ -90,6 +90,9 @@ final class FilePaneViewController: NSViewController {
     private var inlineRenameSession = InlineRenameCommitSession()
     private var hasDeferredTableReload = false
     private var hasOppositePane = true
+    /// Single-pane tables have room to breathe, so keep metadata away from column dividers.
+    /// Compact dual-pane tables retain their tighter spacing to preserve useful width.
+    private var metadataColumnContentInset: CGFloat { hasOppositePane ? 6 : 14 }
     private var lastAppliedColumnLayoutWidth: CGFloat = 0
     private var dualPaneGridStyleMask = NSTableView.GridLineStyle()
     private lazy var dropProbeCache = FileSystemProbeCache()
@@ -260,8 +263,10 @@ final class FilePaneViewController: NSViewController {
     }
 
     func setHasOppositePane(_ hasOppositePane: Bool) {
+        guard self.hasOppositePane != hasOppositePane else { return }
         self.hasOppositePane = hasOppositePane
         applyColumnLayout(force: true)
+        requestTableReload()
     }
 
     private func updatePaneChrome() {
@@ -862,9 +867,10 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             cell.imageView = imageView
         } else {
             text.alignment = identifier == "size" ? .right : .left
+            let inset = metadataColumnContentInset
             NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: inset),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -inset),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
             ])
         }
@@ -1110,9 +1116,10 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
             ])
         } else {
+            let inset = metadataColumnContentInset
             NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: inset),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -inset),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
             ])
         }
