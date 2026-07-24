@@ -620,10 +620,6 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
-        let command = event.modifierFlags.contains(.command)
-        let shift = event.modifierFlags.contains(.shift)
-        let option = event.modifierFlags.contains(.option)
-        let control = event.modifierFlags.contains(.control)
         if event.keyCode == 53 {
             if isFileOperationActive {
                 cancelActiveFileOperation()
@@ -632,14 +628,7 @@ final class MainWindowViewController: NSViewController {
             }
             return true
         }
-        if let routedCommand = MainCommandRouter().commandForKeyDown(
-            keyCode: event.keyCode,
-            command: command,
-            shift: shift,
-            option: option,
-            control: control,
-            isTextInputFocused: isTextInputFirstResponder
-        ) {
+        if let routedCommand = MainCommandRouter().commandForKeyDown(event, isTextInputFocused: isTextInputFirstResponder) {
             performCommand(routedCommand)
             return true
         }

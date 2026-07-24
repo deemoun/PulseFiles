@@ -1,6 +1,6 @@
 import Foundation
 
-enum MainCommand: Equatable {
+enum MainCommand: CaseIterable, Equatable {
     case open
     case openWith
     case quickLook

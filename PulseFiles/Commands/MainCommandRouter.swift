@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 struct MainCommandRoutingPane: Equatable {
     var id: PaneID
@@ -125,33 +125,28 @@ struct MainCommandRouter {
         control: Bool = false,
         isTextInputFocused: Bool = false
     ) -> MainCommand? {
-        if command && keyCode == 48 { return nil }
-        if isTextInputFocused, !(command && (keyCode == 47 || keyCode == 50)) { return nil }
-        let plain = !command && !shift && !option && !control
-        let shiftOnly = shift && !command && !option && !control
+        MainCommandShortcutRegistry.command(
+            forKeyCode: keyCode,
+            modifierFlags: modifierFlags(command: command, shift: shift, option: option, control: control),
+            isTextInputFocused: isTextInputFocused
+        )
+    }
 
-        if command && !shift && !option && !control && keyCode == 8 { return .copyToClipboard }
-        if command && !shift && !option && !control && keyCode == 7 { return .cutToClipboard }
-        if command && !shift && !option && !control && keyCode == 9 { return .pasteFromClipboard }
-        if command && !shift && !option && !control && keyCode == 0 { return .selectAll }
-        if command && shift && !option && !control && keyCode == 34 { return .invertSelection }
-        if command && !shift && !option && !control && keyCode == 47 { return .cancelOperation }
-        if command && !shift && !option && !control && keyCode == 50 { return .toggleTerminal }
-        if command && !shift && !option && !control && keyCode == 17 { return .togglePaneLayout }
-        if plain && keyCode == 49 { return .quickLook }
-        if plain && keyCode == 48 { return .switchPane }
-        if plain && (keyCode == 99 || keyCode == 118) { return .open }
-        if shiftOnly && keyCode == 98 { return .newFile }
-        if plain && keyCode == 98 { return .newFolder }
-        if plain && keyCode == 120 { return .rename }
-        if plain && keyCode == 96 { return .copy }
-        if plain && keyCode == 97 { return .move }
-        if plain && keyCode == 100 { return .trash }
-        if command && !shift && !option && !control && keyCode == 15 { return .refresh }
-        if command && shift && !option && !control && keyCode == 123 { return .focusLeftPane }
-        if command && shift && !option && !control && keyCode == 124 { return .focusRightPane }
-        if command && option && !shift && !control && keyCode == 37 { return .downloads }
-        return nil
+    func commandForKeyDown(_ event: NSEvent, isTextInputFocused: Bool) -> MainCommand? {
+        MainCommandShortcutRegistry.command(
+            forKeyCode: event.keyCode,
+            modifierFlags: event.modifierFlags,
+            isTextInputFocused: isTextInputFocused
+        )
+    }
+
+    private func modifierFlags(command: Bool, shift: Bool, option: Bool, control: Bool) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if command { flags.insert(.command) }
+        if shift { flags.insert(.shift) }
+        if option { flags.insert(.option) }
+        if control { flags.insert(.control) }
+        return flags
     }
 
     private func selectedRoute(_ command: MainCommand, in state: MainCommandRoutingState, build: () -> MainCommandRoute) -> MainCommandRoute {

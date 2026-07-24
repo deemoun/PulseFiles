@@ -24,15 +24,6 @@ enum CommandBarAction: String, CaseIterable {
     }
 
     var shortcut: String {
-        switch self {
-        case .newFile: return "Shift F7"
-        case .newFolder: return "F7"
-        case .rename: return "F2"
-        case .view: return "F3 / F4"
-        case .copy: return "F5"
-        case .move: return "F6"
-        case .delete: return "F8"
-        case .cancelOperation: return "⌘."
-        }
+        MainCommandShortcutRegistry.shortcut(for: MainCommand(commandBarAction: self)).displayLabel
     }
 }
