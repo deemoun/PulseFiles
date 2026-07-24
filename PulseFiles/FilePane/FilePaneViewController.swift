@@ -133,11 +133,12 @@ final class FilePaneViewController: NSViewController {
         viewModel.currentDirectory.deletingLastPathComponent()
     }
 
+    private var canNavigateToParent: Bool {
+        parentURL != viewModel.currentDirectory && viewModel.canNavigate(to: parentURL)
+    }
+
     private var canShowParentRow: Bool {
-        guard viewModel.searchQuery.isEmpty else { return false }
-        let current = viewModel.currentDirectory.standardizedFileURL.resolvingSymlinksInPath().path
-        let root = ExperimentalFlags.appSandboxRoot.standardizedFileURL.resolvingSymlinksInPath().path
-        return current != root && parentURL != viewModel.currentDirectory
+        viewModel.searchQuery.isEmpty && canNavigateToParent
     }
 
     private var realRowOffset: Int { canShowParentRow ? 1 : 0 }
@@ -237,6 +238,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func goBack() {
+        selectCurrentDirectoryWhenReturningToParent(viewModel.backDestination)
         viewModel.goBack()
     }
 
@@ -245,6 +247,8 @@ final class FilePaneViewController: NSViewController {
     }
 
     func goParent() {
+        guard canNavigateToParent else { return }
+        pendingSelectionURL = viewModel.currentDirectory
         viewModel.goParent()
     }
 
@@ -616,6 +620,13 @@ final class FilePaneViewController: NSViewController {
 
     private func isSameFileURL(_ lhs: URL, _ rhs: URL) -> Bool {
         normalizedPath(lhs) == normalizedPath(rhs)
+    }
+
+    /// Finder-style upward navigation should leave the folder we just left
+    /// selected in its parent, including when that folder has no children.
+    private func selectCurrentDirectoryWhenReturningToParent(_ destination: URL?) {
+        guard let destination, isSameFileURL(destination, parentURL) else { return }
+        pendingSelectionURL = viewModel.currentDirectory
     }
 
     private func selectFilenameStem(for item: FileItem) {
