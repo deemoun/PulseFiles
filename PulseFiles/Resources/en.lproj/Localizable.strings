@@ -297,3 +297,16 @@
 "macOS controls access to protected locations. PulseFiles cannot silently grant itself Full Disk Access or other broad privacy permissions; use System Settings if you need to review or recover those permissions." = "macOS controls access to protected locations. PulseFiles cannot silently grant itself Full Disk Access or other broad privacy permissions; use System Settings if you need to review or recover those permissions.";
 "Could Not Grant Folder Access" = "Could Not Grant Folder Access";
 "PulseFiles could not create a secure folder-access bookmark. No additional folder access was granted. %@" = "PulseFiles could not create a secure folder-access bookmark. No additional folder access was granted. %@";
+"Accessible. PulseFiles completed a minimal folder read." = "Accessible. PulseFiles completed a minimal folder read.";
+"Ask macOS for access to %@ when needed." = "Ask macOS for access to %@ when needed.";
+"Denied or unavailable. Verify the folder exists and review access in System Settings if needed." = "Denied or unavailable. Verify the folder exists and review access in System Settings if needed.";
+"Experimental sandbox mode blocks this folder unless it has a separate folder-access grant." = "Experimental sandbox mode blocks this folder unless it has a separate folder-access grant.";
+"Files & Folders Access" = "Files & Folders Access";
+"Open macOS privacy settings to review Files & Folders access." = "Open macOS privacy settings to review Files & Folders access.";
+"Open Privacy Settings" = "Open Privacy Settings";
+"Request Access" = "Request Access";
+"Request access to %@" = "Request access to %@";
+"Requires review in System Settings. PulseFiles cannot change this privacy decision." = "Requires review in System Settings. PulseFiles cannot change this privacy decision.";
+"Security-scoped bookmarks from Grant Folder Access… are separate from macOS Files & Folders privacy status." = "Security-scoped bookmarks from Grant Folder Access… are separate from macOS Files & Folders privacy status.";
+"Select a folder to ask macOS for access when it is needed for dual-pane browsing or confirmed file operations. PulseFiles cannot grant Full Disk Access or change a macOS privacy decision itself." = "Select a folder to ask macOS for access when it is needed for dual-pane browsing or confirmed file operations. PulseFiles cannot grant Full Disk Access or change a macOS privacy decision itself.";
+"Selecting Request Access asks macOS for access when needed." = "Selecting Request Access asks macOS for access when needed.";

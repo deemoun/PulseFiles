@@ -39,5 +39,11 @@
     </array>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>PulseFiles uses dual-pane browsing and confirmed file operations to safely view and manage items you select on your Desktop.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>PulseFiles uses dual-pane browsing and confirmed file operations to safely view and manage documents you select.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>PulseFiles uses dual-pane browsing and confirmed file operations to safely view and manage downloads you select.</string>
 </dict>
 </plist>

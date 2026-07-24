@@ -64,6 +64,8 @@ final class SettingsViewController: NSViewController {
     private var selectedCategory: Category = .general
     private let accessPolicy = SandboxFileAccessPolicy.current
     private let accessGrantService = FolderAccessGrantService.shared
+    private let standardFolderAccessService = StandardFolderAccessService()
+    private var standardFolderAccessStates: [StandardFolder: StandardFolderAccessState] = [:]
 
     init(settings: SettingsService = SettingsService()) {
         self.settings = settings
@@ -295,7 +297,7 @@ final class SettingsViewController: NSViewController {
                     views: [folderAccessGrantsView()]
                 ),
                 settingsSection(
-                    title: "macOS Privacy Permissions".localized,
+                    title: "Files & Folders Access".localized,
                     views: [privacyPermissionsExplanationView()]
                 )
             ]
@@ -341,6 +343,9 @@ final class SettingsViewController: NSViewController {
     }
 
     private func folderAccessGrantsView() -> NSView {
+        let explanation = NSTextField(wrappingLabelWithString: "Security-scoped bookmarks from Grant Folder Access… are separate from macOS Files & Folders privacy status.".localized)
+        explanation.textColor = .secondaryLabelColor
+        explanation.isSelectable = true
         let grants = accessGrantService.grants
         let rows = NSStackView()
         rows.orientation = .vertical
@@ -393,7 +398,7 @@ final class SettingsViewController: NSViewController {
         let controls = NSStackView(views: [grant, refresh])
         controls.orientation = .horizontal
         controls.spacing = 8
-        let stack = NSStackView(views: [rows, controls])
+        let stack = NSStackView(views: [explanation, rows, controls])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -402,10 +407,61 @@ final class SettingsViewController: NSViewController {
     }
 
     private func privacyPermissionsExplanationView() -> NSView {
-        let message = "macOS controls access to protected locations. PulseFiles cannot silently grant itself Full Disk Access or other broad privacy permissions; use System Settings if you need to review or recover those permissions.".localized
-        let label = NSTextField(wrappingLabelWithString: message)
-        label.textColor = .secondaryLabelColor
-        return label
+        let message = NSTextField(wrappingLabelWithString: "Select a folder to ask macOS for access when it is needed for dual-pane browsing or confirmed file operations. PulseFiles cannot grant Full Disk Access or change a macOS privacy decision itself.".localized)
+        message.textColor = .secondaryLabelColor
+        message.isSelectable = true
+        let rows = NSStackView()
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 10
+        for folder in StandardFolder.allCases {
+            let row = standardFolderAccessRow(for: folder)
+            rows.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+        }
+        let recovery = NSButton(title: "Open Privacy Settings".localized, target: self, action: #selector(openPrivacySettings(_:)))
+        recovery.toolTip = "Open macOS privacy settings to review Files & Folders access.".localized
+        let stack = NSStackView(views: [message, rows, recovery])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        rows.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return stack
+    }
+
+    private func standardFolderAccessRow(for folder: StandardFolder) -> NSView {
+        let title = NSTextField(labelWithString: folder.title)
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        let status = NSTextField(wrappingLabelWithString: standardFolderAccessMessage(for: folder))
+        status.textColor = .secondaryLabelColor
+        status.isSelectable = true
+        let request = NSButton(title: "Request Access".localized, target: self, action: #selector(requestStandardFolderAccess(_:)))
+        request.identifier = NSUserInterfaceItemIdentifier(folder.rawValue)
+        request.setAccessibilityLabel("Request access to %@".localized(with: folder.title))
+        request.toolTip = "Ask macOS for access to %@ when needed.".localized(with: folder.title)
+        let sandboxBlocked = accessPolicy.isEnabled && !accessPolicy.canAttemptProtectedFolderAccess(standardFolderAccessService.url(for: folder) ?? accessPolicy.rootURL)
+        request.isEnabled = !sandboxBlocked
+        let text = NSStackView(views: [title, status])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 3
+        let row = NSStackView(views: [text, request])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        request.setContentHuggingPriority(.required, for: .horizontal)
+        return row
+    }
+
+    private func standardFolderAccessMessage(for folder: StandardFolder) -> String {
+        switch standardFolderAccessStates[folder] {
+        case .accessible: return "Accessible. PulseFiles completed a minimal folder read.".localized
+        case .deniedOrUnavailable: return "Denied or unavailable. Verify the folder exists and review access in System Settings if needed.".localized
+        case .requiresSystemSettingsReview: return "Requires review in System Settings. PulseFiles cannot change this privacy decision.".localized
+        case .blockedByExperimentalSandbox: return "Experimental sandbox mode blocks this folder unless it has a separate folder-access grant.".localized
+        case nil: return "Selecting Request Access asks macOS for access when needed.".localized
+        }
     }
 
     private func permissionStatusView(title: String, message: String) -> NSView {
@@ -734,6 +790,17 @@ final class SettingsViewController: NSViewController {
     @objc private func chooseRightStartupDirectory(_ sender: Any?) { chooseDirectory { [weak self] url in self?.settings.startupRightDirectory = url; self?.updateDirectoryFields(); self?.onChange?() } }
     @objc private func resetLeftStartupDirectory(_ sender: Any?) { settings.startupLeftDirectory = nil; updateDirectoryFields(); onChange?() }
     @objc private func resetRightStartupDirectory(_ sender: Any?) { settings.startupRightDirectory = nil; updateDirectoryFields(); onChange?() }
+
+    @objc private func requestStandardFolderAccess(_ sender: NSButton) {
+        guard let identifier = sender.identifier?.rawValue, let folder = StandardFolder(rawValue: identifier) else { return }
+        standardFolderAccessStates[folder] = standardFolderAccessService.requestAccess(for: folder)
+        rebuildSettingsPage()
+    }
+
+    @objc private func openPrivacySettings(_ sender: Any?) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") else { return }
+        NSWorkspace.shared.open(url)
+    }
 
     private func chooseDirectory(completion: @escaping (URL) -> Void) {
         let panel = NSOpenPanel()

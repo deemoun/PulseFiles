@@ -218,6 +218,8 @@ final class SettingsPermissionsCategoryTests: XCTestCase {
         XCTAssertTrue(SettingsViewController.Category.allCases.contains(.permissions))
         XCTAssertEqual(SettingsViewController.Category.permissions.symbolName, "lock.shield")
         XCTAssertEqual(SettingsViewController.Category.permissions.title, "Permissions".localized)
+        XCTAssertEqual("Files & Folders Access".localized, "Files & Folders Access")
+        XCTAssertEqual("Request Access".localized, "Request Access")
     }
 }
 #endif
