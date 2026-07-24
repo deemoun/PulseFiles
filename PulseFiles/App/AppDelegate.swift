@@ -227,14 +227,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func fileMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "File".localized)
-        submenu.addItem(menuItem("New File".localized, action: #selector(MainWindowViewController.menuNewFile(_:)), key: "n", modifiers: [.command, .shift]))
-        submenu.addItem(menuItem("New Folder".localized, action: #selector(MainWindowViewController.menuNewFolder(_:)), key: "n", modifiers: [.command]))
-        submenu.addItem(menuItem("Rename".localized, action: #selector(MainWindowViewController.menuRename(_:)), key: "\r", modifiers: []))
-        submenu.addItem(menuItem("Duplicate".localized, action: #selector(MainWindowViewController.menuDuplicate(_:)), key: "d", modifiers: [.command]))
-        submenu.addItem(menuItem("Get Info".localized, action: #selector(MainWindowViewController.menuGetInfo(_:)), key: "i", modifiers: [.command]))
-        submenu.addItem(menuItem("Open With…".localized, action: #selector(MainWindowViewController.menuOpenWith(_:)), key: "", modifiers: []))
+        submenu.addItem(menuItem("New File".localized, action: #selector(MainWindowViewController.menuNewFile(_:)), command: .newFile))
+        submenu.addItem(menuItem("New Folder".localized, action: #selector(MainWindowViewController.menuNewFolder(_:)), command: .newFolder))
+        submenu.addItem(menuItem("Rename".localized, action: #selector(MainWindowViewController.menuRename(_:)), command: .rename))
+        submenu.addItem(menuItem("Duplicate".localized, action: #selector(MainWindowViewController.menuDuplicate(_:)), command: .duplicate))
+        submenu.addItem(menuItem("Get Info".localized, action: #selector(MainWindowViewController.menuGetInfo(_:)), command: .getInfo))
+        submenu.addItem(menuItem("Open With…".localized, action: #selector(MainWindowViewController.menuOpenWith(_:)), command: .openWith))
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Move to Trash".localized, action: #selector(MainWindowViewController.menuMoveToTrash(_:)), key: "\u{8}", modifiers: [.command]))
+        submenu.addItem(menuItem("Move to Trash".localized, action: #selector(MainWindowViewController.menuMoveToTrash(_:)), command: .trash))
         item.submenu = submenu
         return item
     }
@@ -242,18 +242,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func editMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Edit".localized)
-        submenu.addItem(menuItem("Undo".localized, action: #selector(MainWindowViewController.menuUndo(_:)), key: "z", modifiers: [.command]))
+        submenu.addItem(menuItem("Undo".localized, action: #selector(MainWindowViewController.menuUndo(_:)), command: .undo))
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Copy".localized, action: #selector(MainWindowViewController.menuCopyToClipboard(_:)), key: "c", modifiers: [.command]))
-        submenu.addItem(menuItem("Cut".localized, action: #selector(MainWindowViewController.menuCutToClipboard(_:)), key: "x", modifiers: [.command]))
-        submenu.addItem(menuItem("Paste".localized, action: #selector(MainWindowViewController.menuPasteFromClipboard(_:)), key: "v", modifiers: [.command]))
-        submenu.addItem(menuItem("Select All".localized, action: #selector(MainWindowViewController.menuSelectAll(_:)), key: "a", modifiers: [.command]))
-        submenu.addItem(menuItem("Invert Selection".localized, action: #selector(MainWindowViewController.menuInvertSelection(_:)), key: "i", modifiers: [.command, .shift]))
+        submenu.addItem(menuItem("Copy".localized, action: #selector(MainWindowViewController.menuCopyToClipboard(_:)), command: .copyToClipboard))
+        submenu.addItem(menuItem("Cut".localized, action: #selector(MainWindowViewController.menuCutToClipboard(_:)), command: .cutToClipboard))
+        submenu.addItem(menuItem("Paste".localized, action: #selector(MainWindowViewController.menuPasteFromClipboard(_:)), command: .pasteFromClipboard))
+        submenu.addItem(menuItem("Select All".localized, action: #selector(MainWindowViewController.menuSelectAll(_:)), command: .selectAll))
+        submenu.addItem(menuItem("Invert Selection".localized, action: #selector(MainWindowViewController.menuInvertSelection(_:)), command: .invertSelection))
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Cancel Operation".localized, action: #selector(MainWindowViewController.menuCancelOperation(_:)), key: ".", modifiers: [.command]))
+        submenu.addItem(menuItem("Cancel Operation".localized, action: #selector(MainWindowViewController.menuCancelOperation(_:)), command: .cancelOperation))
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Copy to Opposite Pane".localized, action: #selector(MainWindowViewController.menuCopy(_:)), key: "", modifiers: []))
-        submenu.addItem(menuItem("Move to Opposite Pane".localized, action: #selector(MainWindowViewController.menuMove(_:)), key: "m", modifiers: [.command]))
+        submenu.addItem(menuItem("Copy to Opposite Pane".localized, action: #selector(MainWindowViewController.menuCopy(_:)), command: .copy))
+        submenu.addItem(menuItem("Move to Opposite Pane".localized, action: #selector(MainWindowViewController.menuMove(_:)), command: .move))
         item.submenu = submenu
         return item
     }
@@ -261,29 +261,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func viewMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "View".localized)
-        submenu.addItem(menuItem("Refresh".localized, action: #selector(MainWindowViewController.menuRefresh(_:)), key: "r", modifiers: [.command]))
-        submenu.addItem(menuItem("Reveal in Finder".localized, action: #selector(MainWindowViewController.menuReveal(_:)), key: "r", modifiers: [.command, .shift]))
-        submenu.addItem(menuItem("Show Hidden Files".localized, action: #selector(MainWindowViewController.menuToggleHiddenFiles(_:)), key: ".", modifiers: [.command, .shift]))
+        submenu.addItem(menuItem("Refresh".localized, action: #selector(MainWindowViewController.menuRefresh(_:)), command: .refresh))
+        submenu.addItem(menuItem("Reveal in Finder".localized, action: #selector(MainWindowViewController.menuReveal(_:)), command: .reveal))
+        submenu.addItem(menuItem("Show Hidden Files".localized, action: #selector(MainWindowViewController.menuToggleHiddenFiles(_:)), command: .toggleHiddenFiles))
         submenu.addItem(.separator())
         let sortSubmenu = NSMenu(title: "Sort By".localized)
-        sortSubmenu.addItem(menuItem("Name".localized, action: #selector(MainWindowViewController.menuSortByName(_:)), key: "", modifiers: []))
-        sortSubmenu.addItem(menuItem("Kind".localized, action: #selector(MainWindowViewController.menuSortByKind(_:)), key: "", modifiers: []))
-        sortSubmenu.addItem(menuItem("Size".localized, action: #selector(MainWindowViewController.menuSortBySize(_:)), key: "", modifiers: []))
-        sortSubmenu.addItem(menuItem("Modified".localized, action: #selector(MainWindowViewController.menuSortByModified(_:)), key: "", modifiers: []))
+        sortSubmenu.addItem(menuItem("Name".localized, action: #selector(MainWindowViewController.menuSortByName(_:)), command: .sortByName))
+        sortSubmenu.addItem(menuItem("Kind".localized, action: #selector(MainWindowViewController.menuSortByKind(_:)), command: .sortByKind))
+        sortSubmenu.addItem(menuItem("Size".localized, action: #selector(MainWindowViewController.menuSortBySize(_:)), command: .sortBySize))
+        sortSubmenu.addItem(menuItem("Modified".localized, action: #selector(MainWindowViewController.menuSortByModified(_:)), command: .sortByModified))
         let sortItem = NSMenuItem(title: "Sort By".localized, action: nil, keyEquivalent: "")
         sortItem.submenu = sortSubmenu
         submenu.addItem(sortItem)
 
         let orderSubmenu = NSMenu(title: "Sort Direction".localized)
-        orderSubmenu.addItem(menuItem("Ascending".localized, action: #selector(MainWindowViewController.menuSortAscending(_:)), key: "", modifiers: []))
-        orderSubmenu.addItem(menuItem("Descending".localized, action: #selector(MainWindowViewController.menuSortDescending(_:)), key: "", modifiers: []))
+        orderSubmenu.addItem(menuItem("Ascending".localized, action: #selector(MainWindowViewController.menuSortAscending(_:)), command: .sortAscending))
+        orderSubmenu.addItem(menuItem("Descending".localized, action: #selector(MainWindowViewController.menuSortDescending(_:)), command: .sortDescending))
         let orderItem = NSMenuItem(title: "Sort Direction".localized, action: nil, keyEquivalent: "")
         orderItem.submenu = orderSubmenu
         submenu.addItem(orderItem)
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Toggle Experimental Terminal".localized, action: #selector(MainWindowViewController.menuToggleTerminal(_:)), key: "`", modifiers: [.command]))
-        submenu.addItem(menuItem("Toggle Single Pane".localized, action: #selector(MainWindowViewController.menuTogglePaneLayout(_:)), key: "t", modifiers: [.command]))
-        submenu.addItem(menuItem("Toggle Sidebar".localized, action: #selector(MainWindowViewController.menuToggleSidebar(_:)), key: "s", modifiers: [.command, .option]))
+        submenu.addItem(menuItem("Toggle Experimental Terminal".localized, action: #selector(MainWindowViewController.menuToggleTerminal(_:)), command: .toggleTerminal))
+        submenu.addItem(menuItem("Toggle Single Pane".localized, action: #selector(MainWindowViewController.menuTogglePaneLayout(_:)), command: .togglePaneLayout))
+        submenu.addItem(menuItem("Toggle Sidebar".localized, action: #selector(MainWindowViewController.menuToggleSidebar(_:)), command: .toggleSidebar))
         item.submenu = submenu
         return item
     }
@@ -291,15 +291,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func goMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Go".localized)
-        submenu.addItem(menuItem("Back".localized, action: #selector(MainWindowViewController.menuBack(_:)), key: "[", modifiers: [.command]))
-        submenu.addItem(menuItem("Forward".localized, action: #selector(MainWindowViewController.menuForward(_:)), key: "]", modifiers: [.command]))
-        submenu.addItem(menuItem("Parent Folder".localized, action: #selector(MainWindowViewController.menuParent(_:)), key: "\u{F700}", modifiers: [.command]))
-        submenu.addItem(menuItem("Go to Folder…".localized, action: #selector(MainWindowViewController.menuGoToFolder(_:)), key: "g", modifiers: [.command, .shift]))
-        submenu.addItem(menuItem("Search This Folder…".localized, action: #selector(MainWindowViewController.menuSearchDescendants(_:)), key: "f", modifiers: [.command, .shift]))
+        submenu.addItem(menuItem("Back".localized, action: #selector(MainWindowViewController.menuBack(_:)), command: .back))
+        submenu.addItem(menuItem("Forward".localized, action: #selector(MainWindowViewController.menuForward(_:)), command: .forward))
+        submenu.addItem(menuItem("Parent Folder".localized, action: #selector(MainWindowViewController.menuParent(_:)), command: .parent))
+        submenu.addItem(menuItem("Go to Folder…".localized, action: #selector(MainWindowViewController.menuGoToFolder(_:)), command: .goToFolder))
+        submenu.addItem(menuItem("Search This Folder…".localized, action: #selector(MainWindowViewController.menuSearchDescendants(_:)), command: .searchDescendants))
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Home".localized, action: #selector(MainWindowViewController.menuHome(_:)), key: "h", modifiers: [.command, .shift]))
-        submenu.addItem(menuItem("Downloads".localized, action: #selector(MainWindowViewController.menuDownloads(_:)), key: "l", modifiers: [.command, .option]))
-        submenu.addItem(menuItem("Applications".localized, action: #selector(MainWindowViewController.menuApplications(_:)), key: "a", modifiers: [.command, .shift]))
+        submenu.addItem(menuItem("Home".localized, action: #selector(MainWindowViewController.menuHome(_:)), command: .home))
+        submenu.addItem(menuItem("Downloads".localized, action: #selector(MainWindowViewController.menuDownloads(_:)), command: .downloads))
+        submenu.addItem(menuItem("Applications".localized, action: #selector(MainWindowViewController.menuApplications(_:)), command: .applications))
         item.submenu = submenu
         return item
     }
@@ -307,9 +307,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func commandMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Command".localized)
-        submenu.addItem(menuItem("Switch Pane".localized, action: #selector(MainWindowViewController.menuSwitchPane(_:)), key: "\t", modifiers: []))
-        submenu.addItem(menuItem("Focus Left Pane".localized, action: #selector(MainWindowViewController.menuFocusLeftPane(_:)), key: "\u{F702}", modifiers: [.command, .shift]))
-        submenu.addItem(menuItem("Focus Right Pane".localized, action: #selector(MainWindowViewController.menuFocusRightPane(_:)), key: "\u{F703}", modifiers: [.command, .shift]))
+        submenu.addItem(menuItem("Switch Pane".localized, action: #selector(MainWindowViewController.menuSwitchPane(_:)), command: .switchPane))
+        submenu.addItem(menuItem("Focus Left Pane".localized, action: #selector(MainWindowViewController.menuFocusLeftPane(_:)), command: .focusLeftPane))
+        submenu.addItem(menuItem("Focus Right Pane".localized, action: #selector(MainWindowViewController.menuFocusRightPane(_:)), command: .focusRightPane))
         item.submenu = submenu
         return item
     }
@@ -337,7 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(menuItem("Privacy Policy".localized, action: #selector(openPrivacyPolicy(_:)), key: "", modifiers: []))
         submenu.addItem(menuItem("Report an Issue".localized, action: #selector(reportIssue(_:)), key: "", modifiers: []))
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Export Diagnostics…".localized, action: #selector(MainWindowViewController.menuExportDiagnostics(_:)), key: "", modifiers: []))
+        submenu.addItem(menuItem("Export Diagnostics…".localized, action: #selector(MainWindowViewController.menuExportDiagnostics(_:)), command: .exportDiagnostics))
         item.submenu = submenu
         return item
     }
@@ -375,6 +375,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func reportIssue(_ sender: Any?) {
         NSWorkspace.shared.open(Self.issueReportingURL)
+    }
+
+    private func menuItem(_ title: String, action: Selector, command: MainCommand) -> NSMenuItem {
+        let shortcut = MainCommandShortcutRegistry.shortcut(for: command)
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut.keyEquivalent)
+        item.keyEquivalentModifierMask = shortcut.modifierFlags
+        item.target = nil
+        return item
     }
 
     private func menuItem(_ title: String, action: Selector, key: String, modifiers: NSEvent.ModifierFlags) -> NSMenuItem {

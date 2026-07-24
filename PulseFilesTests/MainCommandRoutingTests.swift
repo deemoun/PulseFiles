@@ -367,3 +367,36 @@ private extension NSMenu {
         }
     }
 }
+
+extension MainCommandRoutingTests {
+    func testRegistryContainsEveryMainCommand() {
+        XCTAssertEqual(Set(MainCommandShortcutRegistry.shortcuts.map(\.command)), Set(MainCommand.allCases))
+    }
+
+    func testEveryRegisteredKeyboardShortcutResolvesToItsCommand() {
+        for shortcut in MainCommandShortcutRegistry.shortcuts where MainCommandShortcutRegistry.hasKeyboardShortcut(shortcut) {
+            let result = router.commandForKeyDown(
+                keyCode: shortcut.keyCode,
+                command: shortcut.modifierFlags.contains(.command),
+                shift: shortcut.modifierFlags.contains(.shift),
+                option: shortcut.modifierFlags.contains(.option),
+                control: shortcut.modifierFlags.contains(.control),
+                isTextInputFocused: shortcut.scope == .textInputSafe
+            )
+            XCTAssertEqual(result, shortcut.command, "Expected \(shortcut.displayLabel) to resolve to \(shortcut.command).")
+        }
+    }
+
+    func testEveryCommandBarShortcutHasARegisteredHandler() {
+        for action in CommandBarAction.allCases {
+            let command = MainCommand(commandBarAction: action)
+            XCTAssertFalse(action.shortcut.isEmpty, "\(action) needs a displayed shortcut.")
+            XCTAssertTrue(
+                MainCommandShortcutRegistry.shortcuts.contains(where: {
+                    $0.command == command && MainCommandShortcutRegistry.hasKeyboardShortcut($0)
+                }),
+                "\(action) displays \(action.shortcut), but \(command) has no keyboard handler."
+            )
+        }
+    }
+}

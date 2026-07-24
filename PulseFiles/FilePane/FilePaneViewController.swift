@@ -1220,48 +1220,8 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         onActivate?()
     }
 
-    func fileTableViewDidRequestOpen(_ tableView: FileTableView) {
-        openFocusedItem()
-    }
-
-    func fileTableViewDidRequestQuickLook(_ tableView: FileTableView) {
-        onCommand?(.quickLook)
-    }
-
-    func fileTableViewDidRequestParent(_ tableView: FileTableView) {
-        onCommand?(.parent)
-    }
-
-    func fileTableViewDidRequestBack(_ tableView: FileTableView) {
-        onCommand?(.back)
-    }
-
-    func fileTableViewDidRequestForward(_ tableView: FileTableView) {
-        onCommand?(.forward)
-    }
-
     func fileTableView(_ tableView: FileTableView, didRequestLocation url: URL) {
         navigate(to: url)
-    }
-
-    func fileTableViewDidRequestToggleHidden(_ tableView: FileTableView) {
-        onCommand?(.toggleHiddenFiles)
-    }
-
-    func fileTableViewDidRequestTerminalToggle(_ tableView: FileTableView) {
-        onCommand?(.toggleTerminal)
-    }
-
-    func fileTableViewDidRequestNewFolder(_ tableView: FileTableView) {
-        onCommand?(.newFolder)
-    }
-
-    func fileTableViewDidRequestNewFile(_ tableView: FileTableView) {
-        onCommand?(.newFile)
-    }
-
-    func fileTableViewDidRequestPaneSwitch(_ tableView: FileTableView) {
-        onCommand?(.switchPane)
     }
 
     func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu? {
