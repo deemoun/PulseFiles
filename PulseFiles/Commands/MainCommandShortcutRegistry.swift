@@ -54,8 +54,6 @@ enum MainCommandShortcutRegistry {
         shortcut(.downloads, "l", 37, [.command, .option], "⌥⌘L", .outsideTextInput),
         shortcut(.applications, "a", 0, [.command, .shift], "⌘⇧A", .outsideTextInput),
         shortcut(.switchPane, "\t", 48, [], "Tab", .outsideTextInput),
-        shortcut(.focusLeftPane, "\u{F702}", 123, [.command, .shift], "⌘⇧←", .outsideTextInput),
-        shortcut(.focusRightPane, "\u{F703}", 124, [.command, .shift], "⌘⇧→", .outsideTextInput),
         shortcut(.cancelOperation, ".", 47, [.command], "⌘.", .textInputSafe),
         shortcut(.debugLogs, "", 65_535, [], ""), shortcut(.exportDiagnostics, "", 65_535, [], ""),
         shortcut(.open, "", 36, [], "Return", .outsideTextInput),

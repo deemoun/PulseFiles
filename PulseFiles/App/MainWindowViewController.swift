@@ -574,18 +574,6 @@ final class MainWindowViewController: NSViewController {
                 rebuildPaneArrangement()
                 updateActivePane()
             }
-        case .focusLeftPane:
-            activePaneID = .left
-            if isSinglePaneMode {
-                rebuildPaneArrangement()
-                updateActivePane()
-            }
-        case .focusRightPane:
-            activePaneID = .right
-            if isSinglePaneMode {
-                rebuildPaneArrangement()
-                updateActivePane()
-            }
         case .cancelOperation:
             cancelActiveFileOperation()
         case .debugLogs:
@@ -2274,8 +2262,6 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuDownloads(_ sender: Any?) { performCommand(.downloads) }
     @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
-    @objc func menuFocusLeftPane(_ sender: Any?) { performCommand(.focusLeftPane) }
-    @objc func menuFocusRightPane(_ sender: Any?) { performCommand(.focusRightPane) }
     @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
     @objc func menuShowDebugLogs(_ sender: Any?) { performCommand(.debugLogs) }
@@ -2418,8 +2404,6 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuDownloads(_:)): self = .downloads
         case #selector(MainWindowViewController.menuApplications(_:)): self = .applications
         case #selector(MainWindowViewController.menuSwitchPane(_:)): self = .switchPane
-        case #selector(MainWindowViewController.menuFocusLeftPane(_:)): self = .focusLeftPane
-        case #selector(MainWindowViewController.menuFocusRightPane(_:)): self = .focusRightPane
         case #selector(MainWindowViewController.menuCancelOperation(_:)): self = .cancelOperation
         case #selector(MainWindowViewController.menuShowDebugLogs(_:)): self = .debugLogs
         case #selector(MainWindowViewController.menuExportDiagnostics(_:)): self = .exportDiagnostics

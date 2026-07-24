@@ -308,8 +308,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Command".localized)
         submenu.addItem(menuItem("Switch Pane".localized, action: #selector(MainWindowViewController.menuSwitchPane(_:)), command: .switchPane))
-        submenu.addItem(menuItem("Focus Left Pane".localized, action: #selector(MainWindowViewController.menuFocusLeftPane(_:)), command: .focusLeftPane))
-        submenu.addItem(menuItem("Focus Right Pane".localized, action: #selector(MainWindowViewController.menuFocusRightPane(_:)), command: .focusRightPane))
         item.submenu = submenu
         return item
     }
