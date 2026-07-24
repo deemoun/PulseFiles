@@ -88,10 +88,12 @@ final class TerminalViewController: NSViewController {
         let process = processFactory(); let scope = accessPolicy.beginAccess(to: [suggestedWorkingDirectory])
         process.configure(executableURL: URL(fileURLWithPath: terminalService.shellPath), arguments: ["-i"], environment: terminalService.defaultEnvironment.merging(["TERM": "xterm-256color"], uniquingKeysWith: { _, new in new }), currentDirectoryURL: suggestedWorkingDirectory)
         process.outputHandler = { [weak self] data in self?.queueOutput(String(decoding: data, as: UTF8.self)) }
-        process.terminationHandler = { [weak self, weak process] in DispatchQueue.main.async {
-            guard let self, let process, self.runningProcess === process else { return }
-            self.runningProcess = nil; self.endRunningAccessScope(); self.flushBufferedOutput(); self.appendLine(process.terminationStatus == 0 ? "[shell exited]" : "[exit \(process.terminationStatus)]")
-        }}
+        process.terminationHandler = { [weak self] terminatedProcess in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.runningProcess === terminatedProcess else { return }
+                self.runningProcess = nil; self.endRunningAccessScope(); self.flushBufferedOutput(); self.appendLine(terminatedProcess.terminationStatus == 0 ? "[shell exited]" : "[exit \(terminatedProcess.terminationStatus)]")
+            }
+        }
         runningProcess = process; runningAccessScope = scope
         do { try process.run(); viewDidLayout() } catch { runningProcess = nil; endRunningAccessScope(); appendLine("Could not start terminal: \(error.localizedDescription)") }
     }

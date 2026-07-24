@@ -1512,7 +1512,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
                     modified
                 )
                 alert.addButton(withTitle: "OK".localized)
-                if let window = self.view.window { alert.beginSheetModal(for: window) } else { alert.runModal() }
+                if let window = self.view.window {
+                    alert.beginSheetModal(for: window) { _ in }
+                } else {
+                    _ = alert.runModal()
+                }
             } catch {
                 self?.showError(message: "Information Unavailable".localized, detail: error.localizedDescription)
             }
