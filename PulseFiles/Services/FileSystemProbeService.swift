@@ -25,11 +25,9 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
 
     init(fileManager: FileManager = .default, scheduler: FileSystemOperationScheduler = .shared) {
         self.scheduler = scheduler
-        existsOperation = { fileManager.fileExists(atPath: $0.path) }
-        directoryOperation = { url in
-            var isDirectory = ObjCBool(false)
-            return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
-        }
+        let operations = FileManagerProbeOperations(fileManager: fileManager)
+        existsOperation = { operations.exists(at: $0) }
+        directoryOperation = { operations.isDirectory(at: $0) }
         volumeOperation = { url in
             let values = try? url.resourceValues(forKeys: [.volumeURLKey])
             return (values?.allValues[.volumeURLKey] as? URL)?.standardizedFileURL.path
@@ -87,6 +85,27 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
             // caller stops awaiting it immediately.
             cancellation.cancel()
         }
+    }
+}
+
+/// `FileManager` is not annotated as `Sendable`, although these read-only
+/// queries are used concurrently by the probe scheduler. This wrapper keeps
+/// that interoperability boundary explicit rather than capturing FileManager
+/// directly in the scheduler's `@Sendable` closures.
+private final class FileManagerProbeOperations: @unchecked Sendable {
+    private let fileManager: FileManager
+
+    init(fileManager: FileManager) {
+        self.fileManager = fileManager
+    }
+
+    func exists(at url: URL) -> Bool {
+        fileManager.fileExists(atPath: url.path)
+    }
+
+    func isDirectory(at url: URL) -> Bool {
+        var isDirectory = ObjCBool(false)
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 }
 

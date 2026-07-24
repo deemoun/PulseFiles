@@ -202,10 +202,20 @@ final class FileOperationProgressWindowController: NSWindowController {
 
     private func startWatchdog() {
         watchdog?.invalidate()
-        watchdog = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, Date().timeIntervalSince(self.lastProgressDate) >= self.noProgressInterval else { return }
-            self.offerStopWaiting()
-        }
+        let timer = Timer(
+            timeInterval: 1,
+            target: self,
+            selector: #selector(watchdogDidFire(_:)),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(timer, forMode: .common)
+        watchdog = timer
+    }
+
+    @objc private func watchdogDidFire(_ timer: Timer) {
+        guard Date().timeIntervalSince(lastProgressDate) >= noProgressInterval else { return }
+        offerStopWaiting()
     }
 
     private func offerStopWaiting() {
