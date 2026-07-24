@@ -42,7 +42,7 @@ final class TerminalViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad(); buildLayout()
         terminalView.onInput = { [weak self] data in self?.sendInput(data) }
-        appendLine("PulseFiles Experimental Terminal")
+        appendLine("PulseFiles Beta Terminal".localized)
         appendLine("Warning: shell commands can modify or delete files.")
     }
     override func viewDidLayout() {
@@ -80,7 +80,7 @@ final class TerminalViewController: NSViewController {
         runningProcess?.write(data)
     }
     private func startSession() {
-        guard isShellInteractionAllowedProvider?() ?? true else { appendLine("Acknowledge the Experimental Terminal warning before running shell commands."); return }
+        guard isShellInteractionAllowedProvider?() ?? true else { appendLine("Acknowledge the Beta Terminal warning before running shell commands.".localized); return }
         if let workingDirectoryProvider { suggestedWorkingDirectory = workingDirectoryProvider() }
         do { try accessPolicy.validateAccess(to: suggestedWorkingDirectory) } catch {
             appendLine("Could not start terminal: working directory is not authorized."); return
