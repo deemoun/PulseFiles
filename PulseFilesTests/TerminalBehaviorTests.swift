@@ -135,6 +135,24 @@ final class TerminalBehaviorTests: XCTestCase {
     }
 
     @MainActor
+    func testResetSessionStopsCommandAndClearsPriorTerminalOutput() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(processFactory: { process })
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.runCommandForTesting("sleep 10")
+        controller.receiveOutputForTesting("previous command output\n")
+        controller.resetSession()
+
+        XCTAssertTrue(process.didTerminate)
+        XCTAssertFalse(controller.terminalTextForTesting.contains("sleep 10"))
+        XCTAssertFalse(controller.terminalTextForTesting.contains("previous command output"))
+        XCTAssertFalse(controller.terminalTextForTesting.contains("[terminated]"))
+        XCTAssertTrue(controller.terminalTextForTesting.hasSuffix("$ "))
+    }
+
+    @MainActor
     func testTerminalCommandDoesNotLaunchBeforeFirstUseWarningAcknowledgement() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(processFactory: { process }, accessPolicy: sandboxFixture.policy)
