@@ -55,6 +55,21 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertNil(makeSettings().startupRightDirectory)
     }
 
+    func testInitializationResolvesStoredFolderAccessBookmarksOnce() throws {
+        let grantedFolder = try settingsJSONFixture.folder("Granted")
+        let bookmarkData = Data("stored-bookmark".utf8)
+        let storedGrants = [FolderAccessGrant(url: grantedFolder, bookmarkData: bookmarkData)]
+        fixture.defaults.set(try JSONEncoder().encode(storedGrants), forKey: FolderAccessGrantService.defaultsKey)
+        let resolver = FolderAccessBookmarkResolutionSpy(resolvedURL: grantedFolder)
+
+        _ = SettingsService(
+            defaults: fixture.defaults,
+            folderAccessBookmarkResolver: resolver
+        )
+
+        XCTAssertEqual(resolver.resolveBookmarkDataCallCount, 1)
+    }
+
 
     func testNormalDefaultsFallBackToHomeWhenPreferredDirectoryIsNotAccessible() throws {
         let temporaryDirectory = try TemporaryDirectoryFixture(named: "SettingsServiceHomeFallbackTests", testCase: self)
@@ -389,4 +404,22 @@ final class SettingsServiceTests: XCTestCase {
         )
     }
 
+}
+
+private final class FolderAccessBookmarkResolutionSpy: FolderAccessBookmarkResolving {
+    private let resolvedURL: URL
+    private(set) var resolveBookmarkDataCallCount = 0
+
+    init(resolvedURL: URL) {
+        self.resolvedURL = resolvedURL
+    }
+
+    func makeBookmarkData(for url: URL) throws -> Data {
+        Data(url.path.utf8)
+    }
+
+    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool) {
+        resolveBookmarkDataCallCount += 1
+        return (resolvedURL, false)
+    }
 }
