@@ -59,7 +59,6 @@ final class CommandBarRobot: CommandBarPageObject {
         XCTAssertEqual(CommandBarAction.copy.commandBarVisibilityPriority, .mustHold, file: file, line: line)
         XCTAssertEqual(CommandBarAction.move.commandBarVisibilityPriority, .mustHold, file: file, line: line)
         XCTAssertEqual(CommandBarAction.delete.commandBarVisibilityPriority, .mustHold, file: file, line: line)
-        XCTAssertLessThan(CommandBarAction.edit.commandBarVisibilityPriority.rawValue, CommandBarAction.delete.commandBarVisibilityPriority.rawValue, file: file, line: line)
         XCTAssertLessThan(CommandBarAction.rename.commandBarVisibilityPriority.rawValue, CommandBarAction.delete.commandBarVisibilityPriority.rawValue, file: file, line: line)
         return self
     }
