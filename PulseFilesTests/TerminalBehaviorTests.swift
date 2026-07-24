@@ -94,7 +94,7 @@ final class TerminalBehaviorTests: XCTestCase {
         let warning = service.warningState(settings: settings, accessPolicy: sandboxFixture.unrestrictedPolicy)
 
         XCTAssertFalse(warning.areSandboxRestrictionsEnabled)
-        XCTAssertEqual(warning.messageText, "Experimental Terminal warning".localized)
+        XCTAssertEqual(warning.messageText, "Beta Terminal warning".localized)
         XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("modify or delete files"))
         XCTAssertTrue(warning.informativeText.localizedCaseInsensitiveContains("any locations macOS has authorized for PulseFiles"))
     }
@@ -164,7 +164,7 @@ final class TerminalBehaviorTests: XCTestCase {
 
         XCTAssertFalse(process.didRun)
         XCTAssertNil(process.currentDirectoryURL)
-        XCTAssertTrue(controller.terminalTextForTesting.contains("Acknowledge the Experimental Terminal warning"))
+        XCTAssertTrue(controller.terminalTextForTesting.contains("Acknowledge the Beta Terminal warning"))
     }
 
     @MainActor

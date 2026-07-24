@@ -19,7 +19,7 @@ Use the existing robot names as the stable vocabulary for user-facing surfaces:
 - `FilePaneRobot` covers pane navigation, sorting, filtering, and selection.
 - `CommandBarRobot` covers command-bar action-to-command behavior.
 - `SidebarRobot` covers bookmark and recent-location behavior.
-- `TerminalRobot` covers the experimental terminal settings contract.
+- `TerminalRobot` covers the Beta Terminal settings contract.
 
 Keep robots dependency-injected and sandbox-safe: fixtures should live in temporary
 test directories, fake file-system collaborators are preferred for navigation and

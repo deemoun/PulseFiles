@@ -89,10 +89,10 @@ struct TerminalWarningState: Equatable {
     let isDebugBuild: Bool
 
     var messageText: String {
-        "Experimental Terminal warning".localized
+        "Beta Terminal warning".localized
     }
 
     var informativeText: String {
-        "Experimental Terminal runs shell commands in the selected folder. Shell commands can modify or delete files and may access any locations macOS has authorized for PulseFiles.".localized
+        "Beta Terminal runs shell commands in the selected folder. Shell commands can modify or delete files and may access any locations macOS has authorized for PulseFiles.".localized
     }
 }
