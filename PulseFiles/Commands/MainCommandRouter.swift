@@ -81,10 +81,6 @@ struct MainCommandRouter {
         switch command {
         case .switchPane:
             return .switchPane(to: state.activePaneID.opposite)
-        case .focusLeftPane:
-            return .switchPane(to: .left)
-        case .focusRightPane:
-            return .switchPane(to: .right)
         case .copy, .move:
             guard !state.isSinglePaneMode else {
                 return .disabled(command: command, reason: .noOppositePane)

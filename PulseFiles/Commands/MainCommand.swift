@@ -39,8 +39,6 @@ enum MainCommand: CaseIterable, Equatable {
     case downloads
     case applications
     case switchPane
-    case focusLeftPane
-    case focusRightPane
     case cancelOperation
     case debugLogs
     case exportDiagnostics
