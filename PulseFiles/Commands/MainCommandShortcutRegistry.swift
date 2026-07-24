@@ -19,12 +19,12 @@ struct MainCommandShortcut: Equatable {
 
 enum MainCommandShortcutRegistry {
     static let shortcuts: [MainCommandShortcut] = [
-        shortcut(.open, "", 65_535, [], "F3 / F4"),
+        shortcut(.open, "", 36, [], "F3 / F4", .outsideTextInput),
         shortcut(.openWith, "", 65_535, [], ""),
         shortcut(.quickLook, "", 49, [], "Space", .outsideTextInput),
         shortcut(.newFile, "n", 45, [.command, .shift], "Shift F7", .outsideTextInput),
         shortcut(.newFolder, "n", 45, [.command], "F7", .outsideTextInput),
-        shortcut(.rename, "\r", 36, [], "F2", .outsideTextInput),
+        shortcut(.rename, "", 120, [], "F2", .outsideTextInput),
         shortcut(.duplicate, "d", 2, [.command], "⌘D", .outsideTextInput),
         shortcut(.getInfo, "i", 34, [.command], "⌘I", .outsideTextInput),
         shortcut(.selectAll, "a", 0, [.command], "⌘A", .outsideTextInput),
@@ -56,12 +56,10 @@ enum MainCommandShortcutRegistry {
         shortcut(.switchPane, "\t", 48, [], "Tab", .outsideTextInput),
         shortcut(.cancelOperation, ".", 47, [.command], "⌘.", .textInputSafe),
         shortcut(.debugLogs, "", 65_535, [], ""), shortcut(.exportDiagnostics, "", 65_535, [], ""),
-        shortcut(.open, "", 36, [], "Return", .outsideTextInput),
         shortcut(.open, "", 99, [], "F3", .outsideTextInput),
         shortcut(.open, "", 118, [], "F4", .outsideTextInput),
         shortcut(.newFile, "", 98, [.shift], "Shift F7", .outsideTextInput),
         shortcut(.newFolder, "", 98, [], "F7", .outsideTextInput),
-        shortcut(.rename, "", 120, [], "F2", .outsideTextInput),
         shortcut(.move, "", 97, [], "F6", .outsideTextInput),
         shortcut(.trash, "", 100, [], "F8", .outsideTextInput),
         shortcut(.parent, "", 51, [], "Delete", .outsideTextInput)
