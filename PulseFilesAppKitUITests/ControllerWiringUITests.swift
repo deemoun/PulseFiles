@@ -32,6 +32,30 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertNotNil(app.element(AccessibilityIdentifiers.CommandBar.list))
     }
 
+    func testMainWindowUsesStableAutosaveNameAndCentersFirstLaunchFallback() {
+        XCTAssertEqual(app.window.frameAutosaveName, MainWindowController.frameAutosaveName)
+
+        let visibleFrame = NSRect(x: 100, y: 50, width: 1_600, height: 1_000)
+        let fallback = MainWindowFrameLayout.fallbackFrame(in: visibleFrame)
+
+        XCTAssertEqual(fallback.size, MainWindowFrameLayout.defaultFrame.size)
+        XCTAssertEqual(fallback.midX, visibleFrame.midX)
+        XCTAssertEqual(fallback.midY, visibleFrame.midY)
+    }
+
+    func testMainWindowRecoversAnOffScreenSavedFrameIntoAvailableDisplayArea() {
+        let visibleFrame = NSRect(x: 0, y: 0, width: 1_024, height: 700)
+        let recovered = MainWindowFrameLayout.clampedFrame(
+            NSRect(x: 4_000, y: -1_200, width: 1_280, height: 820),
+            availableFrames: [visibleFrame],
+            fallbackVisibleFrame: visibleFrame
+        )
+
+        XCTAssertEqual(recovered.size, visibleFrame.size)
+        XCTAssertEqual(recovered.origin, visibleFrame.origin)
+        XCTAssertTrue(visibleFrame.contains(recovered))
+    }
+
     func testToolbarAndKeyboardCommandSelectorsRemainWiredToTheVisibleController() {
         // Exercise the same selectors dispatched by menu items and keyboard
         // shortcuts. The active indicators are stable AX anchors for a future
