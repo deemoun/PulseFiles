@@ -461,6 +461,7 @@ final class FileOperationService: FileOperationServicing {
     /// marker is deliberately stored inside the directory: no implementation
     /// detail or partial item is published beside the user's destination.
     private struct StagingArea {
+        let operationID: UUID
         let directory: URL
         let marker: URL
         let stagedItem: URL
@@ -528,8 +529,9 @@ final class FileOperationService: FileOperationServicing {
     private let cloudDownloadPreparer: any FileOperationCloudDownloadPreparing
     private let traversalLimits: TraversalLimits
     private let replacementDirectoryProvider: (URL) throws -> URL
+    private let stagingRegistry: StagingOwnershipRegistry
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
@@ -539,9 +541,10 @@ final class FileOperationService: FileOperationServicing {
         self.cloudDownloadPreparer = cloudDownloadPreparer
         self.traversalLimits = traversalLimits
         self.replacementDirectoryProvider = replacementDirectoryProvider
+        self.stagingRegistry = stagingRegistry
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory) {
+    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
@@ -551,6 +554,7 @@ final class FileOperationService: FileOperationServicing {
         self.cloudDownloadPreparer = cloudDownloadPreparer
         self.traversalLimits = traversalLimits
         self.replacementDirectoryProvider = replacementDirectoryProvider
+        self.stagingRegistry = stagingRegistry
     }
 
     static func systemReplacementDirectory(appropriateFor destination: URL) throws -> URL {
@@ -1245,6 +1249,7 @@ final class FileOperationService: FileOperationServicing {
         // Refuse to remove an unmarked directory, even if a provider recycled
         // or redirected the URL after allocation.
         guard staging.isOwned(using: fileManager) else { return [] }
+        stagingRegistry.setState(.completed, operationID: staging.operationID)
         do {
             try removeIfExists(staging.stagedItem)
             try removeIfExists(staging.backupItem)
@@ -1252,6 +1257,7 @@ final class FileOperationService: FileOperationServicing {
             // operation directory as a unit. A failed final removal therefore
             // remains identifiable for a later, explicitly owned cleanup.
             try fileManager.removeItem(at: staging.directory)
+            stagingRegistry.remove(operationID: staging.operationID)
             return []
         } catch {
             DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove managed staging area at \(DiagnosticLogger.sanitizedPath(staging.directory)); reason=\(error.localizedDescription)")
@@ -1804,9 +1810,10 @@ final class FileOperationService: FileOperationServicing {
 
     private func makeStagingArea(appropriateFor destination: URL) throws -> StagingArea {
         let directory = try replacementDirectoryProvider(destination).standardizedFileURL
-        let operationID = UUID().uuidString
-        let marker = directory.appendingPathComponent(".pulsefiles-operation-\(operationID)")
+        let operationID = UUID()
+        let marker = directory.appendingPathComponent(".pulsefiles-operation-\(operationID.uuidString)")
         let staging = StagingArea(
+            operationID: operationID,
             directory: directory,
             marker: marker,
             stagedItem: directory.appendingPathComponent("item"),
@@ -1822,6 +1829,21 @@ final class FileOperationService: FileOperationServicing {
             throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: "managed")
         }
         try fileManager.createEmptyFile(at: marker)
+        let destinationDirectory = destination.deletingLastPathComponent().standardizedFileURL
+        guard let stagingIdentity = StagingCleanupService.resourceIdentity(directory),
+              let destinationIdentity = StagingCleanupService.resourceIdentity(destinationDirectory) else {
+            try? fileManager.removeItem(at: directory)
+            throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: "managed identity")
+        }
+        stagingRegistry.register(.init(
+            operationID: operationID,
+            stagingURL: directory,
+            createdAt: Date(),
+            destinationURL: destinationDirectory,
+            stagingIdentity: stagingIdentity,
+            destinationIdentity: destinationIdentity,
+            state: .active
+        ))
         return staging
     }
 

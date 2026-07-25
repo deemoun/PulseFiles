@@ -785,8 +785,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             return
         }
 
-        let controller = SettingsViewController(settings: settings)
+        let cleanupService = StagingCleanupService(legacyReviewDirectories: { [weak self] in
+            guard let self else { return [] }
+            return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
+        })
+        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService)
         controller.onChange = { [weak self] in self?.applySettingsChanges() }
+        controller.onMaintenanceCleanup = { [weak self] in self?.refreshBothPanes() }
         let window = NSWindow(contentViewController: controller)
         window.title = "Settings".localized
         window.styleMask = [.titled, .closable, .miniaturizable]

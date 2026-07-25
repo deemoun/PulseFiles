@@ -39,6 +39,7 @@ final class SettingsViewController: NSViewController {
     }
 
     var onChange: (() -> Void)?
+    var onMaintenanceCleanup: (() -> Void)?
 
     private let settings: SettingsService
     private let liquidGlassCheckbox = NSButton(checkboxWithTitle: "Enable liquid glass interface".localized, target: nil, action: nil)
@@ -51,6 +52,7 @@ final class SettingsViewController: NSViewController {
     private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations".localized, target: nil, action: nil)
     private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations".localized, target: nil, action: nil)
     private let permanentDeleteCheckbox = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash".localized, target: nil, action: nil)
+    private lazy var clearIncompleteTransfersButton = NSButton(title: "Clear Incomplete Transfers…".localized, target: self, action: #selector(clearIncompleteTransfers(_:)))
 #if DEBUG
     private let experimentalSandboxCheckbox = NSButton(checkboxWithTitle: "Restrict browsing and file operations to the experimental sandbox".localized, target: nil, action: nil)
 #endif
@@ -65,10 +67,12 @@ final class SettingsViewController: NSViewController {
     private let accessPolicy = SandboxFileAccessPolicy.current
     private let accessGrantService = FolderAccessGrantService.shared
     private let standardFolderAccessService = StandardFolderAccessService()
+    private let stagingCleanupService: StagingCleanupService
     private var standardFolderAccessStates: [StandardFolder: StandardFolderAccessState] = [:]
 
-    init(settings: SettingsService = SettingsService()) {
+    init(settings: SettingsService = SettingsService(), stagingCleanupService: StagingCleanupService = StagingCleanupService()) {
         self.settings = settings
+        self.stagingCleanupService = stagingCleanupService
         super.init(nibName: nil, bundle: nil)
         preferredContentSize = NSSize(width: 680, height: 500)
     }
@@ -311,6 +315,10 @@ final class SettingsViewController: NSViewController {
                         confirmDeleteCheckbox,
                         permanentDeleteCheckbox
                     ]
+                ),
+                settingsSection(
+                    title: "Storage & Maintenance".localized,
+                    views: [clearIncompleteTransfersButton]
                 )
             ]
         case .colors:
@@ -329,6 +337,38 @@ final class SettingsViewController: NSViewController {
                 )
             ]
 #endif
+        }
+    }
+
+    @objc private func clearIncompleteTransfers(_ sender: Any?) {
+        clearIncompleteTransfersButton.isEnabled = false
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let inventory = await Task.detached(priority: .utility) { self.stagingCleanupService.inventory() }.value
+            let alert = NSAlert()
+            alert.messageText = "Clear Incomplete Transfers?".localized
+            var detail = "%@ safely identifiable abandoned item(s), using %@.".localized(with: inventory.candidates.count, FileSizeFormatter.string(fromByteCount: inventory.totalByteCount))
+            if !inventory.legacyItemsForReview.isEmpty {
+                let paths = inventory.legacyItemsForReview.map(\.path).joined(separator: "\n")
+                detail += "\n\nThese legacy similarly named items are shown for review and will not be deleted automatically:\n%@".localized(with: paths)
+            }
+            alert.informativeText = detail
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Clear Identified Items".localized)
+            alert.addButton(withTitle: "Cancel".localized)
+            guard alert.runModal() == .alertFirstButtonReturn else {
+                self.clearIncompleteTransfersButton.isEnabled = true
+                return
+            }
+            let result = await self.stagingCleanupService.cleanup(inventory.candidates)
+            self.clearIncompleteTransfersButton.isEnabled = true
+            self.onMaintenanceCleanup?()
+            let report = NSAlert()
+            report.messageText = result.failures.isEmpty ? "Incomplete transfers cleared".localized : "Some incomplete transfers could not be cleared".localized
+            report.informativeText = result.failures.isEmpty
+                ? "%@ item(s) removed.".localized(with: result.removed.count)
+                : result.failures.map { "\($0.url.path): \($0.message)" }.joined(separator: "\n")
+            report.runModal()
         }
     }
 
