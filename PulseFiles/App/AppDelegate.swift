@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Task.detached(priority: .utility) {
+            _ = await StagingCleanupService().cleanupOnStartup()
+        }
         FileTypeColorPalette.activeScheme = SettingsService().fileColorScheme
         if let icon = appIcon() {
             NSApplication.shared.applicationIconImage = icon
