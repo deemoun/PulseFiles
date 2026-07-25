@@ -594,6 +594,82 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination), "new")
     }
 
+    func testManagedStagingIsSameVolumeAtomicAndRemovedAfterSuccess() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Atomic.txt")
+        let destination = fixture.right.appendingPathComponent("Atomic.txt")
+        let stagingDirectory = fixture.root.appendingPathComponent("Replacement-\(UUID().uuidString)")
+        try "complete".write(to: source, atomically: true, encoding: .utf8)
+        let service = FileOperationService(
+            fileManager: fixture.failingFileManager!,
+            accessPolicy: fixture.unrestrictedPolicy,
+            replacementDirectoryProvider: { appropriateDestination in
+                XCTAssertEqual(appropriateDestination, destination)
+                try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
+                return stagingDirectory
+            }
+        )
+
+        let result = try await service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+
+        XCTAssertTrue(result.succeededCompletely)
+        XCTAssertEqual(try String(contentsOf: destination), "complete")
+        XCTAssertTrue(fixture.failingFileManager?.movedItems.contains {
+            $0.source == stagingDirectory.appendingPathComponent("item") && $0.destination == destination
+        } == true, "Final publication must be a rename from managed staging")
+        XCTAssertEqual(
+            try stagingDirectory.deletingLastPathComponent().resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier.map { String(describing: $0) },
+            try destination.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier.map { String(describing: $0) }
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(at: fixture.right, includingPropertiesForKeys: nil).contains { $0.lastPathComponent.hasPrefix(".pulsefiles-") })
+    }
+
+    func testPartialFailureCleansManagedDirectoryWithoutPublishingPartialCopy() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Partial.txt")
+        let stagingDirectory = fixture.root.appendingPathComponent("Replacement-\(UUID().uuidString)")
+        try "partial contents".write(to: source, atomically: true, encoding: .utf8)
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            streamingCopier: PartialFailureStreamingCopier(error: CocoaError(.fileWriteUnknown)),
+            replacementDirectoryProvider: { _ in
+                try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
+                return stagingDirectory
+            }
+        )
+
+        let result = try await service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+
+        XCTAssertEqual(result.failedItems.map(\.url), [source])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Partial.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(at: fixture.right, includingPropertiesForKeys: nil).contains { $0.lastPathComponent.hasPrefix(".pulsefiles-") })
+    }
+
+    func testCancellationCleansManagedStagingDirectory() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Cancelled.txt")
+        let stagingDirectory = fixture.root.appendingPathComponent("Replacement-\(UUID().uuidString)")
+        try "cancelled contents".write(to: source, atomically: true, encoding: .utf8)
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            streamingCopier: PartialFailureStreamingCopier(error: CancellationError()),
+            replacementDirectoryProvider: { _ in
+                try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
+                return stagingDirectory
+            }
+        )
+
+        let result = try await service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Cancelled.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+    }
+
 
     func testCopyRetriesWhenGeneratedStagingPathAlreadyExists() async throws {
         let fixture = try makeFixture(useFailingManager: true)
@@ -609,7 +685,8 @@ final class FileOperationServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(result.succeededCompletely)
-        XCTAssertEqual(fixture.failingFileManager?.simulatedExistingStagingPathHits, 1)
+        XCTAssertEqual(fixture.failingFileManager?.simulatedExistingStagingPathHits, 0)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(at: fixture.right, includingPropertiesForKeys: nil).contains { $0.lastPathComponent.hasPrefix(".pulsefiles-") })
         XCTAssertEqual(try String(contentsOf: destination), "source")
     }
 
@@ -883,7 +960,7 @@ final class FileOperationServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(result.succeededCompletely)
-        XCTAssertTrue(fixture.failingFileManager?.movedItems.contains { $0.destination.lastPathComponent.hasPrefix(".pulsefiles-backup") } == true)
+        XCTAssertTrue(fixture.failingFileManager?.movedItems.contains { $0.destination.lastPathComponent == "backup" } == true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
         XCTAssertEqual(try String(contentsOf: destination), "new")
     }
@@ -1033,7 +1110,7 @@ final class FileOperationServiceTests: XCTestCase {
 
         XCTAssertEqual(result.failedItems.map(\.url), [source])
         XCTAssertEqual(result.cleanupWarnings.count, 1)
-        XCTAssertTrue(result.cleanupWarnings[0].url.lastPathComponent.hasPrefix(".pulsefiles-copy"))
+        XCTAssertFalse(result.cleanupWarnings[0].url.deletingLastPathComponent().standardizedFileURL == fixture.right.standardizedFileURL)
         XCTAssertTrue(result.cleanupWarnings[0].message.contains(result.cleanupWarnings[0].url.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.right.appendingPathComponent("Report.txt").path))
     }
@@ -1052,7 +1129,7 @@ final class FileOperationServiceTests: XCTestCase {
 
         XCTAssertEqual(result.failedItems.map(\.url), [source])
         XCTAssertEqual(result.cleanupWarnings.count, 1)
-        XCTAssertTrue(result.cleanupWarnings[0].url.lastPathComponent.hasPrefix(".pulsefiles-move"))
+        XCTAssertFalse(result.cleanupWarnings[0].url.deletingLastPathComponent().standardizedFileURL == fixture.right.standardizedFileURL)
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
     }
@@ -1940,10 +2017,10 @@ private final class FailingFileManager: FileOperationFileManaging {
         if let failRemoveURL, URL.standardizedFileURL == failRemoveURL.standardizedFileURL {
             throw CocoaError(.fileWriteNoPermission)
         }
-        if failBackupRemoval, URL.lastPathComponent.hasPrefix(".pulsefiles-backup") {
+        if failBackupRemoval, URL.lastPathComponent == "backup" {
             throw CocoaError(.fileWriteNoPermission)
         }
-        if failStagingRemoval, URL.lastPathComponent.hasPrefix(".pulsefiles-copy") || URL.lastPathComponent.hasPrefix(".pulsefiles-move") {
+        if failStagingRemoval, URL.lastPathComponent == "item" || ((try? FileManager.default.contentsOfDirectory(at: URL, includingPropertiesForKeys: nil).contains { $0.lastPathComponent.hasPrefix(".pulsefiles-operation-") }) == true) {
             throw CocoaError(.fileWriteNoPermission)
         }
         try FileManager.default.removeItem(at: URL)

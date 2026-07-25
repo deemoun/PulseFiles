@@ -457,6 +457,20 @@ final class FileOperationService: FileOperationServicing {
         let byteCount: Int64?
     }
 
+    /// A system-managed, same-volume directory used for one transfer. The
+    /// marker is deliberately stored inside the directory: no implementation
+    /// detail or partial item is published beside the user's destination.
+    private struct StagingArea {
+        let directory: URL
+        let marker: URL
+        let stagedItem: URL
+        let backupItem: URL
+
+        func isOwned(using fileManager: FileOperationFileManaging) -> Bool {
+            fileManager.fileExists(atPath: marker.path)
+        }
+    }
+
     /// Bounds traversal work independently of filesystem recursion so hostile
     /// or accidentally generated directory trees cannot exhaust the process.
     struct TraversalLimits: Sendable {
@@ -513,8 +527,9 @@ final class FileOperationService: FileOperationServicing {
     private let pathSafetyStateProvider: (URL) -> FileOperationPathSafetyState
     private let cloudDownloadPreparer: any FileOperationCloudDownloadPreparing
     private let traversalLimits: TraversalLimits
+    private let replacementDirectoryProvider: (URL) throws -> URL
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init()) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
@@ -523,9 +538,10 @@ final class FileOperationService: FileOperationServicing {
         self.pathSafetyStateProvider = pathSafetyStateProvider
         self.cloudDownloadPreparer = cloudDownloadPreparer
         self.traversalLimits = traversalLimits
+        self.replacementDirectoryProvider = replacementDirectoryProvider
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init()) {
+    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.streamingCopier = streamingCopier
@@ -534,6 +550,16 @@ final class FileOperationService: FileOperationServicing {
         self.pathSafetyStateProvider = pathSafetyStateProvider
         self.cloudDownloadPreparer = cloudDownloadPreparer
         self.traversalLimits = traversalLimits
+        self.replacementDirectoryProvider = replacementDirectoryProvider
+    }
+
+    static func systemReplacementDirectory(appropriateFor destination: URL) throws -> URL {
+        try FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: destination,
+            create: true
+        )
     }
 
     func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {
@@ -1118,16 +1144,17 @@ final class FileOperationService: FileOperationServicing {
         recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
     ) async throws -> [FileOperationCleanupWarning] {
-        let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-copy")
+        let staging = try makeStagingArea(appropriateFor: destination)
         do {
             var warnings = try await recursivelyCopy(
-                source: source, to: tempURL, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
+                source: source, to: staging.stagedItem, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
                 recursiveProgress: recursiveProgress, progressHandler: progressHandler
             )
-            warnings.append(contentsOf: try placeStagedItem(tempURL, at: destination))
+            warnings.append(contentsOf: try placeStagedItem(staging, at: destination))
+            warnings.append(contentsOf: cleanupWarnings(for: staging))
             return warnings
         } catch {
-            let cleanupWarnings = cleanupWarningsAfterFailedStagingRemoval(at: tempURL)
+            let cleanupWarnings = cleanupWarnings(for: staging)
             throw TransferFailure(underlyingError: error, cleanupWarnings: cleanupWarnings)
         }
     }
@@ -1191,13 +1218,13 @@ final class FileOperationService: FileOperationServicing {
         recursiveProgress: RecursiveProgressState,
         progressHandler: FileOperationProgressHandler?
     ) async throws -> [FileOperationCleanupWarning] {
-        let tempURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-move")
+        let staging = try makeStagingArea(appropriateFor: destination)
         do {
             var warnings = try await recursivelyCopy(
-                source: source, to: tempURL, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
+                source: source, to: staging.stagedItem, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
                 recursiveProgress: recursiveProgress, progressHandler: progressHandler
             )
-            warnings.append(contentsOf: try placeStagedItem(tempURL, at: destination))
+            warnings.append(contentsOf: try placeStagedItem(staging, at: destination))
             do {
                 try descriptorRemove(source)
             } catch {
@@ -1206,22 +1233,31 @@ final class FileOperationService: FileOperationServicing {
                     message: FileOperationError.sourceCleanupFailed(source: source, destination: destination).failureReason ?? error.localizedDescription
                 ))
             }
+            warnings.append(contentsOf: cleanupWarnings(for: staging))
             return warnings
         } catch {
-            let cleanupWarnings = cleanupWarningsAfterFailedStagingRemoval(at: tempURL)
+            let cleanupWarnings = cleanupWarnings(for: staging)
             throw TransferFailure(underlyingError: error, cleanupWarnings: cleanupWarnings)
         }
     }
 
-    private func cleanupWarningsAfterFailedStagingRemoval(at temporaryURL: URL) -> [FileOperationCleanupWarning] {
+    private func cleanupWarnings(for staging: StagingArea) -> [FileOperationCleanupWarning] {
+        // Refuse to remove an unmarked directory, even if a provider recycled
+        // or redirected the URL after allocation.
+        guard staging.isOwned(using: fileManager) else { return [] }
         do {
-            try removeIfExists(temporaryURL)
+            try removeIfExists(staging.stagedItem)
+            try removeIfExists(staging.backupItem)
+            // Keep the ownership marker present while FileManager removes the
+            // operation directory as a unit. A failed final removal therefore
+            // remains identifiable for a later, explicitly owned cleanup.
+            try fileManager.removeItem(at: staging.directory)
             return []
         } catch {
-            DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove temporary item at \(DiagnosticLogger.sanitizedPath(temporaryURL)); reason=\(error.localizedDescription)")
+            DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove managed staging area at \(DiagnosticLogger.sanitizedPath(staging.directory)); reason=\(error.localizedDescription)")
             return [FileOperationCleanupWarning(
-                url: temporaryURL,
-                message: "PulseFiles could not remove the temporary item at %@. Review it and remove it manually after confirming it is no longer needed.".localized(with: temporaryURL.path)
+                url: staging.directory,
+                message: "PulseFiles could not remove its managed staging area at %@. Review it and remove it manually after confirming it is no longer needed.".localized(with: staging.directory.path)
             )]
         }
     }
@@ -1500,13 +1536,17 @@ final class FileOperationService: FileOperationServicing {
         return false
     }
 
-    private func placeStagedItem(_ stagedURL: URL, at destination: URL) throws -> [FileOperationCleanupWarning] {
+    private func placeStagedItem(_ staging: StagingArea, at destination: URL) throws -> [FileOperationCleanupWarning] {
+        guard staging.isOwned(using: fileManager) else {
+            throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: "managed")
+        }
+        let stagedURL = staging.stagedItem
         guard fileManager.fileExists(atPath: destination.path) else {
             try descriptorRename(stagedURL, to: destination)
             return []
         }
 
-        let backupURL = try uniqueTemporarySibling(for: destination, prefix: ".pulsefiles-backup")
+        let backupURL = staging.backupItem
         try descriptorRename(destination, to: backupURL)
         do {
             try descriptorRename(stagedURL, to: destination)
@@ -1520,16 +1560,10 @@ final class FileOperationService: FileOperationServicing {
             throw error
         }
 
-        do {
-            try descriptorRemove(backupURL)
-            return []
-        } catch {
-            DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove replacement backup at \(DiagnosticLogger.sanitizedPath(backupURL)); reason=\(error.localizedDescription)")
-            return [FileOperationCleanupWarning(
-                url: backupURL,
-                message: "The old item was replaced, but PulseFiles could not remove the backup at %@.".localized(with: backupURL.path)
-            )]
-        }
+        // The outer structured cleanup owns the backup and operation
+        // directory. Keeping cleanup in one place covers success,
+        // cancellation, and every failure edge consistently.
+        return []
     }
 
     private func resolveTransferPlans(
@@ -1768,16 +1802,27 @@ final class FileOperationService: FileOperationServicing {
         }
     }
 
-    private func uniqueTemporarySibling(for destination: URL, prefix: String, maximumAttempts: Int = 10) throws -> URL {
-        let parentDirectory = destination.deletingLastPathComponent()
-        for _ in 0..<maximumAttempts {
-            let candidate = parentDirectory.appendingPathComponent("\(prefix)-\(UUID().uuidString)-\(destination.lastPathComponent)")
-            if !fileManager.fileExists(atPath: candidate.path) {
-                return candidate
-            }
+    private func makeStagingArea(appropriateFor destination: URL) throws -> StagingArea {
+        let directory = try replacementDirectoryProvider(destination).standardizedFileURL
+        let operationID = UUID().uuidString
+        let marker = directory.appendingPathComponent(".pulsefiles-operation-\(operationID)")
+        let staging = StagingArea(
+            directory: directory,
+            marker: marker,
+            stagedItem: directory.appendingPathComponent("item"),
+            backupItem: directory.appendingPathComponent("backup")
+        )
+        // Both authorization modes validate the allocated URLs in relation to
+        // the already-authorized destination before any content is written.
+        try accessPolicy.validateManagedStagingArea(directory, appropriateFor: destination)
+        try accessPolicy.validateManagedStagingArea(staging.stagedItem, appropriateFor: destination)
+        try accessPolicy.validateManagedStagingArea(staging.backupItem, appropriateFor: destination)
+        try accessPolicy.validateManagedStagingArea(marker, appropriateFor: destination)
+        guard !fileManager.fileExists(atPath: marker.path) else {
+            throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: "managed")
         }
-
-        throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: prefix)
+        try fileManager.createEmptyFile(at: marker)
+        return staging
     }
 
     private func removeIfExists(_ url: URL) throws {
