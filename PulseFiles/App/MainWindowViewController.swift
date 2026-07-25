@@ -794,12 +794,24 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             guard let self else { return [] }
             return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
         })
-        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService)
+        let scratchCleanupService = ScratchFolderCleanupService(
+            accessPolicy: accessPolicy,
+            fileOperations: fileOperations,
+            activePaneRoots: { [weak self] in
+                guard let self else { return [] }
+                return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
+            }
+        )
+        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService)
         controller.onOpenScratchDirectory = { [weak self] url in
             self?.targetPane().navigate(to: url)
         }
         controller.onChange = { [weak self] in self?.applySettingsChanges() }
         controller.onMaintenanceCleanup = { [weak self] in self?.refreshBothPanes() }
+        controller.onScratchCleanupResult = { [weak self] result, operationName in
+            self?.refreshBothPanes()
+            self?.showOperationResult(result, operationName: operationName)
+        }
         let window = NSWindow(contentViewController: controller)
         window.title = "Settings".localized
         window.styleMask = [.titled, .closable, .miniaturizable]

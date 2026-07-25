@@ -41,6 +41,7 @@ final class SettingsViewController: NSViewController {
     var onChange: (() -> Void)?
     var onOpenScratchDirectory: ((URL) -> Void)?
     var onMaintenanceCleanup: (() -> Void)?
+    var onScratchCleanupResult: ((FileOperationResult, String) -> Void)?
 
     private let settings: SettingsService
     private let liquidGlassCheckbox = NSButton(checkboxWithTitle: "Enable liquid glass interface".localized, target: nil, action: nil)
@@ -70,11 +71,17 @@ final class SettingsViewController: NSViewController {
     private let accessGrantService = FolderAccessGrantService.shared
     private let standardFolderAccessService = StandardFolderAccessService()
     private let stagingCleanupService: StagingCleanupService
+    private let scratchCleanupService: ScratchFolderCleanupService
     private var standardFolderAccessStates: [StandardFolder: StandardFolderAccessState] = [:]
 
-    init(settings: SettingsService = SettingsService(), stagingCleanupService: StagingCleanupService = StagingCleanupService()) {
+    init(
+        settings: SettingsService = SettingsService(),
+        stagingCleanupService: StagingCleanupService = StagingCleanupService(),
+        scratchCleanupService: ScratchFolderCleanupService = ScratchFolderCleanupService()
+    ) {
         self.settings = settings
         self.stagingCleanupService = stagingCleanupService
+        self.scratchCleanupService = scratchCleanupService
         super.init(nibName: nil, bundle: nil)
         preferredContentSize = NSSize(width: 680, height: 500)
     }
@@ -707,12 +714,14 @@ final class SettingsViewController: NSViewController {
         let choose = NSButton(title: "Choose Folder…".localized, target: self, action: #selector(chooseScratchDirectory(_:)))
         let open = NSButton(title: "Open in Active Pane".localized, target: self, action: #selector(openScratchDirectory(_:)))
         let clear = NSButton(title: "Clear Setting".localized, target: self, action: #selector(clearScratchDirectory(_:)))
+        let clean = NSButton(title: "Clean Up Contents…".localized, target: self, action: #selector(cleanScratchDirectory(_:)))
         choose.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.chooseScratchFolder)
         open.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.openScratchFolder)
         clear.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.clearScratchFolder)
         open.isEnabled = settings.scratchDirectory != nil
+        clean.isEnabled = settings.scratchFolderSelection != nil
         clear.isEnabled = settings.scratchDirectory != nil
-        let controls = NSStackView(views: [choose, open, clear])
+        let controls = NSStackView(views: [choose, open, clean, clear])
         controls.orientation = .horizontal
         controls.spacing = 8
         let row = NSStackView(views: [scratchDirectoryField, controls])
@@ -858,7 +867,14 @@ final class SettingsViewController: NSViewController {
     @objc private func chooseScratchDirectory(_ sender: Any?) {
         chooseDirectory { [weak self] url in
             guard let self else { return }
-            self.settings.scratchDirectory = url
+            do {
+                let selection = try self.scratchCleanupService.captureSelection(for: url)
+                self.settings.scratchDirectory = selection.directory
+                self.settings.scratchFolderSelection = selection
+            } catch {
+                self.presentScratchCleanupError(error)
+                return
+            }
             self.updateDirectoryFields()
             self.rebuildSettingsPage()
             self.onChange?()
@@ -873,6 +889,55 @@ final class SettingsViewController: NSViewController {
         updateDirectoryFields()
         rebuildSettingsPage()
         onChange?()
+    }
+
+    @objc private func cleanScratchDirectory(_ sender: Any?) {
+        guard let selection = settings.scratchFolderSelection else { return }
+        do {
+            let inventory = try scratchCleanupService.inventory(for: selection)
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "Clean Up Scratch Folder Contents?".localized
+            alert.informativeText = [
+                "Folder: %@".localized(with: inventory.selection.directory.path),
+                "Items: %d".localized(with: inventory.itemCount),
+                "Allocated size: %@".localized(with: FileSizeFormatter.string(fromByteCount: inventory.allocatedByteCount)),
+                "Only the folder's contents will be affected. The configured folder itself will remain.".localized,
+                "Move Contents to Trash is recoverable until the Trash is emptied. Permanently Delete cannot be undone.".localized
+            ].joined(separator: "\n")
+            alert.addButton(withTitle: "Move Contents to Trash".localized)
+            alert.addButton(withTitle: "Permanently Delete…".localized)
+            alert.addButton(withTitle: "Cancel — Keep Contents".localized)
+            let response = alert.runModal()
+            guard response != .alertThirdButtonReturn else { return }
+            let action: ScratchFolderCleanupAction = response == .alertFirstButtonReturn ? .moveToTrash : .permanentlyDelete
+            if action == .permanentlyDelete {
+                let confirmation = NSAlert()
+                confirmation.alertStyle = .critical
+                confirmation.messageText = "Permanently Delete Scratch Folder Contents?".localized
+                confirmation.informativeText = "This permanently deletes %d item(s) from %@ and cannot be undone. The folder itself will remain.".localized(with: inventory.itemCount, inventory.selection.directory.path)
+                confirmation.addButton(withTitle: "Permanently Delete Contents".localized)
+                confirmation.addButton(withTitle: "Cancel — Keep Contents".localized)
+                guard confirmation.runModal() == .alertFirstButtonReturn else { return }
+            }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let result = try await self.scratchCleanupService.cleanup(inventory, action: action)
+                    self.onScratchCleanupResult?(result, action == .moveToTrash ? "Move to Trash".localized : "Permanently Delete".localized)
+                } catch {
+                    self.presentScratchCleanupError(error)
+                }
+            }
+        } catch {
+            presentScratchCleanupError(error)
+        }
+    }
+
+    private func presentScratchCleanupError(_ error: Error) {
+        let alert = NSAlert(error: error)
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 
     @objc private func requestStandardFolderAccess(_ sender: NSButton) {
