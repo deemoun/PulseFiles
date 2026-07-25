@@ -55,6 +55,20 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertNil(makeSettings().startupRightDirectory)
     }
 
+    func testScratchDirectoryPersistsToDefaultsAndSettingsJSON() throws {
+        XCTAssertNil(settings.scratchDirectory)
+        let temporaryDirectory = try settingsJSONFixture.folder("User Scratch")
+
+        settings.scratchDirectory = temporaryDirectory
+
+        XCTAssertEqual(makeSettings().scratchDirectory, temporaryDirectory)
+        let document = try decodedSettingsJSONDocument(at: settingsJSONURL)
+        XCTAssertEqual(document["settings"]?["scratchDirectory"] as? String, temporaryDirectory.path)
+
+        settings.scratchDirectory = nil
+        XCTAssertNil(makeSettings().scratchDirectory)
+    }
+
     func testInitializationResolvesStoredFolderAccessBookmarksOnce() throws {
         let grantedFolder = try settingsJSONFixture.folder("Granted")
         let bookmarkData = Data("stored-bookmark".utf8)

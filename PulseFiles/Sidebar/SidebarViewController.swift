@@ -145,6 +145,7 @@ final class SidebarViewController: NSViewController {
     }
 
     private let recentLocations: RecentLocationService
+    private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
     private let volumeDiscovery: any VolumeDiscovering
     private let metadataReader: MetadataReader
@@ -163,11 +164,13 @@ final class SidebarViewController: NSViewController {
 
     init(
         recentLocations: RecentLocationService,
+        settings: SettingsService = SettingsService(),
         accessPolicy: SandboxFileAccessPolicy = .current,
         volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService(),
         metadataReader: @escaping MetadataReader = SidebarViewController.gpsLocation
     ) {
         self.recentLocations = recentLocations
+        self.settings = settings
         self.accessPolicy = accessPolicy
         self.volumeDiscovery = volumeDiscovery
         self.metadataReader = metadataReader
@@ -316,6 +319,7 @@ final class SidebarViewController: NSViewController {
     }
 
     private func addNavigationContent() {
+        addSectionIfNeeded("Temporary Workspace".localized, items: scratchItems())
         if ExperimentalFlags.restrictFileAccessToAppSandboxRoot {
             addSandboxBanner()
             addSectionIfNeeded("Workspace", items: sandboxItems())
@@ -327,6 +331,21 @@ final class SidebarViewController: NSViewController {
         if stack.arrangedSubviews.isEmpty {
             addEmptyState("No accessible locations yet.")
         }
+    }
+
+    func scratchItems() -> [SidebarItem] {
+        Self.scratchItems(directory: settings.scratchDirectory, accessPolicy: accessPolicy)
+    }
+
+    static func scratchItems(directory: URL?, accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
+        guard let directory, accessPolicy.canAccess(directory) else { return [] }
+        return [SidebarItem(
+            title: "Scratch Folder".localized,
+            subtitle: directory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"),
+            url: directory,
+            symbol: "tray.full",
+            group: "Temporary Workspace".localized
+        )]
     }
 
     private func favoriteItems() -> [SidebarItem] {
@@ -722,6 +741,9 @@ final class SidebarViewController: NSViewController {
         row.target = self
         row.action = #selector(openLocation(_:))
         row.identifier = NSUserInterfaceItemIdentifier(item.url.path)
+        if item.group == "Temporary Workspace".localized {
+            row.setAccessibilityIdentifier(AccessibilityIdentifiers.Sidebar.scratchFolder)
+        }
         row.toolTip = item.url.path
         stack.addArrangedSubview(row)
     }

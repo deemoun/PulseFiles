@@ -136,6 +136,13 @@ final class SettingsService {
         set { setOptionalDirectory(newValue, forKey: "startupRightDirectory") }
     }
 
+    /// A user-selected workspace shown in Settings and the sidebar. This is
+    /// deliberately independent of file-operation staging locations.
+    var scratchDirectory: URL? {
+        get { defaults.url(forKey: "scratchDirectory") }
+        set { setOptionalDirectory(newValue, forKey: "scratchDirectory") }
+    }
+
     var defaultSidebarVisible: Bool {
         get { defaults.object(forKey: "defaultSidebarVisible") as? Bool ?? defaults.object(forKey: "isSidebarVisible") as? Bool ?? true }
         set { set(newValue, forKey: "defaultSidebarVisible") }
@@ -422,6 +429,7 @@ final class SettingsService {
             lastRightDirectory: lastRightDirectory.path,
             startupLeftDirectory: startupLeftDirectory?.path,
             startupRightDirectory: startupRightDirectory?.path,
+            scratchDirectory: scratchDirectory?.path,
             defaultSortDescriptor: defaultSortDescriptor,
             fileColorScheme: fileColorScheme.colors.reduce(into: [String: StoredColor]()) { partialResult, entry in
                 partialResult[entry.key.rawValue] = StoredColor(color: entry.value)
@@ -456,6 +464,7 @@ final class SettingsService {
         if let value = settings.lastRightDirectory { defaults.set(URL(fileURLWithPath: value, isDirectory: true), forKey: "lastRightDirectory") }
         applyOptionalDirectory(settings.startupLeftDirectory, forKey: "startupLeftDirectory")
         applyOptionalDirectory(settings.startupRightDirectory, forKey: "startupRightDirectory")
+        applyOptionalDirectory(settings.scratchDirectory, forKey: "scratchDirectory")
         if let value = settings.defaultSortDescriptor { setSortDescriptor(value, forKey: "defaultSortDescriptor") }
         if let storedColors = settings.fileColorScheme {
             let colors = storedColors.reduce(into: [FileVisualCategory: NSColor]()) { partialResult, entry in
@@ -500,6 +509,7 @@ private struct SettingsJSON: Codable {
     var lastRightDirectory: String?
     var startupLeftDirectory: String?
     var startupRightDirectory: String?
+    var scratchDirectory: String?
     var defaultSortDescriptor: FileSortDescriptor?
     var fileColorScheme: [String: StoredColor]?
 }

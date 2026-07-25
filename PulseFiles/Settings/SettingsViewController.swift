@@ -39,6 +39,7 @@ final class SettingsViewController: NSViewController {
     }
 
     var onChange: (() -> Void)?
+    var onOpenScratchDirectory: ((URL) -> Void)?
     var onMaintenanceCleanup: (() -> Void)?
 
     private let settings: SettingsService
@@ -60,6 +61,7 @@ final class SettingsViewController: NSViewController {
     private let sidebarWidthLabel = NSTextField(labelWithString: "260 pt")
     private let leftDirectoryField = NSTextField()
     private let rightDirectoryField = NSTextField()
+    private let scratchDirectoryField = NSTextField()
     private var colorWells: [FileVisualCategory: NSColorWell] = [:]
     private let categoryControl = NSSegmentedControl()
     private let scrollView = NSScrollView()
@@ -133,11 +135,12 @@ final class SettingsViewController: NSViewController {
         sidebarWidthLabel.alignment = .right
         sidebarWidthLabel.widthAnchor.constraint(equalToConstant: 56).isActive = true
 
-        [leftDirectoryField, rightDirectoryField].forEach {
+        [leftDirectoryField, rightDirectoryField, scratchDirectoryField].forEach {
             $0.isEditable = false
             $0.isSelectable = true
             $0.lineBreakMode = .byTruncatingMiddle
         }
+        scratchDirectoryField.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.scratchPath)
 
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
@@ -288,7 +291,8 @@ final class SettingsViewController: NSViewController {
                         directoryRow(title: "Left startup folder".localized, field: leftDirectoryField, chooseAction: #selector(chooseLeftStartupDirectory(_:)), resetAction: #selector(resetLeftStartupDirectory(_:))),
                         directoryRow(title: "Right startup folder".localized, field: rightDirectoryField, chooseAction: #selector(chooseRightStartupDirectory(_:)), resetAction: #selector(resetRightStartupDirectory(_:)))
                     ]
-                )
+                ),
+                settingsSection(title: "Temporary Workspace".localized, views: [scratchDirectoryRow()])
             ]
         case .permissions:
             return [
@@ -699,6 +703,26 @@ final class SettingsViewController: NSViewController {
         return row
     }
 
+    private func scratchDirectoryRow() -> NSStackView {
+        let choose = NSButton(title: "Choose Folder…".localized, target: self, action: #selector(chooseScratchDirectory(_:)))
+        let open = NSButton(title: "Open in Active Pane".localized, target: self, action: #selector(openScratchDirectory(_:)))
+        let clear = NSButton(title: "Clear Setting".localized, target: self, action: #selector(clearScratchDirectory(_:)))
+        choose.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.chooseScratchFolder)
+        open.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.openScratchFolder)
+        clear.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.clearScratchFolder)
+        open.isEnabled = settings.scratchDirectory != nil
+        clear.isEnabled = settings.scratchDirectory != nil
+        let controls = NSStackView(views: [choose, open, clear])
+        controls.orientation = .horizontal
+        controls.spacing = 8
+        let row = NSStackView(views: [scratchDirectoryField, controls])
+        row.orientation = .vertical
+        row.alignment = .leading
+        row.spacing = 8
+        scratchDirectoryField.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
+        return row
+    }
+
     private func separator() -> NSBox {
         let box = NSBox()
         box.boxType = .separator
@@ -741,6 +765,7 @@ final class SettingsViewController: NSViewController {
     private func updateDirectoryFields() {
         leftDirectoryField.stringValue = settings.startupLeftDirectory?.path ?? "Last left folder (%@)".localized(with: settings.lastLeftDirectory.path)
         rightDirectoryField.stringValue = settings.startupRightDirectory?.path ?? "Last right folder (%@)".localized(with: settings.lastRightDirectory.path)
+        scratchDirectoryField.stringValue = settings.scratchDirectory?.path ?? "No scratch folder configured".localized
     }
 
 
@@ -830,6 +855,25 @@ final class SettingsViewController: NSViewController {
     @objc private func chooseRightStartupDirectory(_ sender: Any?) { chooseDirectory { [weak self] url in self?.settings.startupRightDirectory = url; self?.updateDirectoryFields(); self?.onChange?() } }
     @objc private func resetLeftStartupDirectory(_ sender: Any?) { settings.startupLeftDirectory = nil; updateDirectoryFields(); onChange?() }
     @objc private func resetRightStartupDirectory(_ sender: Any?) { settings.startupRightDirectory = nil; updateDirectoryFields(); onChange?() }
+    @objc private func chooseScratchDirectory(_ sender: Any?) {
+        chooseDirectory { [weak self] url in
+            guard let self else { return }
+            self.settings.scratchDirectory = url
+            self.updateDirectoryFields()
+            self.rebuildSettingsPage()
+            self.onChange?()
+        }
+    }
+    @objc private func openScratchDirectory(_ sender: Any?) {
+        guard let url = settings.scratchDirectory, accessPolicy.canAccess(url) else { return }
+        onOpenScratchDirectory?(url)
+    }
+    @objc private func clearScratchDirectory(_ sender: Any?) {
+        settings.scratchDirectory = nil
+        updateDirectoryFields()
+        rebuildSettingsPage()
+        onChange?()
+    }
 
     @objc private func requestStandardFolderAccess(_ sender: NSButton) {
         guard let identifier = sender.identifier?.rawValue, let folder = StandardFolder(rawValue: identifier) else { return }

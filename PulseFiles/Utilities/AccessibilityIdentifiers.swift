@@ -59,6 +59,14 @@ enum AccessibilityIdentifiers {
     enum Sidebar {
         static let panel = "pulsefiles.sidebar.panel"
         static let list = "pulsefiles.sidebar.list"
+        static let scratchFolder = "pulsefiles.sidebar.scratchFolder"
+    }
+
+    enum Settings {
+        static let scratchPath = "pulsefiles.settings.scratchFolder.path"
+        static let chooseScratchFolder = "pulsefiles.settings.scratchFolder.choose"
+        static let openScratchFolder = "pulsefiles.settings.scratchFolder.open"
+        static let clearScratchFolder = "pulsefiles.settings.scratchFolder.clear"
     }
 
     enum CommandBar {
