@@ -135,6 +135,18 @@ struct SandboxFileAccessPolicy {
         }
     }
 
+    /// Replacement directories are selected by Foundation rather than by the
+    /// user and can live outside an experimental root or security-scoped
+    /// folder. Authorize them only as an implementation detail of a writable,
+    /// already-authorized destination. The caller additionally verifies
+    /// operation ownership before removing anything in the directory.
+    func validateManagedStagingArea(_ stagingURL: URL, appropriateFor destination: URL) throws {
+        try validateDestinationAccess(to: destination)
+        guard hasProcessAccess(to: stagingURL.deletingLastPathComponent(), requireWritable: true) else {
+            throw isEnabled ? SandboxAccessError.outsideExperimentalSandbox(stagingURL) : SandboxAccessError.unauthorized(stagingURL)
+        }
+    }
+
     func validatedDirectory(_ url: URL, fallback: URL? = nil) -> URL {
         if canAccess(url) {
             return url
