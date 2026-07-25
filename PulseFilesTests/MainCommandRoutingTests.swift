@@ -188,6 +188,32 @@ final class MainCommandRoutingTests: XCTestCase {
         }
     }
 
+    func testDeleteKeyVariantsAreHandledWithoutReachingTheFileTable() {
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 51), .parent)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 51, shift: true), .trash)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 51, command: true), .trash)
+
+        for keyCode: UInt16 in [51, 117] {
+            for modifiers in [(true, true, false, false), (false, false, true, false), (false, false, false, true)] {
+                let command = router.commandForKeyDown(
+                    keyCode: keyCode,
+                    command: modifiers.0,
+                    shift: modifiers.1,
+                    option: modifiers.2,
+                    control: modifiers.3
+                )
+                XCTAssertNil(command)
+                XCTAssertTrue(router.shouldConsumeUnmappedKeyDown(keyCode: keyCode))
+            }
+        }
+    }
+
+    func testDeleteKeysRemainAvailableWhileEditingText() {
+        XCTAssertNil(router.commandForKeyDown(keyCode: 51, shift: true, isTextInputFocused: true))
+        XCTAssertFalse(router.shouldConsumeUnmappedKeyDown(keyCode: 51, isTextInputFocused: true))
+        XCTAssertFalse(router.shouldConsumeUnmappedKeyDown(keyCode: 117, isTextInputFocused: true))
+    }
+
     func testUnsupportedFunctionKeyCodesDoNotResolveToCommands() {
         for keyCode: UInt16 in [122, 101, 109, 103, 111] { // F1, F9, F10, F11, F12
             XCTAssertNil(router.commandForKeyDown(keyCode: keyCode))
@@ -419,6 +445,16 @@ extension MainCommandRoutingTests {
                 isTextInputFocused: shortcut.scope == .textInputSafe
             )
             XCTAssertEqual(result, shortcut.command, "Expected \(shortcut.displayLabel) to resolve to \(shortcut.command).")
+        }
+    }
+
+    func testRegisteredKeyboardChordsDoNotConflict() {
+        let keyboardShortcuts = MainCommandShortcutRegistry.shortcuts.filter(MainCommandShortcutRegistry.hasKeyboardShortcut)
+        for (index, shortcut) in keyboardShortcuts.enumerated() {
+            let duplicates = keyboardShortcuts.dropFirst(index + 1).filter {
+                $0.keyCode == shortcut.keyCode && $0.modifierFlags == shortcut.modifierFlags
+            }
+            XCTAssertTrue(duplicates.isEmpty, "Conflicting keyboard shortcut for \(shortcut.displayLabel).")
         }
     }
 

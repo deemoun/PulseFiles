@@ -616,8 +616,13 @@ final class MainWindowViewController: NSViewController {
             }
             return true
         }
-        if let routedCommand = MainCommandRouter().commandForKeyDown(event, isTextInputFocused: isTextInputFirstResponder) {
+        let router = MainCommandRouter()
+        let isTextInputFocused = isTextInputFirstResponder
+        if let routedCommand = router.commandForKeyDown(event, isTextInputFocused: isTextInputFocused) {
             performCommand(routedCommand)
+            return true
+        }
+        if router.shouldConsumeUnmappedKeyDown(keyCode: event.keyCode, isTextInputFocused: isTextInputFocused) {
             return true
         }
         return false

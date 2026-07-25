@@ -62,6 +62,7 @@ enum MainCommandShortcutRegistry {
         shortcut(.newFolder, "", 98, [], "F7", .outsideTextInput),
         shortcut(.move, "", 97, [], "F6", .outsideTextInput),
         shortcut(.trash, "", 100, [], "F8", .outsideTextInput),
+        shortcut(.trash, "", 51, [.shift], "Shift Delete", .outsideTextInput),
         shortcut(.parent, "", 51, [], "Delete", .outsideTextInput)
     ]
 
@@ -83,6 +84,13 @@ enum MainCommandShortcutRegistry {
                 && $0.modifierFlags == relevantFlags
                 && (!isTextInputFocused || $0.scope == .textInputSafe)
         })?.command
+    }
+
+    /// AppKit's table view treats otherwise-unhandled Delete key combinations as
+    /// text-editing actions. A file table is not editable through those actions,
+    /// so keep unsupported Delete variants from reaching `NSTableView`.
+    static func shouldConsumeUnmappedKey(keyCode: UInt16, isTextInputFocused: Bool) -> Bool {
+        !isTextInputFocused && (keyCode == 51 || keyCode == 117)
     }
 
     private static func shortcut(_ command: MainCommand, _ keyEquivalent: String, _ keyCode: UInt16, _ modifierFlags: NSEvent.ModifierFlags, _ displayLabel: String, _ scope: MainCommandShortcut.Scope = .outsideTextInput) -> MainCommandShortcut {
