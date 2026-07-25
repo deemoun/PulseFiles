@@ -269,6 +269,14 @@
 "%d/%d items" = "%d/%d items";
 "Choose another folder" = "Choose another folder";
 
+/* User-configured scratch folder */
+"Temporary Workspace" = "Temporary Workspace";
+"Scratch Folder" = "Scratch Folder";
+"Choose Folder…" = "Choose Folder…";
+"Open in Active Pane" = "Open in Active Pane";
+"Clear Setting" = "Clear Setting";
+"No scratch folder configured" = "No scratch folder configured";
+
 "Undo" = "Undo";
 "Undo Copy" = "Undo Copy";
 "Undo Move" = "Undo Move";

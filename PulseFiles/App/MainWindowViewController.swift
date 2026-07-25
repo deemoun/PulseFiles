@@ -115,7 +115,7 @@ final class MainWindowViewController: NSViewController {
             accessPolicy: accessPolicy
         )
     )
-    private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, accessPolicy: accessPolicy)
+    private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, settings: settings, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
     private let terminalService = TerminalService()
     private let commandBar = CommandBarView()
@@ -795,6 +795,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
         })
         let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService)
+        controller.onOpenScratchDirectory = { [weak self] url in
+            self?.targetPane().navigate(to: url)
+        }
         controller.onChange = { [weak self] in self?.applySettingsChanges() }
         controller.onMaintenanceCleanup = { [weak self] in self?.refreshBothPanes() }
         let window = NSWindow(contentViewController: controller)

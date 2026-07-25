@@ -2,6 +2,38 @@ import XCTest
 @testable import PulseFiles
 
 final class VolumeDiscoveryServiceTests: XCTestCase {
+    func testScratchSidebarItemUsesConfiguredAccessibleDirectory() throws {
+        let fixture = try TemporaryDirectoryFixture(named: "ScratchSidebarItemTests", testCase: self)
+        let scratch = try fixture.folder("Personal Workspace")
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root)
+        let defaultsFixture = try IsolatedDefaultsFixture(prefix: "ScratchSidebarItemTests", testCase: self)
+        let settings = SettingsService(defaults: defaultsFixture.defaults, accessPolicy: policy)
+        settings.scratchDirectory = scratch
+        let sidebar = SidebarViewController(
+            recentLocations: RecentLocationService(defaults: defaultsFixture.defaults),
+            settings: settings,
+            accessPolicy: policy,
+            volumeDiscovery: FixtureVolumeDiscovery(volumes: [])
+        )
+
+        let items = sidebar.scratchItems()
+
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.title, "Scratch Folder")
+        XCTAssertEqual(items.first?.url, scratch)
+        XCTAssertEqual(items.first?.symbol, "tray.full")
+        XCTAssertEqual(items.first?.group, "Temporary Workspace")
+    }
+
+    func testScratchSidebarItemOmitsUnsetAndInaccessibleDirectories() throws {
+        let fixture = try TemporaryDirectoryFixture(named: "ScratchSidebarAccessTests", testCase: self)
+        let outside = try TemporaryDirectoryFixture(named: "ScratchSidebarOutsideTests", testCase: self).folder("Outside")
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root)
+
+        XCTAssertTrue(SidebarViewController.scratchItems(directory: nil, accessPolicy: policy).isEmpty)
+        XCTAssertTrue(SidebarViewController.scratchItems(directory: outside, accessPolicy: policy).isEmpty)
+    }
+
     func testSortingUsesCaseInsensitiveDisplayName() {
         let volumes = [
             volume(name: "zeta", path: "/Volumes/zeta"),
