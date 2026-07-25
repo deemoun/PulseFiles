@@ -140,7 +140,23 @@ final class SettingsService {
     /// deliberately independent of file-operation staging locations.
     var scratchDirectory: URL? {
         get { defaults.url(forKey: "scratchDirectory") }
-        set { setOptionalDirectory(newValue, forKey: "scratchDirectory") }
+        set {
+            setOptionalDirectory(newValue, forKey: "scratchDirectory")
+            if newValue == nil { scratchFolderSelection = nil }
+        }
+    }
+
+    var scratchFolderSelection: ScratchFolderSelection? {
+        get {
+            guard let directory = scratchDirectory,
+                  let identity = defaults.string(forKey: "scratchDirectoryIdentity"),
+                  let resolvedPath = defaults.string(forKey: "scratchDirectoryResolvedPath") else { return nil }
+            return .init(directory: directory, identity: identity, resolvedPath: resolvedPath)
+        }
+        set {
+            defaults.set(newValue?.identity, forKey: "scratchDirectoryIdentity")
+            defaults.set(newValue?.resolvedPath, forKey: "scratchDirectoryResolvedPath")
+        }
     }
 
     var defaultSidebarVisible: Bool {
