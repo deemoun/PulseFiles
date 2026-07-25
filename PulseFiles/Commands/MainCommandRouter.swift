@@ -136,6 +136,13 @@ struct MainCommandRouter {
         )
     }
 
+    func shouldConsumeUnmappedKeyDown(keyCode: UInt16, isTextInputFocused: Bool = false) -> Bool {
+        MainCommandShortcutRegistry.shouldConsumeUnmappedKey(
+            keyCode: keyCode,
+            isTextInputFocused: isTextInputFocused
+        )
+    }
+
     private func modifierFlags(command: Bool, shift: Bool, option: Bool, control: Bool) -> NSEvent.ModifierFlags {
         var flags: NSEvent.ModifierFlags = []
         if command { flags.insert(.command) }
