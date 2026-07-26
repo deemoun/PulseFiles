@@ -27,9 +27,13 @@ enum MainCommand: CaseIterable, Equatable {
     case reveal
     case toggleHiddenFiles
     case sortByName
+    case sortByExtension
     case sortByKind
     case sortBySize
     case sortByModified
+    case sortByCreated
+    case sortByAdded
+    case sortByAccessed
     case sortAscending
     case sortDescending
     case toggleTerminal

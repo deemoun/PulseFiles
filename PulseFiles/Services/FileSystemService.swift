@@ -65,6 +65,8 @@ final class FileSystemService: FileSystemServicing {
                 .totalFileSizeKey,
                 .creationDateKey,
                 .contentModificationDateKey,
+                .addedToDirectoryDateKey,
+                .contentAccessDateKey,
                 .localizedTypeDescriptionKey,
                 .contentTypeKey,
                 .isPackageKey,
@@ -116,6 +118,8 @@ final class FileSystemService: FileSystemServicing {
             .totalFileSizeKey,
             .creationDateKey,
             .contentModificationDateKey,
+            .addedToDirectoryDateKey,
+            .contentAccessDateKey,
             .localizedTypeDescriptionKey,
             .contentTypeKey,
             .isPackageKey,
@@ -159,6 +163,8 @@ final class FileSystemService: FileSystemServicing {
             size: size,
             creationDate: values.creationDate,
             modificationDate: values.contentModificationDate,
+            addedDate: values.addedToDirectoryDate,
+            accessDate: values.contentAccessDate,
             posixPermissions: permissions,
             owner: owner,
             group: group,
@@ -226,32 +232,47 @@ final class FileSystemService: FileSystemServicing {
 
     static func sorted(_ items: [FileItem], descriptor: FileSortDescriptor) -> [FileItem] {
         items.sorted { lhs, rhs in
-            if lhs.isDirectory != rhs.isDirectory {
+            if descriptor.foldersFirst && lhs.isDirectory != rhs.isDirectory {
                 // Keep folders grouped before files regardless of ascending/descending order.
                 return lhs.isDirectory && !rhs.isDirectory
             }
 
-            let comparison: ComparisonResult
+            let stringCompare: (String, String) -> ComparisonResult = { left, right in
+                switch descriptor.comparisonMode {
+                case .naturalLocalized: return left.localizedStandardCompare(right)
+                case .caseInsensitive: return left.compare(right, options: [.caseInsensitive])
+                case .caseSensitive: return left.compare(right, options: [.literal])
+                }
+            }
+            let valueComparison: ComparisonResult
             switch descriptor.key {
             case .name:
-                comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
+                valueComparison = stringCompare(lhs.displayName, rhs.displayName)
+            case .extension:
+                valueComparison = stringCompare(lhs.fileExtension, rhs.fileExtension)
             case .kind:
-                let kindComparison = lhs.typeDescription.localizedStandardCompare(rhs.typeDescription)
-                comparison = kindComparison == .orderedSame
-                    ? lhs.displayName.localizedStandardCompare(rhs.displayName)
-                    : kindComparison
+                valueComparison = stringCompare(lhs.typeDescription, rhs.typeDescription)
             case .size:
-                comparison = lhs.size == rhs.size
-                    ? lhs.displayName.localizedStandardCompare(rhs.displayName)
-                    : (lhs.size < rhs.size ? .orderedAscending : .orderedDescending)
-            case .modified:
-                let left = lhs.modificationDate ?? .distantPast
-                let right = rhs.modificationDate ?? .distantPast
-                comparison = left == right
-                    ? lhs.displayName.localizedStandardCompare(rhs.displayName)
-                    : (left < right ? .orderedAscending : .orderedDescending)
+                valueComparison = lhs.size == rhs.size ? .orderedSame : (lhs.size < rhs.size ? .orderedAscending : .orderedDescending)
+            case .modified: valueComparison = compare(lhs.modificationDate, rhs.modificationDate)
+            case .created: valueComparison = compare(lhs.creationDate, rhs.creationDate)
+            case .added: valueComparison = compare(lhs.addedDate, rhs.addedDate)
+            case .accessed: valueComparison = compare(lhs.accessDate, rhs.accessDate)
             }
+            let nameComparison = stringCompare(lhs.displayName, rhs.displayName)
+            let comparison = valueComparison != .orderedSame ? valueComparison
+                : (nameComparison != .orderedSame ? nameComparison : lhs.url.path.compare(rhs.url.path, options: [.literal]))
             return descriptor.ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+    }
+
+    /// Missing metadata is explicit and consistently precedes present values.
+    private static func compare(_ lhs: Date?, _ rhs: Date?) -> ComparisonResult {
+        switch (lhs, rhs) {
+        case (nil, nil): return .orderedSame
+        case (nil, _): return .orderedAscending
+        case (_, nil): return .orderedDescending
+        case let (left?, right?): return left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
         }
     }
 }

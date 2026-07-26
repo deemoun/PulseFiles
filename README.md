@@ -37,6 +37,7 @@ PulseFiles is licensed under the [GNU General Public License v3.0 or later](LICE
 | Command-N / Command-Shift-N | Create a new folder / file |
 | Command-C / Command-X / Command-V | Copy / cut / paste with the clipboard |
 | Command-Shift-. | Show or hide hidden files |
+| Control-Command-1…7 | Sort by name, extension, kind, size, modified date, created date, or added date |
 | Command-` | Toggle the Experimental Terminal after enabling it in Settings |
 | Command-Period | Cancel the active file operation |
 
@@ -152,3 +153,9 @@ The export includes app/version/build and macOS information, sanitized in-memory
 - **Support:** use **Help → Get Support** or file a support request at <https://github.com/deemoun/PulseFiles/issues>.
 - **Privacy policy:** use **Help → Privacy Policy** or read [PRIVACY.md](PRIVACY.md).
 - **Issue reporting:** use **Help → Report an Issue** or open <https://github.com/deemoun/PulseFiles/issues/new/choose>.
+
+## File sorting
+
+Each pane remembers its own sort key, direction, text comparison mode, and folder-first preference. The eight sort criteria are **Name, Extension, Kind, Size, Modified, Created, Added, and Accessed**. Selecting the current criterion again reverses its direction; folder-first grouping, when enabled, remains in force in either direction. Missing date metadata is shown as `--` and ordered consistently.
+
+The authoritative shortcut range requested for sorting contains seven keys, so Control-Command-1 through Control-Command-7 map in the order shown above to Name through Added. **Accessed is the eighth criterion and intentionally remains menu/table-header only**; it is not silently omitted from the product, assigned an overlapping shortcut, or allowed to displace an existing shortcut.

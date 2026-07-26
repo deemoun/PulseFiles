@@ -153,8 +153,8 @@
 "Permanent delete instead of Move to Trash" = "Русский: Permanent delete instead of Move to Trash";
 "Permanently Delete" = "Русский: Permanently Delete";
 "PulseFiles Help" = "Русский: PulseFiles Help";
-"PulseFiles Help Shortcuts" = "Русский: Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Command-` — Toggle the Beta Terminal after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the Beta Terminal and file-operation confirmations. Use folder pickers to grant PulseFiles access when macOS requires permission.";
-"PulseFiles Help Shortcuts Debug" = "Русский: Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Command-` — Toggle the Beta Terminal after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the Beta Terminal, file-operation confirmations, and Debug-only sandbox safeguards.";
+"PulseFiles Help Shortcuts" = "Русский: Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Control-Command-1…7 — Sort by name, extension, kind, size, modified, created, or added date\n• Command-` — Toggle the Beta Terminal after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the Beta Terminal and file-operation confirmations. Use folder pickers to grant PulseFiles access when macOS requires permission.";
+"PulseFiles Help Shortcuts Debug" = "Русский: Keyboard shortcuts:\n\n• Tab — Switch panes\n• Return — Open the selection, or rename/confirm text while editing\n• Backspace or Command-Up — Go to the parent folder\n• Command-[ or Command-] — Go back or forward\n• Command-Shift-G — Go to Folder\n• Command-N or Command-Shift-N — New folder or file\n• Command-C/X/V — Copy, cut, or paste with the clipboard\n• Command-Shift-. — Show or hide hidden files\n• Control-Command-1…7 — Sort by name, extension, kind, size, modified, created, or added date\n• Command-` — Toggle the Beta Terminal after enabling it in Settings\n• Command-Period — Cancel the active file operation\n\nOpen Settings to control the Beta Terminal, file-operation confirmations, and Debug-only sandbox safeguards.";
 "PulseFiles can browse real folders. Re-enable this before testing destructive file operations unless you intentionally want to work outside the test root.\\n\\nSandbox root: %@" = "Русский: PulseFiles can browse real folders. Re-enable this before testing destructive file operations unless you intentionally want to work outside the test root.\\n\\nSandbox root: %@";
 "PulseFiles classifies each file into the first matching category below, then uses that category color for the filename." = "Русский: PulseFiles classifies each file into the first matching category below, then uses that category color for the filename.";
 "PulseFiles rejected the operation before changing files because %@ appeared more than once." = "Русский: PulseFiles rejected the operation before changing files because %@ appeared more than once.";
@@ -380,3 +380,12 @@
 "Filter quick locations" = "Фильтр быстрых мест";
 "Quick locations" = "Быстрые места";
 "Location" = "Место";
+
+"Extension" = "Расширение";
+"Created" = "Создан";
+"Added" = "Добавлен";
+"Accessed" = "Открыт";
+"Sort by Extension" = "Сортировать по расширению";
+"Sort by Created" = "Сортировать по дате создания";
+"Sort by Added" = "Сортировать по дате добавления";
+"Sort by Accessed" = "Сортировать по дате доступа";

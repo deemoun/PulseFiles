@@ -31,9 +31,13 @@ struct DropTransferPolicy {
 final class FilePaneViewController: NSViewController {
     private enum ColumnID {
         static let name = "name"
+        static let fileExtension = "extension"
         static let kind = "kind"
         static let size = "size"
         static let modified = "modified"
+        static let created = "created"
+        static let added = "added"
+        static let accessed = "accessed"
     }
 
     private struct ColumnMetrics {
@@ -43,10 +47,14 @@ final class FilePaneViewController: NSViewController {
     }
 
     private static let columnMetrics: [String: ColumnMetrics] = [
-        ColumnID.name: ColumnMetrics(compactWidth: 360, singlePaneMinimumWidth: 210, singlePaneWeight: 0.48),
-        ColumnID.kind: ColumnMetrics(compactWidth: 140, singlePaneMinimumWidth: 120, singlePaneWeight: 0.18),
-        ColumnID.size: ColumnMetrics(compactWidth: 90, singlePaneMinimumWidth: 100, singlePaneWeight: 0.14),
-        ColumnID.modified: ColumnMetrics(compactWidth: 170, singlePaneMinimumWidth: 160, singlePaneWeight: 0.20)
+        ColumnID.name: ColumnMetrics(compactWidth: 300, singlePaneMinimumWidth: 210, singlePaneWeight: 0.30),
+        ColumnID.fileExtension: ColumnMetrics(compactWidth: 90, singlePaneMinimumWidth: 70, singlePaneWeight: 0.08),
+        ColumnID.kind: ColumnMetrics(compactWidth: 130, singlePaneMinimumWidth: 110, singlePaneWeight: 0.12),
+        ColumnID.size: ColumnMetrics(compactWidth: 90, singlePaneMinimumWidth: 90, singlePaneWeight: 0.08),
+        ColumnID.modified: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105),
+        ColumnID.created: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105),
+        ColumnID.added: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105),
+        ColumnID.accessed: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105)
     ]
 
     let paneID: PaneID
@@ -259,6 +267,10 @@ final class FilePaneViewController: NSViewController {
         viewModel.setSort(key, ascending: ascending)
     }
 
+    func setSortDescriptor(_ descriptor: FileSortDescriptor) {
+        viewModel.setSortDescriptor(descriptor)
+    }
+
     func navigate(to url: URL) {
         viewModel.navigate(to: url)
     }
@@ -439,9 +451,13 @@ final class FilePaneViewController: NSViewController {
         dualPaneGridStyleMask = tableView.gridStyleMask
 
         addColumn(identifier: ColumnID.name, title: "Name", width: Self.columnMetrics[ColumnID.name]?.compactWidth ?? 360)
+        addColumn(identifier: ColumnID.fileExtension, title: "Extension", width: 90)
         addColumn(identifier: ColumnID.kind, title: "Kind", width: Self.columnMetrics[ColumnID.kind]?.compactWidth ?? 140)
         addColumn(identifier: ColumnID.size, title: "Size", width: Self.columnMetrics[ColumnID.size]?.compactWidth ?? 90)
         addColumn(identifier: ColumnID.modified, title: "Modified", width: Self.columnMetrics[ColumnID.modified]?.compactWidth ?? 170)
+        addColumn(identifier: ColumnID.created, title: "Created", width: 155)
+        addColumn(identifier: ColumnID.added, title: "Added", width: 155)
+        addColumn(identifier: ColumnID.accessed, title: "Accessed", width: 155)
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -460,7 +476,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func applyColumnLayout(force: Bool = false) {
-        guard tableView.tableColumns.count == 4 else { return }
+        guard tableView.tableColumns.count == Self.columnMetrics.count else { return }
         let availableWidth = scrollView.contentView.bounds.width - 1
         guard availableWidth > 0 else { return }
         guard force || abs(availableWidth - lastAppliedColumnLayoutWidth) > 8 else { return }
@@ -1022,12 +1038,20 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
         switch tableColumn.identifier.rawValue {
+        case "extension":
+            setSort(.extension)
         case "kind":
             setSort(.kind)
         case "size":
             setSort(.size)
         case "modified":
             setSort(.modified)
+        case "created":
+            setSort(.created)
+        case "added":
+            setSort(.added)
+        case "accessed":
+            setSort(.accessed)
         default:
             setSort(.name)
         }
@@ -1267,10 +1291,18 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             return item.displayName
         case "size":
             return Self.sizeDisplayString(for: item)
+        case "extension":
+            return item.fileExtension
         case "kind":
             return item.typeDescription
         case "modified":
             return item.modificationDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
+        case "created":
+            return item.creationDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
+        case "added":
+            return item.addedDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
+        case "accessed":
+            return item.accessDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
         default:
             return ""
         }
