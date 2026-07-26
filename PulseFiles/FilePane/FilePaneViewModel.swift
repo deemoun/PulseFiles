@@ -117,6 +117,7 @@ final class FilePaneViewModel {
     var isAccessRestrictedToExperimentalSandbox: Bool { accessPolicy.isEnabled }
     var sortDescriptor: FileSortDescriptor { state.sort }
     var showsHiddenFiles: Bool { state.showsHiddenFiles }
+    var focusedURL: URL? { state.focusedURL }
     var backDestination: URL? { state.history.backStack.last }
     var visibleItems: [FileItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -144,11 +145,18 @@ final class FilePaneViewModel {
 
     /// Captures only logical browser state, allowing panes to exchange state
     /// without exchanging their controller/view instances.
-    func logicalStateSnapshot(focusedURL: URL? = nil) -> PaneState {
+    func logicalStateSnapshot() -> PaneState {
         var snapshot = state
-        snapshot.focusedURL = focusedURL
         snapshot.searchQuery = searchQuery
         return snapshot
+    }
+
+    func setFocusedURL(_ url: URL?) {
+        state.setFocus(url)
+    }
+
+    func setMarkedURLs(_ urls: Set<URL>) {
+        state.markedURLs = urls
     }
 
     /// Restores a snapshot atomically after its destination passes the same
