@@ -77,11 +77,13 @@ final class FilePaneViewController: NSViewController {
     var onDirectoryAccessGranted: ((URL) -> Void)?
     var onSearchQueryChanged: ((String) -> Void)?
     var onTabsChanged: ((PaneState) -> Void)?
+    var onPresentationModeChanged: ((PanePresentationMode) -> Void)?
 
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
     private let directoryIcon = NSImageView()
     private let hiddenButton = NSButton()
+    private let presentationSelector = NSSegmentedControl()
     private let tabSelector = NSSegmentedControl()
     private let scrollView = NSScrollView()
     private let contentOverlay = PaneContentOverlayView()
@@ -116,14 +118,19 @@ final class FilePaneViewController: NSViewController {
     private let accessGrantService = FolderAccessGrantService.shared
     private let openWithApplicationResolver: OpenWithMenuApplicationResolver
     private lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
+    private let thumbnailLoader = ThumbnailLoadingService()
+    private var thumbnailTasks: [URL: Task<Void, Never>] = [:]
+    private(set) var presentationMode: PanePresentationMode
 
     init(
         paneID: PaneID,
         viewModel: FilePaneViewModel,
+        presentationMode: PanePresentationMode = .list,
         openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil
     ) {
         self.paneID = paneID
         self.viewModel = viewModel
+        self.presentationMode = presentationMode
         self.openWithApplicationResolver = openWithApplicationResolver ?? OpenWithMenuApplicationResolver()
         super.init(nibName: nil, bundle: nil)
     }
@@ -181,6 +188,9 @@ final class FilePaneViewController: NSViewController {
         buildTable()
         buildLayout()
         bindViewModel()
+        let initialMode = presentationMode
+        presentationMode = .list
+        setPresentationMode(initialMode, notify: false)
     }
 
     override func viewDidLayout() {
@@ -280,6 +290,22 @@ final class FilePaneViewController: NSViewController {
 
     func setSortDescriptor(_ descriptor: FileSortDescriptor) {
         viewModel.setSortDescriptor(descriptor)
+    }
+
+    func setPresentationMode(_ mode: PanePresentationMode, notify: Bool = true) {
+        guard presentationMode != mode else { return }
+        presentationMode = mode
+        presentationSelector.selectedSegment = PanePresentationMode.allCases.firstIndex(of: mode) ?? 0
+        thumbnailTasks.values.forEach { $0.cancel() }
+        thumbnailTasks.removeAll()
+        tableView.rowHeight = mode == .gallery ? 72 : (mode == .brief ? 26 : 34)
+        tableView.headerView = mode == .brief ? nil : NSTableHeaderView()
+        for column in tableView.tableColumns where column.identifier.rawValue != ColumnID.name {
+            column.isHidden = mode != .list
+        }
+        applyColumnLayout(force: true)
+        requestTableReload()
+        if notify { onPresentationModeChanged?(mode) }
     }
 
     func navigate(to url: URL) {
@@ -439,6 +465,18 @@ final class FilePaneViewController: NSViewController {
         hiddenButton.action = #selector(toggleHidden)
         hiddenButton.toolTip = "Toggle hidden files".localized
 
+        presentationSelector.segmentCount = PanePresentationMode.allCases.count
+        presentationSelector.segmentStyle = .texturedRounded
+        presentationSelector.trackingMode = .selectOne
+        for (index, mode) in PanePresentationMode.allCases.enumerated() {
+            presentationSelector.setImage(NSImage(systemSymbolName: mode.symbolName, accessibilityDescription: mode.localizedTitle), forSegment: index)
+            presentationSelector.setToolTip(mode.localizedTitle, forSegment: index)
+        }
+        presentationSelector.selectedSegment = 0
+        presentationSelector.target = self
+        presentationSelector.action = #selector(changePresentationMode)
+        presentationSelector.setAccessibilityLabel("Pane presentation mode".localized)
+
         breadcrumb.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.breadcrumb(for: paneID))
         breadcrumb.onSelect = { [weak self] url in self?.navigate(to: url) }
         tabSelector.segmentStyle = .texturedRounded
@@ -447,6 +485,11 @@ final class FilePaneViewController: NSViewController {
         tabSelector.action = #selector(selectTabSegment)
         tabSelector.setAccessibilityLabel("Pane tabs".localized)
         refreshTabSelector()
+    }
+
+    @objc private func changePresentationMode() {
+        guard PanePresentationMode.allCases.indices.contains(presentationSelector.selectedSegment) else { return }
+        setPresentationMode(PanePresentationMode.allCases[presentationSelector.selectedSegment])
     }
 
     @objc private func selectTabSegment() {
@@ -568,7 +611,7 @@ final class FilePaneViewController: NSViewController {
 
         activeStripe.wantsLayer = true
         activeStripe.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.activeIndicator(for: paneID))
-        let headerStack = NSStackView(views: [tabSelector, directoryIcon, breadcrumb, hiddenButton])
+        let headerStack = NSStackView(views: [tabSelector, directoryIcon, breadcrumb, presentationSelector, hiddenButton])
         headerStack.orientation = .horizontal
         headerStack.alignment = .centerY
         headerStack.spacing = 8
@@ -704,6 +747,8 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func performTableReload() {
+        thumbnailTasks.values.forEach { $0.cancel() }
+        thumbnailTasks.removeAll()
         isReloadingData = true
         defer { isReloadingData = false }
         breadcrumb.configure(url: viewModel.currentDirectory)
@@ -725,6 +770,18 @@ final class FilePaneViewController: NSViewController {
         onSelectionChanged?(selectedItems)
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files".localized)
+    }
+
+    private func loadThumbnail(for item: FileItem, into imageView: GalleryImageView) {
+        thumbnailTasks[item.url]?.cancel()
+        let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        thumbnailTasks[item.url] = Task { [weak self, weak imageView] in
+            guard let self else { return }
+            let image = await thumbnailLoader.thumbnail(for: item.url, size: CGSize(width: 58, height: 58), scale: scale)
+            guard !Task.isCancelled, imageView?.representedURL == item.url else { return }
+            imageView?.image = image ?? FileIconProvider.shared.image(for: item.iconKey)
+            thumbnailTasks[item.url] = nil
+        }
     }
 
     private func flushDeferredTableReloadIfNeeded() {
@@ -1027,20 +1084,22 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         cell.addSubview(text)
 
         if identifier == "name" {
-            let imageView = NSImageView(image: FileIconProvider.shared.image(for: item.iconKey))
+            let imageView = GalleryImageView(image: FileIconProvider.shared.image(for: item.iconKey))
+            imageView.representedURL = item.url
             imageView.imageScaling = .scaleProportionallyDown
             imageView.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(imageView)
             NSLayoutConstraint.activate([
                 imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
                 imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 20),
-                imageView.heightAnchor.constraint(equalToConstant: 20),
+                imageView.widthAnchor.constraint(equalToConstant: presentationMode == .gallery ? 58 : 20),
+                imageView.heightAnchor.constraint(equalToConstant: presentationMode == .gallery ? 58 : 20),
                 text.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
                 text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
             ])
             cell.imageView = imageView
+            if presentationMode == .gallery { loadThumbnail(for: item, into: imageView) }
         } else {
             text.alignment = identifier == "size" ? .right : .left
             let inset = metadataColumnContentInset
@@ -1344,6 +1403,20 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             return ""
         }
     }
+}
+
+private extension PanePresentationMode {
+    var symbolName: String {
+        switch self {
+        case .list: return "list.bullet"
+        case .brief: return "list.dash"
+        case .gallery: return "square.grid.2x2"
+        }
+    }
+}
+
+private final class GalleryImageView: NSImageView {
+    var representedURL: URL?
 }
 
 extension FilePaneViewController: NSTextFieldDelegate {

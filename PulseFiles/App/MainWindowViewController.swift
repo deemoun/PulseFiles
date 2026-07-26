@@ -109,7 +109,8 @@ final class MainWindowViewController: NSViewController {
             accessPolicy: accessPolicy,
             quickSearchMatchMode: settings.quickSearchMatchMode,
             quickSearchPresentation: settings.quickSearchPresentation
-        )
+        ),
+        presentationMode: settings.presentationMode(for: .left)
     )
     private lazy var rightPane = FilePaneViewController(
         paneID: .right,
@@ -122,7 +123,8 @@ final class MainWindowViewController: NSViewController {
             accessPolicy: accessPolicy,
             quickSearchMatchMode: settings.quickSearchMatchMode,
             quickSearchPresentation: settings.quickSearchPresentation
-        )
+        ),
+        presentationMode: settings.presentationMode(for: .right)
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
@@ -164,6 +166,7 @@ final class MainWindowViewController: NSViewController {
     private var undoRecovery: FileOperationRecovery?
     private var quickLookPreviewURL: NSURL?
     private var quickLookProbeGeneration = 0
+    private var viewerWindowControllers: [NSWindowController] = []
     private var navigationProbeGeneration = 0
     private var dropProbeGeneration = 0
     private var volumeChangeProbeGeneration = 0
@@ -423,6 +426,8 @@ final class MainWindowViewController: NSViewController {
             self?.activePaneID = .right
             self?.performCommand(command)
         }
+        leftPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .left) }
+        rightPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .right) }
         leftPane.onDropURLs = { [weak self] urls, destination, shouldCopy in
             self?.activePaneID = .left
             self?.transferDroppedItems(urls, to: destination, copy: shouldCopy)
@@ -519,6 +524,8 @@ final class MainWindowViewController: NSViewController {
         switch command {
         case .open:
             targetPane().openFocusedItem()
+        case .viewer:
+            showViewerForFocusedItem()
         case .openWith:
             presentOpenWithApplicationPicker()
         case .quickLook:
@@ -970,6 +977,23 @@ final class MainWindowViewController: NSViewController {
             panel.reloadData()
             panel.makeKeyAndOrderFront(nil)
         }
+    }
+
+    private func showViewerForFocusedItem() {
+        guard let item = targetPane().focusedItem, !item.isDirectory else {
+            showError(message: "Nothing Selected".localized, detail: "Select a file to view.".localized)
+            return
+        }
+        let viewer = FileViewerViewController(url: item.url, service: ReadOnlyViewerService(accessPolicy: accessPolicy))
+        let window = NSWindow(contentViewController: viewer)
+        window.title = item.filename
+        window.setContentSize(NSSize(width: 820, height: 620))
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        let controller = NSWindowController(window: window)
+        viewerWindowControllers.removeAll { $0.window == nil }
+        viewerWindowControllers.append(controller)
+        controller.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -2596,6 +2620,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuInvertSelection(_ sender: Any?) { performCommand(.invertSelection) }
     @objc func menuUndo(_ sender: Any?) { performCommand(.undo) }
     @objc func menuOpenWith(_ sender: Any?) { performCommand(.openWith) }
+    @objc func menuViewer(_ sender: Any?) { performCommand(.viewer) }
     @objc func menuCopy(_ sender: Any?) { performCommand(.copy) }
     @objc func menuMove(_ sender: Any?) { performCommand(.move) }
     @objc func menuCopyToClipboard(_ sender: Any?) { performCommand(.copyToClipboard) }
@@ -2605,6 +2630,9 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuRefresh(_ sender: Any?) { performCommand(.refresh) }
     @objc func menuReveal(_ sender: Any?) { performCommand(.reveal) }
     @objc func menuToggleHiddenFiles(_ sender: Any?) { performCommand(.toggleHiddenFiles) }
+    @objc func menuPresentationList(_ sender: Any?) { targetPane().setPresentationMode(.list) }
+    @objc func menuPresentationBrief(_ sender: Any?) { targetPane().setPresentationMode(.brief) }
+    @objc func menuPresentationGallery(_ sender: Any?) { targetPane().setPresentationMode(.gallery) }
     @objc func menuSortByName(_ sender: Any?) { performCommand(.sortByName) }
     @objc func menuSortByExtension(_ sender: Any?) { performCommand(.sortByExtension) }
     @objc func menuSortByKind(_ sender: Any?) { performCommand(.sortByKind) }
@@ -2754,6 +2782,7 @@ private extension MainCommand {
     init?(menuAction: Selector?) {
         guard let menuAction else { return nil }
         switch menuAction {
+        case #selector(MainWindowViewController.menuViewer(_:)): self = .viewer
         case #selector(MainWindowViewController.menuNewFile(_:)): self = .newFile
         case #selector(MainWindowViewController.menuNewFolder(_:)): self = .newFolder
         case #selector(MainWindowViewController.menuRename(_:)): self = .rename

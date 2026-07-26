@@ -19,7 +19,8 @@ struct MainCommandShortcut: Equatable {
 
 enum MainCommandShortcutRegistry {
     static let shortcuts: [MainCommandShortcut] = [
-        shortcut(.open, "", 36, [], "F3 / F4", .outsideTextInput),
+        shortcut(.open, "", 36, [], "Return / F4", .outsideTextInput),
+        shortcut(.viewer, "", 99, [], "F3", .outsideTextInput),
         shortcut(.openWith, "", 65_535, [], ""),
         shortcut(.quickLook, "", 49, [], "Space", .outsideTextInput),
         shortcut(.newFile, "n", 45, [.command, .shift], "Shift F7", .outsideTextInput),
@@ -80,7 +81,6 @@ enum MainCommandShortcutRegistry {
         shortcut(.followSymbolicLink, "\u{F703}", 124, [.command], "⌘→", .outsideTextInput),
         shortcut(.cancelOperation, ".", 47, [.command], "⌘.", .textInputSafe),
         shortcut(.debugLogs, "", 65_535, [], ""), shortcut(.exportDiagnostics, "", 65_535, [], ""),
-        shortcut(.open, "", 99, [], "F3", .outsideTextInput),
         shortcut(.open, "", 118, [], "F4", .outsideTextInput),
         shortcut(.newFile, "", 98, [.shift], "Shift F7", .outsideTextInput),
         shortcut(.newFolder, "", 98, [], "F7", .outsideTextInput),

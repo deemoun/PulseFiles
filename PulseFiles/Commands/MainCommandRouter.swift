@@ -131,7 +131,7 @@ struct MainCommandRouter {
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
-        case .open, .quickLook, .rename, .extractArchive, .getInfo, .reveal:
+        case .open, .viewer, .quickLook, .rename, .extractArchive, .getInfo, .reveal:
             return focusedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: [$0])
             }

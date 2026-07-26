@@ -234,6 +234,39 @@ final class SettingsService {
         set { set(newValue, forKey: "showHiddenFilesByDefault") }
     }
 
+    var defaultPanePresentationMode: PanePresentationMode {
+        get { PanePresentationMode(rawValue: defaults.string(forKey: "defaultPanePresentationMode") ?? "") ?? .list }
+        set { defaults.set(newValue.rawValue, forKey: "defaultPanePresentationMode"); writeSettingsJSONIfNeeded() }
+    }
+
+    var leftPanePresentationMode: PanePresentationMode {
+        get { presentationMode(forKey: "leftPanePresentationMode") }
+        set { setPresentationMode(newValue, forKey: "leftPanePresentationMode") }
+    }
+
+    var rightPanePresentationMode: PanePresentationMode {
+        get { presentationMode(forKey: "rightPanePresentationMode") }
+        set { setPresentationMode(newValue, forKey: "rightPanePresentationMode") }
+    }
+
+    func presentationMode(for pane: PaneID) -> PanePresentationMode {
+        pane == .left ? leftPanePresentationMode : rightPanePresentationMode
+    }
+
+    func setPresentationMode(_ mode: PanePresentationMode, for pane: PaneID) {
+        if pane == .left { leftPanePresentationMode = mode } else { rightPanePresentationMode = mode }
+    }
+
+    private func presentationMode(forKey key: String) -> PanePresentationMode {
+        guard let value = defaults.string(forKey: key) else { return defaultPanePresentationMode }
+        return PanePresentationMode(rawValue: value) ?? defaultPanePresentationMode
+    }
+
+    private func setPresentationMode(_ mode: PanePresentationMode, forKey key: String) {
+        defaults.set(mode.rawValue, forKey: key)
+        writeSettingsJSONIfNeeded()
+    }
+
     var quickSearchMatchMode: QuickSearchMatchMode {
         get { QuickSearchMatchMode(rawValue: defaults.string(forKey: "quickSearchMatchMode") ?? "") ?? .contains }
         set { defaults.set(newValue.rawValue, forKey: "quickSearchMatchMode"); writeSettingsJSONIfNeeded() }

@@ -31,6 +31,9 @@ PulseFiles is licensed under the [GNU General Public License v3.0 or later](LICE
 | --- | --- |
 | Tab | Switch pane |
 | Return | Open the selected item, or rename/confirm text when editing |
+| F3 | Open the selected file in the read-only incremental text/hex viewer |
+| F4 | Open the selected item normally |
+| Space | Preview the selected item with Quick Look |
 | Backspace / Command-Up | Navigate to the parent folder |
 | Command-[ / Command-] | Navigate back / forward |
 | Command-Shift-G | Go to folder |

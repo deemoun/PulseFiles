@@ -2,6 +2,7 @@ import Foundation
 
 enum MainCommand: CaseIterable, Equatable {
     case open
+    case viewer
     case openWith
     case quickLook
     case newFile
@@ -81,7 +82,7 @@ enum MainCommand: CaseIterable, Equatable {
         case .closeTab: self = .closeTab
         case .nextTab: self = .nextTab
         case .previousTab: self = .previousTab
-        case .view: self = .open
+        case .view: self = .viewer
         }
     }
 }

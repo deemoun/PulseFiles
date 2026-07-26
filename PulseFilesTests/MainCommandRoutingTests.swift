@@ -3,6 +3,12 @@ import AppKit
 @testable import PulseFiles
 
 final class MainCommandRoutingTests: XCTestCase {
+    func testViewerOwnsF3WhileReturnAndSpaceKeepExistingActions() {
+        let router = MainCommandRouter()
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 99), .viewer)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 36), .open)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 49), .quickLook)
+    }
     private let router = MainCommandRouter()
 
     func testActivePaneOnlyCommandsRouteToActivePaneSelection() {
@@ -75,7 +81,7 @@ final class MainCommandRoutingTests: XCTestCase {
         for command in [MainCommand.openWith, .trash, .duplicate, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noSelection))
         }
-        for command in [MainCommand.open, .rename, .getInfo, .reveal, .quickLook] {
+        for command in [MainCommand.open, .viewer, .rename, .getInfo, .reveal, .quickLook] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noFocusedItem))
         }
     }
@@ -84,7 +90,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let selected = URL(fileURLWithPath: "/outside-sandbox/secret.txt")
         let state = makeState(activePaneID: .left, leftSelection: [selected], sandboxAllowsSelectedURLs: false)
 
-        for command in [MainCommand.open, .openWith, .rename, .duplicate, .getInfo, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
+        for command in [MainCommand.open, .viewer, .openWith, .rename, .duplicate, .getInfo, .trash, .reveal, .copy, .move, .copyToClipboard, .cutToClipboard] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .sandboxRejectedSelection))
         }
     }
@@ -93,7 +99,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let focused = URL(fileURLWithPath: "/sandbox/left/focused.txt")
         let state = makeState(activePaneID: .left, leftFocusedURL: focused)
 
-        for command in [MainCommand.open, .rename, .reveal] {
+        for command in [MainCommand.open, .viewer, .rename, .reveal] {
             XCTAssertEqual(router.route(command, in: state), .activePane(command: command, pane: .left, urls: [focused]))
         }
     }
@@ -102,7 +108,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let selected = URL(fileURLWithPath: "/sandbox/left/selected.txt")
         let state = makeState(activePaneID: .left, leftSelection: [selected], leftFocusedURL: .none)
 
-        for command in [MainCommand.open, .rename, .reveal] {
+        for command in [MainCommand.open, .viewer, .rename, .reveal] {
             XCTAssertEqual(router.route(command, in: state), .disabled(command: command, reason: .noFocusedItem))
         }
         XCTAssertEqual(router.route(.copy, in: state), .crossPane(command: .copy, sourcePane: .left, destinationPane: .right, sourceURLs: [selected], destinationDirectory: URL(fileURLWithPath: "/sandbox/right", isDirectory: true)))
