@@ -82,6 +82,7 @@ final class MainWindowViewController: NSViewController {
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
     private let sandboxRootEnsurer: () -> Void
+    private let symbolicLinkResolver: SymbolicLinkResolutionService
     private lazy var descendantSearch = DescendantSearchService(accessPolicy: accessPolicy)
     private var descendantSearchTask: Task<Void, Never>?
     private let fileSystemScheduler = FileSystemOperationScheduler.shared
@@ -173,10 +174,12 @@ final class MainWindowViewController: NSViewController {
     init(
         settings: SettingsService = SettingsService(),
         accessPolicy: SandboxFileAccessPolicy = .current,
+        symbolicLinkResolver: SymbolicLinkResolutionService = SymbolicLinkResolutionService(),
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
         self.settings = settings
         self.accessPolicy = accessPolicy
+        self.symbolicLinkResolver = symbolicLinkResolver
         self.sandboxRootEnsurer = sandboxRootEnsurer
         super.init(nibName: nil, bundle: nil)
     }
@@ -488,7 +491,7 @@ final class MainWindowViewController: NSViewController {
             showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
-        guard !(isSinglePaneMode && (command == .copy || command == .move)) else {
+        guard !(isSinglePaneMode && [.copy, .move, .swapPanes, .syncOppositePane, .revealInOppositePane].contains(command)) else {
             DiagnosticLogger.log(.warning, category: "MainWindow", "Cross-pane command rejected because single-pane mode is active: command=\(command)")
             showError(message: "Opposite Pane Unavailable".localized, detail: "Use dual-pane mode before copying or moving items between panes.".localized)
             return
@@ -576,12 +579,84 @@ final class MainWindowViewController: NSViewController {
                 rebuildPaneArrangement()
                 updateActivePane()
             }
+        case .swapPanes:
+            swapPaneLogicalStates()
+        case .syncOppositePane:
+            synchronizeOppositePane()
+        case .revealInOppositePane:
+            revealFocusedItemInOppositePane()
+        case .followSymbolicLink:
+            followFocusedSymbolicLink()
         case .cancelOperation:
             cancelActiveFileOperation()
         case .debugLogs:
             presentDebugLogs(nil)
         case .exportDiagnostics:
             exportDiagnostics()
+        }
+    }
+
+    private func swapPaneLogicalStates() {
+        let leftState = leftPane.logicalStateSnapshot()
+        let rightState = rightPane.logicalStateSnapshot()
+        do {
+            // Validate both destinations before changing either pane.
+            try accessPolicy.validateAccess(to: leftState.currentDirectory)
+            try accessPolicy.validateAccess(to: rightState.currentDirectory)
+            try leftPane.restoreLogicalState(rightState)
+            try rightPane.restoreLogicalState(leftState)
+            activeFilterText = targetPane().logicalStateSnapshot().searchQuery
+            toolbarSearchField?.stringValue = activeFilterText
+            view.window?.makeFirstResponder(targetPane().tableView)
+        } catch {
+            showError(message: "Could Not Swap Panes".localized, detail: error.localizedDescription)
+        }
+    }
+
+    private func synchronizeOppositePane() {
+        let source = targetPane()
+        let destination = targetPane(useInactive: true)
+        do {
+            try accessPolicy.validateAccess(to: source.currentDirectory)
+            destination.preparePendingSelection(source.focusedItem?.url)
+            destination.navigate(to: source.currentDirectory)
+            view.window?.makeFirstResponder(source.tableView)
+        } catch {
+            showError(message: "Could Not Sync Opposite Pane".localized, detail: error.localizedDescription)
+        }
+    }
+
+    private func revealFocusedItemInOppositePane() {
+        guard let item = targetPane().focusedItem else { return }
+        let source = targetPane()
+        let destination = targetPane(useInactive: true)
+        do {
+            try accessPolicy.validateAccess(to: item.url)
+            let parent = item.url.deletingLastPathComponent()
+            try accessPolicy.validateAccess(to: parent)
+            destination.preparePendingSelection(item.url)
+            destination.navigate(to: parent)
+            view.window?.makeFirstResponder(source.tableView)
+        } catch {
+            showError(message: "Could Not Reveal Item".localized, detail: error.localizedDescription)
+        }
+    }
+
+    private func followFocusedSymbolicLink() {
+        guard let item = targetPane().focusedItem, item.isSymbolicLink else { return }
+        do {
+            let target = try symbolicLinkResolver.resolveOneHop(item.url)
+            try accessPolicy.validateAccess(to: target)
+            var isDirectory: ObjCBool = false
+            FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory)
+            if isDirectory.boolValue {
+                targetPane().navigate(to: target)
+            } else {
+                targetPane().preparePendingSelection(target)
+                targetPane().navigate(to: target.deletingLastPathComponent())
+            }
+        } catch {
+            showError(message: "Could Not Follow Symbolic Link".localized, detail: error.localizedDescription)
         }
     }
 
@@ -2380,6 +2455,10 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
     @objc func menuScratchDirectory(_ sender: Any?) { performCommand(.scratchDirectory) }
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
+    @objc func menuSwapPanes(_ sender: Any?) { performCommand(.swapPanes) }
+    @objc func menuSyncOppositePane(_ sender: Any?) { performCommand(.syncOppositePane) }
+    @objc func menuRevealInOppositePane(_ sender: Any?) { performCommand(.revealInOppositePane) }
+    @objc func menuFollowSymbolicLink(_ sender: Any?) { performCommand(.followSymbolicLink) }
     @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
     @objc func menuShowDebugLogs(_ sender: Any?) { performCommand(.debugLogs) }
@@ -2466,13 +2545,15 @@ extension MainWindowViewController: NSMenuItemValidation {
                 id: .left,
                 currentDirectory: leftPane.currentDirectory,
                 selectedURLs: leftSelectedURLs,
-                focusedURL: leftFocusedURL
+                focusedURL: leftFocusedURL,
+                focusedItemIsSymbolicLink: leftPane.focusedItem?.isSymbolicLink == true
             ),
             rightPane: MainCommandRoutingPane(
                 id: .right,
                 currentDirectory: rightPane.currentDirectory,
                 selectedURLs: rightSelectedURLs,
-                focusedURL: rightFocusedURL
+                focusedURL: rightFocusedURL,
+                focusedItemIsSymbolicLink: rightPane.focusedItem?.isSymbolicLink == true
             ),
             isSinglePaneMode: isSinglePaneMode,
             isFileOperationActive: isFileOperationActive,
@@ -2522,6 +2603,10 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuDownloads(_:)): self = .downloads
         case #selector(MainWindowViewController.menuApplications(_:)): self = .applications
         case #selector(MainWindowViewController.menuSwitchPane(_:)): self = .switchPane
+        case #selector(MainWindowViewController.menuSwapPanes(_:)): self = .swapPanes
+        case #selector(MainWindowViewController.menuSyncOppositePane(_:)): self = .syncOppositePane
+        case #selector(MainWindowViewController.menuRevealInOppositePane(_:)): self = .revealInOppositePane
+        case #selector(MainWindowViewController.menuFollowSymbolicLink(_:)): self = .followSymbolicLink
         case #selector(MainWindowViewController.menuCancelOperation(_:)): self = .cancelOperation
         case #selector(MainWindowViewController.menuShowDebugLogs(_:)): self = .debugLogs
         case #selector(MainWindowViewController.menuExportDiagnostics(_:)): self = .exportDiagnostics

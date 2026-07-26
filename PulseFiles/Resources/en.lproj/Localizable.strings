@@ -332,3 +332,14 @@
 "English" = "English";
 "Russian" = "Russian";
 "Language changes apply after restarting PulseFiles." = "Language changes apply after restarting PulseFiles.";
+
+/* Dual-pane commands */
+"Swap Panes" = "Swap Panes";
+"Sync Opposite Pane" = "Sync Opposite Pane";
+"Reveal in Opposite Pane" = "Reveal in Opposite Pane";
+"Follow Symbolic Link" = "Follow Symbolic Link";
+"Could Not Swap Panes" = "Could Not Swap Panes";
+"Could Not Sync Opposite Pane" = "Could Not Sync Opposite Pane";
+"Could Not Reveal Item" = "Could Not Reveal Item";
+"Could Not Follow Symbolic Link" = "Could Not Follow Symbolic Link";
+"The symbolic link target does not exist." = "The symbolic link target does not exist.";

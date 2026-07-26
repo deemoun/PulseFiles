@@ -40,6 +40,10 @@ enum MainCommand: CaseIterable, Equatable {
     case applications
     case scratchDirectory
     case switchPane
+    case swapPanes
+    case syncOppositePane
+    case revealInOppositePane
+    case followSymbolicLink
     case cancelOperation
     case debugLogs
     case exportDiagnostics

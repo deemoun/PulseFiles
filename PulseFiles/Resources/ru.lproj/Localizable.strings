@@ -332,3 +332,14 @@
 "English" = "Английский";
 "Russian" = "Русский";
 "Language changes apply after restarting PulseFiles." = "Изменения языка применятся после перезапуска PulseFiles.";
+
+/* Dual-pane commands */
+"Swap Panes" = "Поменять панели местами";
+"Sync Opposite Pane" = "Синхронизировать другую панель";
+"Reveal in Opposite Pane" = "Показать в другой панели";
+"Follow Symbolic Link" = "Перейти по символической ссылке";
+"Could Not Swap Panes" = "Не удалось поменять панели местами";
+"Could Not Sync Opposite Pane" = "Не удалось синхронизировать другую панель";
+"Could Not Reveal Item" = "Не удалось показать объект";
+"Could Not Follow Symbolic Link" = "Не удалось перейти по символической ссылке";
+"The symbolic link target does not exist." = "Объект, на который указывает символическая ссылка, не существует.";
