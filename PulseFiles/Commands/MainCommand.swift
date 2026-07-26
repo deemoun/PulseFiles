@@ -38,6 +38,7 @@ enum MainCommand: CaseIterable, Equatable {
     case home
     case downloads
     case applications
+    case scratchDirectory
     case switchPane
     case cancelOperation
     case debugLogs

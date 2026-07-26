@@ -53,6 +53,7 @@ enum MainCommandShortcutRegistry {
         shortcut(.home, "h", 4, [.command, .shift], "⌘⇧H", .outsideTextInput),
         shortcut(.downloads, "l", 37, [.command, .option], "⌥⌘L", .outsideTextInput),
         shortcut(.applications, "a", 0, [.command, .shift], "⌘⇧A", .outsideTextInput),
+        shortcut(.scratchDirectory, "g", 5, [.command, .control], "⌃⌘G", .outsideTextInput),
         shortcut(.switchPane, "\t", 48, [], "Tab", .outsideTextInput),
         shortcut(.cancelOperation, ".", 47, [.command], "⌘.", .textInputSafe),
         shortcut(.debugLogs, "", 65_535, [], ""), shortcut(.exportDiagnostics, "", 65_535, [], ""),
@@ -63,7 +64,8 @@ enum MainCommandShortcutRegistry {
         shortcut(.move, "", 97, [], "F6", .outsideTextInput),
         shortcut(.trash, "", 100, [], "F8", .outsideTextInput),
         shortcut(.trash, "", 51, [.shift], "Shift Delete", .outsideTextInput),
-        shortcut(.parent, "", 51, [], "Delete", .outsideTextInput)
+        shortcut(.parent, "", 51, [], "Delete", .outsideTextInput),
+        shortcut(.scratchDirectory, "g", 5, [.command, .control, .option], "⌥⌃⌘G", .outsideTextInput)
     ]
 
     static func shortcut(for command: MainCommand) -> MainCommandShortcut {

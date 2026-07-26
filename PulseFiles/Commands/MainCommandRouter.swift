@@ -173,6 +173,26 @@ struct MainCommandRouter {
     }
 }
 
+enum ScratchDirectoryCommandRoute: Equatable {
+    case promptForConfiguration
+    case requestAccess(URL)
+    case navigate(URL)
+    case cancelled
+}
+
+/// Keeps scratch-location command decisions independent from AppKit prompts so
+/// every non-mutating and recovery outcome can be covered by routing tests.
+struct ScratchDirectoryCommandRouter {
+    func route(configuredDirectory: URL?, canAccess: (URL) -> Bool) -> ScratchDirectoryCommandRoute {
+        guard let configuredDirectory else { return .promptForConfiguration }
+        return canAccess(configuredDirectory) ? .navigate(configuredDirectory) : .requestAccess(configuredDirectory)
+    }
+
+    func routeAfterAccessRecovery(to directory: URL, wasGranted: Bool) -> ScratchDirectoryCommandRoute {
+        wasGranted ? .navigate(directory) : .cancelled
+    }
+}
+
 extension MainCommand {
     var conflictsWithFileOperation: Bool {
         switch self {

@@ -276,6 +276,10 @@
 "Open in Active Pane" = "Open in Active Pane";
 "Clear Setting" = "Clear Setting";
 "No scratch folder configured" = "No scratch folder configured";
+"Go to Scratch Folder" = "Go to Scratch Folder";
+"No Scratch Folder Configured" = "No Scratch Folder Configured";
+"Choose a folder to use as your scratch workspace." = "Choose a folder to use as your scratch workspace.";
+"Could Not Configure Scratch Folder" = "Could Not Configure Scratch Folder";
 
 "Undo" = "Undo";
 "Undo Copy" = "Undo Copy";
