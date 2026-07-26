@@ -212,6 +212,40 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertTrue(makeSettings().defaultSidebarVisible)
     }
 
+    func testAppLanguageDefaultsToEnglishAndRoundTrips() {
+        XCTAssertEqual(settings.appLanguage, .english)
+
+        settings.appLanguage = .russian
+
+        XCTAssertEqual(makeSettings().appLanguage, .russian)
+        XCTAssertEqual(fixture.defaults.string(forKey: SettingsService.appLanguageDefaultsKey), "ru")
+    }
+
+    func testAppLanguageSafelyDefaultsInvalidStoredValueToEnglish() {
+        fixture.defaults.set("not-a-language", forKey: SettingsService.appLanguageDefaultsKey)
+        XCTAssertEqual(settings.appLanguage, .english)
+    }
+
+    func testAppLanguageIsExportedAndImportedThroughSettingsJSON() throws {
+        settings.appLanguage = .russian
+        XCTAssertEqual(try decodedSettingsJSONDocument(at: settingsJSONURL)["settings"]?["appLanguage"] as? String, "ru")
+
+        try writeSettingsJSON(settings: ["appLanguage": "en"])
+        fixture.defaults.removeObject(forKey: "settingsJSONLastImportedModificationTime")
+        XCTAssertEqual(makeSettings().appLanguage, .english)
+    }
+
+    func testLegacyAndInvalidJSONLanguageDefaultToEnglish() throws {
+        settings.appLanguage = .russian
+        try writeSettingsJSON(settings: ["defaultSidebarVisible": true])
+        fixture.defaults.removeObject(forKey: "settingsJSONLastImportedModificationTime")
+        XCTAssertEqual(makeSettings().appLanguage, .english)
+
+        try writeSettingsJSON(settings: ["appLanguage": "invalid"])
+        fixture.defaults.removeObject(forKey: "settingsJSONLastImportedModificationTime")
+        XCTAssertEqual(makeSettings().appLanguage, .english)
+    }
+
     func testTerminalVisibilityAndExperimentalEnablementDefaultAndRoundTrip() {
         XCTAssertFalse(settings.experimentalTerminalEnabled)
         XCTAssertFalse(settings.defaultTerminalVisible)

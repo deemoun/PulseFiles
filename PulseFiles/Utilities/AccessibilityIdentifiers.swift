@@ -63,6 +63,7 @@ enum AccessibilityIdentifiers {
     }
 
     enum Settings {
+        static let languageSelector = "pulsefiles.settings.language.selector"
         static let scratchPath = "pulsefiles.settings.scratchFolder.path"
         static let chooseScratchFolder = "pulsefiles.settings.scratchFolder.choose"
         static let openScratchFolder = "pulsefiles.settings.scratchFolder.open"
