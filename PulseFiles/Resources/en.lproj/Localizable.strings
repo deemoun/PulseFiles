@@ -352,3 +352,20 @@
 "Could Not Reveal Item" = "Could Not Reveal Item";
 "Could Not Follow Symbolic Link" = "Could Not Follow Symbolic Link";
 "The symbolic link target does not exist." = "The symbolic link target does not exist.";
+
+/* Pattern selection */
+"Deselect All" = "Deselect All";
+"Select by Pattern…" = "Select by Pattern…";
+"Deselect by Pattern…" = "Deselect by Pattern…";
+"Select by Pattern" = "Select by Pattern";
+"Deselect by Pattern" = "Deselect by Pattern";
+"Select Same Extension" = "Select Same Extension";
+"Deselect Same Extension" = "Deselect Same Extension";
+"Glob" = "Glob";
+"Regular Expression" = "Regular Expression";
+"Pattern:" = "Pattern:";
+"Example: *.swift" = "Example: *.swift";
+"Select" = "Select";
+"Deselect" = "Deselect";
+"0 matches" = "0 matches";
+"%d matches" = "%d matches";

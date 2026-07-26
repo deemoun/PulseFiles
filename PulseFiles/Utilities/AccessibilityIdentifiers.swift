@@ -82,6 +82,14 @@ enum AccessibilityIdentifiers {
         }
     }
 
+    enum Pattern {
+        static let patternField = "pulsefiles.pattern.field"
+        static let mode = "pulsefiles.pattern.mode"
+        static let matchCount = "pulsefiles.pattern.matchCount"
+        static let apply = "pulsefiles.pattern.apply"
+        static let cancel = "pulsefiles.pattern.cancel"
+    }
+
     enum FileOperationProgress {
         static let dialog = "pulsefiles.fileOperationProgress.dialog"
         static let indicator = "pulsefiles.fileOperationProgress.indicator"

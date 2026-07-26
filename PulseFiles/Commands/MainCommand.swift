@@ -10,6 +10,11 @@ enum MainCommand: CaseIterable, Equatable {
     case duplicate
     case getInfo
     case selectAll
+    case deselectAll
+    case selectByPattern
+    case deselectByPattern
+    case selectSameExtension
+    case deselectSameExtension
     case invertSelection
     case undo
     case copy
