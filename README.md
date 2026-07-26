@@ -69,16 +69,21 @@ The Experimental Terminal runs a non-interactive shell command in the active pan
 
 ## Version 1.0 storage compatibility
 
-The following is the 1.0 product commitment, not a promise that every third-party filesystem provider implements identical macOS behavior. Final release sign-off for the supported rows is performed against a signed app using the scenarios in `RELEASE_CHECKLIST.md`.
+The following table describes the intended 1.0 behavior, not release-verified
+provider support. The current candidate has not completed the signed-app storage
+matrix, so none of the conditional rows below should be represented as verified
+support in marketing or release communications. Support may be claimed only
+after the matching signed-app scenarios in `RELEASE_CHECKLIST.md` have evidence
+for the release candidate.
 
 | Item class | 1.0 status | Behavior and recovery |
 | --- | --- | --- |
-| iCloud Drive and cloud-provider folders | Supported when the item is locally available and the provider allows the operation | Browsing and normal operations use macOS access checks. A cloud-only iCloud item is rejected before mutation; download it in Finder and retry. Provider sync conflicts, provider-specific metadata, and providers that do not expose normal file semantics are not guaranteed. |
-| Network shares and removable media | Supported while mounted, reachable, writable, and permitted by macOS | Operations are preflighted and re-check availability before mutation. A disconnected volume is reported as unavailable; reconnect/remount it and retry. Read-only media is rejected with a writable-media recovery message. |
-| Packages | Supported as directory trees | PulseFiles lists packages as packages and copies/moves their contents as a tree. Test application-specific package integrity before replacing production packages. |
-| Symbolic links | Supported as links | Copy preserves the stored link destination without resolving or traversing the target. This prevents a link from reading an unselected external target. |
+| iCloud Drive and cloud-provider folders | Candidate behavior; signed-app verification pending | Browsing and normal operations use macOS access checks. A cloud-only iCloud item is intended to be rejected before mutation; download it in Finder and retry. Provider sync conflicts, provider-specific metadata, and providers that do not expose normal file semantics are not guaranteed. |
+| Network shares and removable media | Candidate behavior; signed-app verification pending | Operations are intended to preflight and re-check availability before mutation. A disconnected volume should be reported as unavailable; reconnect/remount it and retry. Read-only media should be rejected with a writable-media recovery message. |
+| Packages | Candidate behavior; signed-app verification pending | PulseFiles is intended to list packages as packages and copy/move their contents as a tree. Test application-specific package integrity before replacing production packages. |
+| Symbolic links | Candidate behavior; signed-app verification pending | Copy is intended to preserve the stored link destination without resolving or traversing the target. This prevents a link from reading an unselected external target. |
 | Finder aliases | Not supported for mutation in 1.0 | PulseFiles detects a Finder alias before mutation and leaves it unchanged. Use Finder to manage the alias or operate on the original item. Finder aliases are not symbolic links. |
-| Metadata preservation | Best-effort support | Copy paths preserve POSIX permissions, ownership IDs where permitted, timestamps, Finder tags/labels, extended attributes, and ACLs. If a destination/provider rejects metadata, content remains copied but PulseFiles reports a cleanup warning; verify metadata on the destination before removing the source. |
+| Metadata preservation | Candidate best-effort behavior; signed-app verification pending | Copy paths are intended to preserve POSIX permissions, ownership IDs where permitted, timestamps, Finder tags/labels, extended attributes, and ACLs. If a destination/provider rejects metadata, content should remain copied and PulseFiles should report a cleanup warning; verify metadata on the destination before removing the source. |
 
 Do not treat a successful file-content transfer as a guarantee that cloud-provider state, custom metadata, or application-specific package internals were preserved. These limits are intentionally reflected in the release-facing copy rather than hidden behind a generic "all files" claim.
 
