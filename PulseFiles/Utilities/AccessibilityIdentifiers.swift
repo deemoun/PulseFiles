@@ -76,6 +76,13 @@ enum AccessibilityIdentifiers {
         static let field = "pulsefiles.commandBar.field"
     }
 
+    enum QuickLocations {
+        static let popover = "pulsefiles.quickLocations.popover"
+        static let search = "pulsefiles.quickLocations.search"
+        static let list = "pulsefiles.quickLocations.list"
+        static func entry(_ id: String) -> String { "pulsefiles.quickLocations.entry.\(id)" }
+    }
+
     enum Command {
         static func menuItem(_ command: MainCommand) -> String {
             "pulsefiles.command.\(String(describing: command))"

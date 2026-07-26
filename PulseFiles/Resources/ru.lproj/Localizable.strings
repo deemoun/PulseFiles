@@ -369,3 +369,14 @@
 "Deselect" = "Снять выбор";
 "0 matches" = "Совпадений: 0";
 "%d matches" = "Совпадений: %d";
+"Quick Locations…" = "Быстрые места…";
+"Parent Folders" = "Родительские папки";
+"History" = "История";
+"Volumes" = "Тома";
+"Opposite Pane" = "Другая панель";
+"Access required" = "Требуется доступ";
+"Unavailable" = "Недоступно";
+"Filter locations" = "Фильтр мест";
+"Filter quick locations" = "Фильтр быстрых мест";
+"Quick locations" = "Быстрые места";
+"Location" = "Место";

@@ -54,6 +54,7 @@ enum MainCommandShortcutRegistry {
         shortcut(.forward, "]", 30, [.command], "⌘]", .outsideTextInput),
         shortcut(.parent, "\u{F700}", 126, [.command], "⌘↑", .outsideTextInput),
         shortcut(.goToFolder, "g", 5, [.command, .shift], "⌘⇧G", .outsideTextInput),
+        shortcut(.quickLocations, "", 122, [], "F1", .outsideTextInput),
         shortcut(.searchDescendants, "f", 3, [.command, .shift], "⌘⇧F", .outsideTextInput),
         shortcut(.home, "h", 4, [.command, .shift], "⌘⇧H", .outsideTextInput),
         shortcut(.downloads, "l", 37, [.command, .option], "⌥⌘L", .outsideTextInput),

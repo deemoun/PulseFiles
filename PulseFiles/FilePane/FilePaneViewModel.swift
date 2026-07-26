@@ -119,6 +119,7 @@ final class FilePaneViewModel {
     var showsHiddenFiles: Bool { state.showsHiddenFiles }
     var focusedURL: URL? { state.focusedURL }
     var backDestination: URL? { state.history.backStack.last }
+    var navigationHistory: NavigationHistory { state.history }
     var visibleItems: [FileItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }

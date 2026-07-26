@@ -39,6 +39,7 @@ enum MainCommand: CaseIterable, Equatable {
     case forward
     case parent
     case goToFolder
+    case quickLocations
     case searchDescendants
     case home
     case downloads

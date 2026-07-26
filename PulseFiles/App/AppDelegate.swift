@@ -347,6 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(menuItem("Forward".localized, action: #selector(MainWindowViewController.menuForward(_:)), command: .forward))
         submenu.addItem(menuItem("Parent Folder".localized, action: #selector(MainWindowViewController.menuParent(_:)), command: .parent))
         submenu.addItem(menuItem("Go to Folder…".localized, action: #selector(MainWindowViewController.menuGoToFolder(_:)), command: .goToFolder))
+        submenu.addItem(menuItem("Quick Locations…".localized, action: #selector(MainWindowViewController.menuQuickLocations(_:)), command: .quickLocations))
         submenu.addItem(menuItem("Search This Folder…".localized, action: #selector(MainWindowViewController.menuSearchDescendants(_:)), command: .searchDescendants))
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Home".localized, action: #selector(MainWindowViewController.menuHome(_:)), command: .home))

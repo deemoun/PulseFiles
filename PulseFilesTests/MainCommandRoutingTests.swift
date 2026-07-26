@@ -187,6 +187,7 @@ final class MainCommandRoutingTests: XCTestCase {
 
     func testSupportedFunctionKeyShortcutsResolveToCommands() {
         let shortcuts: [(keyCode: UInt16, shift: Bool, command: MainCommand)] = [
+            (122, false, .quickLocations), // F1
             (120, false, .rename), // F2
             (99, false, .open), // F3
             (118, false, .open), // F4

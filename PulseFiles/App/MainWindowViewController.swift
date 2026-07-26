@@ -91,6 +91,8 @@ final class MainWindowViewController: NSViewController {
     private lazy var volumeChangeMonitor = VolumeChangeMonitor()
     private lazy var fileSystemProbe: any FileSystemProbing = FileSystemProbeService(scheduler: fileSystemScheduler)
     private let recentLocations = RecentLocationService()
+    private let bookmarkService = BookmarkService()
+    private let volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService()
     private var recentOperationSummaries: [DiagnosticOperationSummary] = []
 
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
@@ -120,7 +122,7 @@ final class MainWindowViewController: NSViewController {
             quickSearchPresentation: settings.quickSearchPresentation
         )
     )
-    private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, settings: settings, accessPolicy: accessPolicy)
+    private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
     private let terminalService = TerminalService()
     private let commandBar = CommandBarView()
@@ -141,6 +143,7 @@ final class MainWindowViewController: NSViewController {
     private var settingsWindowController: NSWindowController?
     private var debugLogWindowController: NSWindowController?
     private var patternSelectionPanelController: PatternSelectionPanelController?
+    private var quickLocationsPopover: NSPopover?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var flagsChangedEventMonitor: Any?
@@ -587,6 +590,8 @@ final class MainWindowViewController: NSViewController {
             targetPane().goParent()
         case .goToFolder:
             promptForGoToFolder()
+        case .quickLocations:
+            presentQuickLocations()
         case .searchDescendants:
             promptForDescendantSearch()
         case .home, .downloads, .applications:
@@ -613,6 +618,37 @@ final class MainWindowViewController: NSViewController {
             presentDebugLogs(nil)
         case .exportDiagnostics:
             exportDiagnostics()
+        }
+    }
+
+    private func presentQuickLocations() {
+        let active = targetPane()
+        let opposite = isSinglePaneMode ? nil : targetPane(useInactive: true).currentDirectory
+        Task { [weak self] in
+            guard let self else { return }
+            let volumes = await volumeDiscovery.mountedVolumes()
+            let entries = QuickLocationAssembler.assemble(
+                activeDirectory: active.currentDirectory,
+                history: active.viewModel.navigationHistory,
+                bookmarks: bookmarkService.load(),
+                recent: recentLocations.locations,
+                volumes: volumes,
+                scratchDirectory: settings.scratchDirectory,
+                oppositeDirectory: opposite,
+                canAccess: { accessPolicy.canAccess($0) },
+                exists: { FileManager.default.fileExists(atPath: $0.path) }
+            )
+            guard active === self.targetPane() else { return }
+            let controller = QuickLocationsViewController(entries: entries, allowsInactivePane: !isSinglePaneMode)
+            let popover = NSPopover(); popover.behavior = .transient; popover.contentViewController = controller
+            controller.onCancel = { [weak popover] in popover?.performClose(nil) }
+            controller.onActivate = { [weak self, weak popover] entry, inactive in
+                guard let self, self.accessPolicy.canAccess(entry.url) else { NSSound.beep(); return }
+                self.targetPane(useInactive: inactive).navigate(to: entry.url)
+                popover?.performClose(nil)
+            }
+            quickLocationsPopover = popover
+            popover.show(relativeTo: active.view.bounds, of: active.view, preferredEdge: .maxY)
         }
     }
 
@@ -2496,6 +2532,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuForward(_ sender: Any?) { performCommand(.forward) }
     @objc func menuParent(_ sender: Any?) { performCommand(.parent) }
     @objc func menuGoToFolder(_ sender: Any?) { performCommand(.goToFolder) }
+    @objc func menuQuickLocations(_ sender: Any?) { performCommand(.quickLocations) }
     @objc func menuSearchDescendants(_ sender: Any?) { performCommand(.searchDescendants) }
     @objc func menuHome(_ sender: Any?) { performCommand(.home) }
     @objc func menuDownloads(_ sender: Any?) { performCommand(.downloads) }
