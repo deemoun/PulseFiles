@@ -145,6 +145,7 @@ final class SidebarViewController: NSViewController {
     }
 
     private let recentLocations: RecentLocationService
+    private let bookmarkService: BookmarkService
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
     private let volumeDiscovery: any VolumeDiscovering
@@ -164,12 +165,14 @@ final class SidebarViewController: NSViewController {
 
     init(
         recentLocations: RecentLocationService,
+        bookmarkService: BookmarkService = BookmarkService(),
         settings: SettingsService = SettingsService(),
         accessPolicy: SandboxFileAccessPolicy = .current,
         volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService(),
         metadataReader: @escaping MetadataReader = SidebarViewController.gpsLocation
     ) {
         self.recentLocations = recentLocations
+        self.bookmarkService = bookmarkService
         self.settings = settings
         self.accessPolicy = accessPolicy
         self.volumeDiscovery = volumeDiscovery
@@ -350,7 +353,10 @@ final class SidebarViewController: NSViewController {
 
     private func favoriteItems() -> [SidebarItem] {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        return accessibleItems([
+        let saved = bookmarkService.load().map {
+            SidebarItem(title: $0.title, subtitle: displayPath(for: $0.url), url: $0.url, symbol: "star", group: "Favorites", isAvailable: accessPolicy.canAccess($0.url))
+        }
+        return saved + accessibleItems([
             SidebarItem(title: "Home", subtitle: displayPath(for: home), url: home, symbol: "house", group: "Favorites"),
             SidebarItem(title: "Desktop", subtitle: "~/Desktop", url: home.appendingPathComponent("Desktop", isDirectory: true), symbol: "desktopcomputer", group: "Favorites"),
             SidebarItem(title: "Documents", subtitle: "~/Documents", url: home.appendingPathComponent("Documents", isDirectory: true), symbol: "doc", group: "Favorites"),
