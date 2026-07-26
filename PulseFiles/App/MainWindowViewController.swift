@@ -103,7 +103,7 @@ final class MainWindowViewController: NSViewController {
         viewModel: FilePaneViewModel(
             initialDirectory: leftStartupResolution.directory,
             showsHiddenFiles: settings.showHiddenFilesByDefault,
-            sort: settings.defaultSortDescriptor,
+            sort: settings.sortDescriptor(for: .left),
             fileSystem: fileSystem,
             accessPolicy: accessPolicy,
             quickSearchMatchMode: settings.quickSearchMatchMode,
@@ -115,7 +115,7 @@ final class MainWindowViewController: NSViewController {
         viewModel: FilePaneViewModel(
             initialDirectory: rightStartupResolution.directory,
             showsHiddenFiles: settings.showHiddenFilesByDefault,
-            sort: settings.defaultSortDescriptor,
+            sort: settings.sortDescriptor(for: .right),
             fileSystem: fileSystem,
             accessPolicy: accessPolicy,
             quickSearchMatchMode: settings.quickSearchMatchMode,
@@ -449,9 +449,9 @@ final class MainWindowViewController: NSViewController {
                 self.activeFilterText = query
                 self.toolbarSearchField?.stringValue = query
             }
-            pane.onDisplayPreferencesChanged = { [weak self] showsHiddenFiles, sort in
+            pane.onDisplayPreferencesChanged = { [weak self, weak pane] showsHiddenFiles, sort in
                 self?.settings.showHiddenFilesByDefault = showsHiddenFiles
-                self?.settings.defaultSortDescriptor = sort
+                if let paneID = pane?.paneID { self?.settings.setSortDescriptor(sort, for: paneID) }
             }
             pane.onSelectionChanged = { [weak self, weak pane] items in
                 guard let self, pane?.paneID == self.activePaneID else { return }
@@ -566,12 +566,20 @@ final class MainWindowViewController: NSViewController {
             targetPane().toggleHiddenFiles()
         case .sortByName:
             targetPane().setSort(.name)
+        case .sortByExtension:
+            targetPane().setSort(.extension)
         case .sortByKind:
             targetPane().setSort(.kind)
         case .sortBySize:
             targetPane().setSort(.size)
         case .sortByModified:
             targetPane().setSort(.modified)
+        case .sortByCreated:
+            targetPane().setSort(.created)
+        case .sortByAdded:
+            targetPane().setSort(.added)
+        case .sortByAccessed:
+            targetPane().setSort(.accessed)
         case .sortAscending:
             targetPane().setSort(targetPane().sortDescriptor.key, ascending: true)
         case .sortDescending:
@@ -1127,8 +1135,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)
         leftPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
         rightPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
-        leftPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
-        rightPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
+        leftPane.setSortDescriptor(settings.sortDescriptor(for: .left))
+        rightPane.setSortDescriptor(settings.sortDescriptor(for: .right))
         leftPane.viewModel.setQuickSearchOptions(matchMode: settings.quickSearchMatchMode, presentation: settings.quickSearchPresentation)
         rightPane.viewModel.setQuickSearchOptions(matchMode: settings.quickSearchMatchMode, presentation: settings.quickSearchPresentation)
         #if DEBUG
@@ -1166,9 +1174,13 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         menu.addItem(menuItem("Show Hidden Files".localized, action: #selector(menuToggleHiddenFiles(_:)), key: "", modifiers: []))
         menu.addItem(.separator())
         menu.addItem(menuItem("Sort by Name".localized, action: #selector(menuSortByName(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Extension".localized, action: #selector(menuSortByExtension(_:)), key: "", modifiers: []))
         menu.addItem(menuItem("Sort by Kind".localized, action: #selector(menuSortByKind(_:)), key: "", modifiers: []))
         menu.addItem(menuItem("Sort by Size".localized, action: #selector(menuSortBySize(_:)), key: "", modifiers: []))
         menu.addItem(menuItem("Sort by Modified".localized, action: #selector(menuSortByModified(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Created".localized, action: #selector(menuSortByCreated(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Added".localized, action: #selector(menuSortByAdded(_:)), key: "", modifiers: []))
+        menu.addItem(menuItem("Sort by Accessed".localized, action: #selector(menuSortByAccessed(_:)), key: "", modifiers: []))
         menu.addItem(.separator())
         menu.addItem(menuItem("Ascending".localized, action: #selector(menuSortAscending(_:)), key: "", modifiers: []))
         menu.addItem(menuItem("Descending".localized, action: #selector(menuSortDescending(_:)), key: "", modifiers: []))
@@ -2520,9 +2532,13 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuReveal(_ sender: Any?) { performCommand(.reveal) }
     @objc func menuToggleHiddenFiles(_ sender: Any?) { performCommand(.toggleHiddenFiles) }
     @objc func menuSortByName(_ sender: Any?) { performCommand(.sortByName) }
+    @objc func menuSortByExtension(_ sender: Any?) { performCommand(.sortByExtension) }
     @objc func menuSortByKind(_ sender: Any?) { performCommand(.sortByKind) }
     @objc func menuSortBySize(_ sender: Any?) { performCommand(.sortBySize) }
     @objc func menuSortByModified(_ sender: Any?) { performCommand(.sortByModified) }
+    @objc func menuSortByCreated(_ sender: Any?) { performCommand(.sortByCreated) }
+    @objc func menuSortByAdded(_ sender: Any?) { performCommand(.sortByAdded) }
+    @objc func menuSortByAccessed(_ sender: Any?) { performCommand(.sortByAccessed) }
     @objc func menuSortAscending(_ sender: Any?) { performCommand(.sortAscending) }
     @objc func menuSortDescending(_ sender: Any?) { performCommand(.sortDescending) }
     @objc func menuToggleTerminal(_ sender: Any?) { performCommand(.toggleTerminal) }
@@ -2585,6 +2601,10 @@ extension MainWindowViewController: NSMenuItemValidation {
             menuItem.state = sort.key == .name ? .on : .off
             return true
         }
+        if menuItem.action == #selector(menuSortByExtension(_:)) {
+            menuItem.state = sort.key == .extension ? .on : .off
+            return true
+        }
         if menuItem.action == #selector(menuSortByKind(_:)) {
             menuItem.state = sort.key == .kind ? .on : .off
             return true
@@ -2597,6 +2617,9 @@ extension MainWindowViewController: NSMenuItemValidation {
             menuItem.state = sort.key == .modified ? .on : .off
             return true
         }
+        if menuItem.action == #selector(menuSortByCreated(_:)) { menuItem.state = sort.key == .created ? .on : .off; return true }
+        if menuItem.action == #selector(menuSortByAdded(_:)) { menuItem.state = sort.key == .added ? .on : .off; return true }
+        if menuItem.action == #selector(menuSortByAccessed(_:)) { menuItem.state = sort.key == .accessed ? .on : .off; return true }
         if menuItem.action == #selector(menuSortAscending(_:)) {
             menuItem.state = sort.ascending ? .on : .off
             return true
@@ -2675,9 +2698,13 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuReveal(_:)): self = .reveal
         case #selector(MainWindowViewController.menuToggleHiddenFiles(_:)): self = .toggleHiddenFiles
         case #selector(MainWindowViewController.menuSortByName(_:)): self = .sortByName
+        case #selector(MainWindowViewController.menuSortByExtension(_:)): self = .sortByExtension
         case #selector(MainWindowViewController.menuSortByKind(_:)): self = .sortByKind
         case #selector(MainWindowViewController.menuSortBySize(_:)): self = .sortBySize
         case #selector(MainWindowViewController.menuSortByModified(_:)): self = .sortByModified
+        case #selector(MainWindowViewController.menuSortByCreated(_:)): self = .sortByCreated
+        case #selector(MainWindowViewController.menuSortByAdded(_:)): self = .sortByAdded
+        case #selector(MainWindowViewController.menuSortByAccessed(_:)): self = .sortByAccessed
         case #selector(MainWindowViewController.menuSortAscending(_:)): self = .sortAscending
         case #selector(MainWindowViewController.menuSortDescending(_:)): self = .sortDescending
         case #selector(MainWindowViewController.menuToggleTerminal(_:)): self = .toggleTerminal

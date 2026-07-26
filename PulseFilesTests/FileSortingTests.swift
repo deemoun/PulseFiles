@@ -93,12 +93,58 @@ final class FileSortingTests: XCTestCase {
         }
     }
 
+    func testAllMetadataKeysAndMissingDatesAreDeterministic() {
+        let early = Date(timeIntervalSince1970: 100)
+        let late = Date(timeIntervalSince1970: 200)
+        let missing = item("missing.zzz", isDirectory: false, size: 3)
+        let first = item("first.txt", isDirectory: false, size: 2, modificationDate: early, creationDate: late, addedDate: early, accessDate: late)
+        let second = item("second.swift", isDirectory: false, size: 1, modificationDate: late, creationDate: early, addedDate: late, accessDate: early)
+        let items = [second, missing, first]
+
+        XCTAssertEqual(names(items, .extension), ["second.swift", "first.txt", "missing.zzz"])
+        XCTAssertEqual(names(items, .created), ["missing.zzz", "second.swift", "first.txt"])
+        XCTAssertEqual(names(items, .modified), ["missing.zzz", "first.txt", "second.swift"])
+        XCTAssertEqual(names(items, .added), ["missing.zzz", "first.txt", "second.swift"])
+        XCTAssertEqual(names(items, .accessed), ["missing.zzz", "second.swift", "first.txt"])
+    }
+
+    func testFolderFirstIsInvariantAcrossDirectionsAndCanBeDisabled() {
+        let folder = item("a-folder", isDirectory: true, size: 0)
+        let file = item("z-file", isDirectory: false, size: 0)
+        XCTAssertEqual(names([file, folder], .name, ascending: false), ["a-folder", "z-file"])
+        let mixed = FileSystemService.sorted([file, folder], descriptor: .init(key: .name, ascending: false, foldersFirst: false))
+        XCTAssertEqual(mixed.map(\.displayName), ["z-file", "a-folder"])
+    }
+
+    func testComparisonModesNumericNamesCaseVariantsAndURLTieBreaker() {
+        let numeric = [item("file10", isDirectory: false, size: 0), item("file2", isDirectory: false, size: 0)]
+        XCTAssertEqual(names(numeric, .name), ["file2", "file10"])
+
+        let variants = [item("a", isDirectory: false, size: 0), item("A", isDirectory: false, size: 0)]
+        let insensitive = FileSystemService.sorted(variants, descriptor: .init(comparisonMode: .caseInsensitive))
+        XCTAssertEqual(insensitive.map(\.url.path), ["/tmp/A", "/tmp/a"])
+        let sensitive = FileSystemService.sorted(variants, descriptor: .init(comparisonMode: .caseSensitive))
+        XCTAssertEqual(sensitive.map(\.displayName), ["A", "a"])
+    }
+
+    func testOldDescriptorDecodingUsesBackwardCompatibleDefaults() throws {
+        let decoded = try JSONDecoder().decode(FileSortDescriptor.self, from: Data(#"{"key":"size","ascending":false}"#.utf8))
+        XCTAssertEqual(decoded, .init(key: .size, ascending: false, comparisonMode: .naturalLocalized, foldersFirst: true))
+    }
+
+    private func names(_ items: [FileItem], _ key: FileSortKey, ascending: Bool = true) -> [String] {
+        FileSystemService.sorted(items, descriptor: .init(key: key, ascending: ascending)).map(\.displayName)
+    }
+
     private func item(
         _ name: String,
         isDirectory: Bool,
         size: Int64,
         typeDescription: String? = nil,
-        modificationDate: Date? = nil
+        modificationDate: Date? = nil,
+        creationDate: Date? = nil,
+        addedDate: Date? = nil,
+        accessDate: Date? = nil
     ) -> FileItem {
         let resolvedTypeDescription = typeDescription ?? (isDirectory ? "Folder" : "File")
         FileItem(
@@ -111,8 +157,10 @@ final class FileSortingTests: XCTestCase {
             isSymbolicLink: false,
             isHidden: name.hasPrefix("."),
             size: size,
-            creationDate: nil,
+            creationDate: creationDate,
             modificationDate: modificationDate,
+            addedDate: addedDate,
+            accessDate: accessDate,
             posixPermissions: nil,
             owner: nil,
             group: nil,

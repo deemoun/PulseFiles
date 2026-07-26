@@ -310,6 +310,22 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertEqual(makeSettings().defaultSortDescriptor, descriptor)
     }
 
+    func testPaneSortDescriptorsPersistIndependentlyAndFallBackToDefault() {
+        let legacy = FileSortDescriptor(key: .modified, ascending: false)
+        settings.defaultSortDescriptor = legacy
+        XCTAssertEqual(settings.sortDescriptor(for: .left), legacy)
+        XCTAssertEqual(settings.sortDescriptor(for: .right), legacy)
+
+        let left = FileSortDescriptor(key: .created, comparisonMode: .caseSensitive, foldersFirst: false)
+        let right = FileSortDescriptor(key: .accessed, ascending: false, comparisonMode: .caseInsensitive)
+        settings.setSortDescriptor(left, for: .left)
+        settings.setSortDescriptor(right, for: .right)
+
+        XCTAssertEqual(makeSettings().sortDescriptor(for: .left), left)
+        XCTAssertEqual(makeSettings().sortDescriptor(for: .right), right)
+        XCTAssertEqual(makeSettings().defaultSortDescriptor, legacy)
+    }
+
     func testConfirmationPreferencesDefaultAndRoundTrip() {
         XCTAssertTrue(settings.confirmCopyOperations)
         XCTAssertTrue(settings.confirmMoveOperations)

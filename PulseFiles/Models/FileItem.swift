@@ -28,6 +28,8 @@ struct FileItem: Identifiable, Equatable {
     let size: Int64
     let creationDate: Date?
     let modificationDate: Date?
+    let addedDate: Date?
+    let accessDate: Date?
     let posixPermissions: Int?
     let owner: String?
     let group: String?
@@ -36,6 +38,16 @@ struct FileItem: Identifiable, Equatable {
     let iconKey: FileIconKey
 
     var id: URL { url }
+
+    init(url: URL, filename: String, displayName: String, fileExtension: String, fileType: FileItemType, isDirectory: Bool, isSymbolicLink: Bool, isHidden: Bool, size: Int64, creationDate: Date?, modificationDate: Date?, addedDate: Date? = nil, accessDate: Date? = nil, posixPermissions: Int?, owner: String?, group: String?, typeDescription: String, localizedTypeDescription: String, iconKey: FileIconKey) {
+        self.url = url; self.filename = filename; self.displayName = displayName
+        self.fileExtension = fileExtension; self.fileType = fileType; self.isDirectory = isDirectory
+        self.isSymbolicLink = isSymbolicLink; self.isHidden = isHidden; self.size = size
+        self.creationDate = creationDate; self.modificationDate = modificationDate
+        self.addedDate = addedDate; self.accessDate = accessDate
+        self.posixPermissions = posixPermissions; self.owner = owner; self.group = group
+        self.typeDescription = typeDescription; self.localizedTypeDescription = localizedTypeDescription; self.iconKey = iconKey
+    }
 
     static func == (lhs: FileItem, rhs: FileItem) -> Bool {
         lhs.url == rhs.url

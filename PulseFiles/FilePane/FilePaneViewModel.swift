@@ -279,14 +279,24 @@ final class FilePaneViewModel {
         if state.sort.key == key {
             state.sort.ascending.toggle()
         } else {
-            state.sort = FileSortDescriptor(key: key, ascending: true)
+            state.sort.key = key
+            state.sort.ascending = true
         }
         persistDisplayPreferences()
         applyCurrentSort()
     }
 
     func setSort(_ key: FileSortKey, ascending: Bool) {
-        let descriptor = FileSortDescriptor(key: key, ascending: ascending)
+        var descriptor = state.sort
+        descriptor.key = key
+        descriptor.ascending = ascending
+        guard state.sort != descriptor else { return }
+        state.sort = descriptor
+        persistDisplayPreferences()
+        applyCurrentSort()
+    }
+
+    func setSortDescriptor(_ descriptor: FileSortDescriptor) {
         guard state.sort != descriptor else { return }
         state.sort = descriptor
         persistDisplayPreferences()

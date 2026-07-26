@@ -513,6 +513,16 @@ extension MainCommandRoutingTests {
         }
     }
 
+    func testAuthoritativeSevenSortShortcutsAndEighthMenuOnlyCriterion() {
+        let commands: [MainCommand] = [.sortByName, .sortByExtension, .sortByKind, .sortBySize, .sortByModified, .sortByCreated, .sortByAdded]
+        for (offset, command) in commands.enumerated() {
+            let shortcut = MainCommandShortcutRegistry.shortcut(for: command)
+            XCTAssertEqual(shortcut.keyEquivalent, String(offset + 1))
+            XCTAssertEqual(shortcut.modifierFlags, [.control, .command])
+        }
+        XCTAssertFalse(MainCommandShortcutRegistry.hasKeyboardShortcut(MainCommandShortcutRegistry.shortcut(for: .sortByAccessed)))
+    }
+
     func testEveryCommandBarShortcutHasARegisteredHandler() {
         for action in CommandBarAction.allCases {
             let command = MainCommand(commandBarAction: action)

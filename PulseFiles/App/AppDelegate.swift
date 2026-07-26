@@ -115,9 +115,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func isSortMenuAction(_ action: Selector?) -> Bool {
         switch action {
         case #selector(MainWindowViewController.menuSortByName(_:)),
+             #selector(MainWindowViewController.menuSortByExtension(_:)),
              #selector(MainWindowViewController.menuSortByKind(_:)),
              #selector(MainWindowViewController.menuSortBySize(_:)),
              #selector(MainWindowViewController.menuSortByModified(_:)),
+             #selector(MainWindowViewController.menuSortByCreated(_:)),
+             #selector(MainWindowViewController.menuSortByAdded(_:)),
+             #selector(MainWindowViewController.menuSortByAccessed(_:)),
              #selector(MainWindowViewController.menuSortAscending(_:)),
              #selector(MainWindowViewController.menuSortDescending(_:)):
             true
@@ -319,9 +323,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(.separator())
         let sortSubmenu = NSMenu(title: "Sort By".localized)
         sortSubmenu.addItem(menuItem("Name".localized, action: #selector(MainWindowViewController.menuSortByName(_:)), command: .sortByName))
+        sortSubmenu.addItem(menuItem("Extension".localized, action: #selector(MainWindowViewController.menuSortByExtension(_:)), command: .sortByExtension))
         sortSubmenu.addItem(menuItem("Kind".localized, action: #selector(MainWindowViewController.menuSortByKind(_:)), command: .sortByKind))
         sortSubmenu.addItem(menuItem("Size".localized, action: #selector(MainWindowViewController.menuSortBySize(_:)), command: .sortBySize))
         sortSubmenu.addItem(menuItem("Modified".localized, action: #selector(MainWindowViewController.menuSortByModified(_:)), command: .sortByModified))
+        sortSubmenu.addItem(menuItem("Created".localized, action: #selector(MainWindowViewController.menuSortByCreated(_:)), command: .sortByCreated))
+        sortSubmenu.addItem(menuItem("Added".localized, action: #selector(MainWindowViewController.menuSortByAdded(_:)), command: .sortByAdded))
+        sortSubmenu.addItem(menuItem("Accessed".localized, action: #selector(MainWindowViewController.menuSortByAccessed(_:)), command: .sortByAccessed))
         let sortItem = NSMenuItem(title: "Sort By".localized, action: nil, keyEquivalent: "")
         sortItem.submenu = sortSubmenu
         submenu.addItem(sortItem)

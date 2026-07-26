@@ -292,6 +292,16 @@ final class SettingsService {
         set { setSortDescriptor(newValue, forKey: "defaultSortDescriptor") }
     }
 
+    /// Pane-specific descriptors fall back to the legacy/default preference until
+    /// that pane is changed, preserving existing installations' behavior.
+    func sortDescriptor(for pane: PaneID) -> FileSortDescriptor {
+        sortDescriptor(forKey: pane == .left ? "leftPaneSortDescriptor" : "rightPaneSortDescriptor", fallback: defaultSortDescriptor)
+    }
+
+    func setSortDescriptor(_ descriptor: FileSortDescriptor, for pane: PaneID) {
+        setSortDescriptor(descriptor, forKey: pane == .left ? "leftPaneSortDescriptor" : "rightPaneSortDescriptor")
+    }
+
     var preferredSidebarWidth: Double {
         get { defaults.object(forKey: "preferredSidebarWidth") as? Double ?? defaults.object(forKey: "sidebarWidth") as? Double ?? 260 }
         set { set(min(max(newValue, 220), 340), forKey: "preferredSidebarWidth") }
@@ -469,6 +479,8 @@ final class SettingsService {
             startupRightDirectory: startupRightDirectory?.path,
             scratchDirectory: scratchDirectory?.path,
             defaultSortDescriptor: defaultSortDescriptor,
+            leftPaneSortDescriptor: sortDescriptor(for: .left),
+            rightPaneSortDescriptor: sortDescriptor(for: .right),
             fileColorScheme: fileColorScheme.colors.reduce(into: [String: StoredColor]()) { partialResult, entry in
                 partialResult[entry.key.rawValue] = StoredColor(color: entry.value)
             }
@@ -507,6 +519,8 @@ final class SettingsService {
         applyOptionalDirectory(settings.startupRightDirectory, forKey: "startupRightDirectory")
         applyOptionalDirectory(settings.scratchDirectory, forKey: "scratchDirectory")
         if let value = settings.defaultSortDescriptor { setSortDescriptor(value, forKey: "defaultSortDescriptor") }
+        if let value = settings.leftPaneSortDescriptor { setSortDescriptor(value, forKey: "leftPaneSortDescriptor") }
+        if let value = settings.rightPaneSortDescriptor { setSortDescriptor(value, forKey: "rightPaneSortDescriptor") }
         if let storedColors = settings.fileColorScheme {
             let colors = storedColors.reduce(into: [FileVisualCategory: NSColor]()) { partialResult, entry in
                 guard let category = FileVisualCategory(rawValue: entry.key) else { return }
@@ -555,6 +569,8 @@ private struct SettingsJSON: Codable {
     var startupRightDirectory: String?
     var scratchDirectory: String?
     var defaultSortDescriptor: FileSortDescriptor?
+    var leftPaneSortDescriptor: FileSortDescriptor?
+    var rightPaneSortDescriptor: FileSortDescriptor?
     var fileColorScheme: [String: StoredColor]?
 }
 

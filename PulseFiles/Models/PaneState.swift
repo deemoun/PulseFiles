@@ -11,14 +11,48 @@ enum PaneID: Equatable {
 
 enum FileSortKey: String, Codable, Hashable {
     case name
+    case `extension`
     case kind
     case size
     case modified
+    case created
+    case added
+    case accessed
+}
+
+enum FileSortComparisonMode: String, Codable, Hashable {
+    case naturalLocalized
+    case caseInsensitive
+    case caseSensitive
 }
 
 struct FileSortDescriptor: Codable, Equatable, Hashable {
     var key: FileSortKey = .name
     var ascending: Bool = true
+    var comparisonMode: FileSortComparisonMode = .naturalLocalized
+    var foldersFirst: Bool = true
+
+    init(
+        key: FileSortKey = .name,
+        ascending: Bool = true,
+        comparisonMode: FileSortComparisonMode = .naturalLocalized,
+        foldersFirst: Bool = true
+    ) {
+        self.key = key
+        self.ascending = ascending
+        self.comparisonMode = comparisonMode
+        self.foldersFirst = foldersFirst
+    }
+
+    private enum CodingKeys: String, CodingKey { case key, ascending, comparisonMode, foldersFirst }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        key = try values.decodeIfPresent(FileSortKey.self, forKey: .key) ?? .name
+        ascending = try values.decodeIfPresent(Bool.self, forKey: .ascending) ?? true
+        comparisonMode = try values.decodeIfPresent(FileSortComparisonMode.self, forKey: .comparisonMode) ?? .naturalLocalized
+        foldersFirst = try values.decodeIfPresent(Bool.self, forKey: .foldersFirst) ?? true
+    }
 }
 
 struct PaneState {
