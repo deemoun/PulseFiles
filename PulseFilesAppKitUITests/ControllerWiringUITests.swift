@@ -101,6 +101,33 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertEqual(state.rightSearchQuery, "right-only")
     }
 
+    func testEmptyFolderParentActionHasAccurateTitleAndAccessibilityLabel() async throws {
+        guard let controller = app.window.contentViewController as? MainWindowViewController else {
+            return XCTFail("The production main window must host MainWindowViewController")
+        }
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PulseFilesAppKitUITests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let emptyFolder = root.appendingPathComponent("Empty", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        controller.uiHarnessNavigate(.left, to: emptyFolder)
+
+        let identifier = AccessibilityIdentifiers.Pane.contentOverlayAction(for: .left, index: 0)
+        var actionButton: NSButton?
+        for _ in 0..<100 where actionButton == nil {
+            actionButton = findView(in: app.window.contentView, identifier: identifier) as? NSButton
+            if actionButton == nil {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        let button = try XCTUnwrap(actionButton, "Expected an empty-state parent navigation action")
+        XCTAssertEqual(button.title, "Go back".localized)
+        XCTAssertEqual(button.accessibilityLabel(), "Go back to parent folder".localized)
+    }
+
     func testWorkflowAnchorsRemainAvailableForOperationsRecentsAndTerminal() {
         // Copy/move conflicts, destructive confirmations, and drag/drop are
         // controller-owned workflows. Their source/destination tables must be

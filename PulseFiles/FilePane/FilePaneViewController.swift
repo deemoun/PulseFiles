@@ -706,8 +706,8 @@ final class FilePaneViewController: NSViewController {
 
         actions.insert(
             PaneStatusView.Action(
-                title: "Parent Folder".localized,
-                accessibilityLabel: "Open parent folder".localized,
+                title: "Go back".localized,
+                accessibilityLabel: "Go back to parent folder".localized,
                 handler: { [weak self] in self?.goParent() }
             ),
             at: 0

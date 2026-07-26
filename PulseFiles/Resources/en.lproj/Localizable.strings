@@ -322,3 +322,5 @@
 "Security-scoped bookmarks from Grant Folder Access… are separate from macOS Files & Folders privacy status." = "Security-scoped bookmarks from Grant Folder Access… are separate from macOS Files & Folders privacy status.";
 "Select a folder to ask macOS for access when it is needed for dual-pane browsing or confirmed file operations. PulseFiles cannot grant Full Disk Access or change a macOS privacy decision itself." = "Select a folder to ask macOS for access when it is needed for dual-pane browsing or confirmed file operations. PulseFiles cannot grant Full Disk Access or change a macOS privacy decision itself.";
 "Selecting Request Access asks macOS for access when needed." = "Selecting Request Access asks macOS for access when needed.";
+"Go back" = "Go back";
+"Go back to parent folder" = "Go back to parent folder";
