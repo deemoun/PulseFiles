@@ -1,6 +1,6 @@
 import Foundation
 
-struct NavigationHistory {
+struct NavigationHistory: Equatable {
     private(set) var backStack: [URL] = []
     private(set) var forwardStack: [URL] = []
     private(set) var current: URL

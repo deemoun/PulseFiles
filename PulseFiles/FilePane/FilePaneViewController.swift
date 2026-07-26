@@ -168,6 +168,30 @@ final class FilePaneViewController: NSViewController {
         applyColumnLayout()
     }
 
+    func logicalStateSnapshot() -> PaneState {
+        viewModel.logicalStateSnapshot(
+            focusedURL: focusedItem?.url,
+            selectedURLs: Set(selectedItems.map(\.url))
+        )
+    }
+
+    func restoreLogicalState(_ snapshot: PaneState) throws {
+        pendingSelectionURL = snapshot.focusedURL ?? snapshot.selectedURLs.first
+        previousSelectionURLs = Array(snapshot.selectedURLs)
+        try viewModel.restoreLogicalState(snapshot) { [weak self] in
+            _ = self?.selectPendingItemIfAvailable()
+        }
+    }
+
+    /// Clears a filter only when it hides the item that must become selected.
+    func preparePendingSelection(_ url: URL) {
+        if !viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !url.lastPathComponent.localizedCaseInsensitiveContains(viewModel.searchQuery) {
+            setSearchQuery("")
+        }
+        pendingSelectionURL = url
+    }
+
     func loadDirectory(selecting url: URL? = nil, onLoaded: (() -> Void)? = nil) {
         pendingSelectionURL = url
         viewModel.loadCurrentDirectory { [weak self] in
@@ -1283,13 +1307,15 @@ extension FilePaneViewController: FileTableViewActionDelegate {
                 menu.addItem(contextMenuItem("Open With…".localized, action: #selector(contextOpenWith)))
                 menu.addItem(openWithMenu(for: rowItem.url))
             }
+            if rowItem.isSymbolicLink { menu.addItem(contextMenuItem("Follow Symbolic Link".localized, action: #selector(contextFollowSymbolicLink))) }
             menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
             menu.addItem(contextMenuItem("Duplicate", action: #selector(contextDuplicate)))
             menu.addItem(contextMenuItem("Get Info", action: #selector(contextGetInfo)))
             if hasOppositePane {
                 menu.addItem(.separator())
                 menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
-                menu.addItem(contextMenuItem("Move to Opposite Pane", action: #selector(contextMove)))
+                menu.addItem(contextMenuItem("Move to Opposite Pane".localized, action: #selector(contextMove)))
+                menu.addItem(contextMenuItem("Reveal in Opposite Pane".localized, action: #selector(contextRevealOpposite)))
             }
             menu.addItem(.separator())
             menu.addItem(contextMenuItem("Copy Path", action: #selector(contextCopyPath)))
@@ -1350,6 +1376,8 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     @objc private func contextGetInfo() { onCommand?(.getInfo) }
     @objc private func contextCopy() { onCommand?(.copy) }
     @objc private func contextMove() { onCommand?(.move) }
+    @objc private func contextRevealOpposite() { onCommand?(.revealInOppositePane) }
+    @objc private func contextFollowSymbolicLink() { onCommand?(.followSymbolicLink) }
     @objc private func contextTrash() { onCommand?(.trash) }
     @objc private func contextNewFile() { onCommand?(.newFile) }
     @objc private func contextNewFolder() { onCommand?(.newFolder) }

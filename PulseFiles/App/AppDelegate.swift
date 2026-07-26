@@ -352,6 +352,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func commandMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Command".localized)
+        submenu.addItem(menuItem("Swap Panes".localized, action: #selector(MainWindowViewController.menuSwapPanes(_:)), command: .swapPanes))
+        submenu.addItem(menuItem("Synchronize Opposite Pane".localized, action: #selector(MainWindowViewController.menuSyncOppositePane(_:)), command: .syncOppositePane))
+        submenu.addItem(menuItem("Reveal in Opposite Pane".localized, action: #selector(MainWindowViewController.menuRevealInOppositePane(_:)), command: .revealInOppositePane))
+        submenu.addItem(menuItem("Follow Symbolic Link".localized, action: #selector(MainWindowViewController.menuFollowSymbolicLink(_:)), command: .followSymbolicLink))
+        submenu.addItem(.separator())
         submenu.addItem(menuItem("Switch Pane".localized, action: #selector(MainWindowViewController.menuSwitchPane(_:)), command: .switchPane))
         item.submenu = submenu
         return item
@@ -425,6 +430,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut.keyEquivalent)
         item.keyEquivalentModifierMask = shortcut.modifierFlags
         item.target = nil
+        item.setAccessibilityIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
         return item
     }
 

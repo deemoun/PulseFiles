@@ -30,7 +30,7 @@ final class FilePaneViewModel {
     /// could not be read. The visible items are not a confirmed-current snapshot.
     private(set) var partialRefreshFailure: DirectoryContentsReadError?
     private(set) var isPartialRefreshRetryScheduled = false
-    private(set) var searchQuery = ""
+    var searchQuery: String { state.searchQuery }
 
     var onChange: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
@@ -122,6 +122,25 @@ final class FilePaneViewModel {
         }
     }
 
+    /// Captures all logical pane state as one value. UI controllers may provide the
+    /// focused and selected URLs because row ownership remains in AppKit.
+    func logicalStateSnapshot(focusedURL: URL? = nil, selectedURLs: Set<URL>? = nil) -> PaneState {
+        var snapshot = state
+        if let selectedURLs { snapshot.selectedURLs = selectedURLs }
+        snapshot.focusedURL = focusedURL
+        return snapshot
+    }
+
+    /// Atomically installs a previously captured logical state, then starts one
+    /// normal validated load. Validation happens before any state or load generation
+    /// is changed, so a denial leaves the pane untouched.
+    func restoreLogicalState(_ snapshot: PaneState, onLoaded: (() -> Void)? = nil) throws {
+        try accessPolicy.validateAccess(to: snapshot.currentDirectory)
+        state = snapshot
+        persistDisplayPreferences()
+        load(directory: snapshot.currentDirectory, addToHistory: false, forceRefresh: false, onLoaded: onLoaded)
+    }
+
     func validateAccess(to url: URL) throws {
         try accessPolicy.validateAccess(to: url)
     }
@@ -178,7 +197,7 @@ final class FilePaneViewModel {
         activeRetryID = 0
         let fallback = accessPolicy.validatedDirectory(preferredFallback, fallback: accessPolicy.rootURL)
         items = []
-        searchQuery = ""
+        state.searchQuery = ""
         state.currentDirectory = fallback
         state.history.visit(fallback)
         load(directory: fallback, addToHistory: false)
@@ -249,9 +268,9 @@ final class FilePaneViewModel {
     }
 
     func setSearchQuery(_ query: String) {
-        guard searchQuery != query else { return }
+        guard state.searchQuery != query else { return }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        searchQuery = query
+        state.searchQuery = query
         DiagnosticLogger.log(.debug, category: "FilePane", "Search filter changed: active=\(!trimmedQuery.isEmpty); queryLength=\(trimmedQuery.count); totalItems=\(items.count); visibleItems=\(visibleItems.count)")
         onChange?()
     }

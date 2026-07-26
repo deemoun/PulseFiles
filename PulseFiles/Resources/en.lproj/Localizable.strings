@@ -324,3 +324,15 @@
 "Selecting Request Access asks macOS for access when needed." = "Selecting Request Access asks macOS for access when needed.";
 "Go back" = "Go back";
 "Go back to parent folder" = "Go back to parent folder";
+
+/* Dual-pane navigation commands */
+"Swap Panes" = "Swap Panes";
+"Synchronize Opposite Pane" = "Synchronize Opposite Pane";
+"Reveal in Opposite Pane" = "Reveal in Opposite Pane";
+"Follow Symbolic Link" = "Follow Symbolic Link";
+"Could Not Swap Panes" = "Could Not Swap Panes";
+"Could Not Synchronize Pane" = "Could Not Synchronize Pane";
+"Could Not Reveal Item" = "Could Not Reveal Item";
+"Could Not Follow Symbolic Link" = "Could Not Follow Symbolic Link";
+"The focused item is not a symbolic link." = "The focused item is not a symbolic link.";
+"The symbolic link target no longer exists." = "The symbolic link target no longer exists.";

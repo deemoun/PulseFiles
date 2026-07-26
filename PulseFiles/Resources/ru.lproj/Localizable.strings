@@ -1,2 +1,14 @@
 "Go back" = "Назад";
 "Go back to parent folder" = "Вернуться в родительскую папку";
+
+/* Dual-pane navigation commands */
+"Swap Panes" = "Поменять панели местами";
+"Synchronize Opposite Pane" = "Синхронизировать другую панель";
+"Reveal in Opposite Pane" = "Показать в другой панели";
+"Follow Symbolic Link" = "Перейти по символической ссылке";
+"Could Not Swap Panes" = "Не удалось поменять панели";
+"Could Not Synchronize Pane" = "Не удалось синхронизировать панель";
+"Could Not Reveal Item" = "Не удалось показать объект";
+"Could Not Follow Symbolic Link" = "Не удалось перейти по символической ссылке";
+"The focused item is not a symbolic link." = "Выбранный объект не является символической ссылкой.";
+"The symbolic link target no longer exists." = "Объект символической ссылки больше не существует.";

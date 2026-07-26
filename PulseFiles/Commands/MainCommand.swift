@@ -39,6 +39,14 @@ enum MainCommand: CaseIterable, Equatable {
     case downloads
     case applications
     case scratchDirectory
+    /// Exchanges the complete logical state of both panes without changing which physical pane is active.
+    case swapPanes
+    /// Opens the active pane directory in the opposite pane.
+    case syncOppositePane
+    /// Opens the focused item’s parent and selects it in the opposite pane.
+    case revealInOppositePane
+    /// Resolves exactly one symbolic-link hop and opens or selects its target.
+    case followSymbolicLink
     case switchPane
     case cancelOperation
     case debugLogs

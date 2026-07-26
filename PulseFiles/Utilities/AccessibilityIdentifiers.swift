@@ -50,6 +50,12 @@ enum AccessibilityIdentifiers {
         }
     }
 
+    enum Command {
+        static func menuItem(_ command: MainCommand) -> String {
+            "pulsefiles.command.\(String(describing: command))"
+        }
+    }
+
     enum Toolbar {
         static let searchField = "pulsefiles.toolbar.searchField"
         static let sidebarToggle = "pulsefiles.toolbar.sidebarToggle"
