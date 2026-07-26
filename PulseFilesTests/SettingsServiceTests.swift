@@ -3,6 +3,16 @@ import XCTest
 @testable import PulseFiles
 
 final class SettingsServiceTests: XCTestCase {
+    func testPanePresentationSettingsAreTypedAndFallBackToDefault() throws {
+        let fixture = try IsolatedDefaultsFixture(prefix: "SettingsServicePresentationTests", testCase: self)
+        let settings = SettingsService(defaults: fixture.defaults)
+        XCTAssertEqual(settings.defaultPanePresentationMode, .list)
+        settings.defaultPanePresentationMode = .brief
+        XCTAssertEqual(settings.presentationMode(for: .left), .brief)
+        settings.setPresentationMode(.gallery, for: .right)
+        XCTAssertEqual(SettingsService(defaults: fixture.defaults).rightPanePresentationMode, .gallery)
+        XCTAssertEqual(SettingsService(defaults: fixture.defaults).leftPanePresentationMode, .brief)
+    }
     private var fixture: IsolatedDefaultsFixture!
     private var settings: SettingsService!
     private var settingsJSONFixture: TemporaryDirectoryFixture!

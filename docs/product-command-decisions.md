@@ -10,6 +10,7 @@
 | Invert Selection | V1 | Selection-only command scoped to visible real file rows, preserving the same parent-row safety rule as Select All. |
 | Batch Rename | Approved | The immutable plan previews every source/destination, validates names, rejects duplicate and external collisions, and the confirmed operation uses private two-phase names for cycles. Cancellation/failure triggers best-effort rollback and reports rollback warnings as partial failure. |
 | Pane tabs and layout shortcuts | V1 | Command-T is reserved for creating a tab in the active pane, matching macOS convention. Pane layout moves to Option-Command-\\; Command-W closes a pane tab, and Control-Tab / Control-Shift-Tab cycle tabs. Closing the final tab is disabled. |
+| Viewer shortcut migration | Approved | F3 moves from normal Open to the distinct read-only Viewer. Return and F4 remain normal Open, and Space remains Quick Look. This preserves established open/preview behavior while giving the bounded text/hex viewer a dedicated key. |
 
 ## Safety gate for post-V1 mutations
 
