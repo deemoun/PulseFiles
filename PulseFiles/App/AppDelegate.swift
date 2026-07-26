@@ -36,7 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task.detached(priority: .utility) {
             _ = await StagingCleanupService().cleanupOnStartup()
         }
-        FileTypeColorPalette.activeScheme = SettingsService().fileColorScheme
+        let settings = SettingsService()
+        LocalizationConfiguration.configure(language: settings.appLanguage)
+        FileTypeColorPalette.activeScheme = settings.fileColorScheme
         if let icon = appIcon() {
             NSApplication.shared.applicationIconImage = icon
         }

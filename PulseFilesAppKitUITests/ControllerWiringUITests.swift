@@ -32,6 +32,23 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertNotNil(app.element(AccessibilityIdentifiers.CommandBar.list))
     }
 
+    func testSettingsLanguageSelectorExposesBothLanguagesAndPersistsSelection() throws {
+        let suite = "SettingsLanguageSelector.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        LocalizationConfiguration.configure(language: .english)
+        let controller = SettingsViewController(settings: SettingsService(defaults: defaults))
+        controller.loadViewIfNeeded()
+        let selector = controller.appLanguageSelectorForTesting
+
+        XCTAssertEqual(selector.itemTitles, ["English", "Russian"])
+        selector.selectItem(at: 1)
+        selector.sendAction(selector.action, to: selector.target)
+
+        XCTAssertEqual(SettingsService(defaults: defaults).appLanguage, .russian)
+    }
+
     func testMainWindowUsesStableAutosaveNameAndCentersFirstLaunchFallback() {
         XCTAssertEqual(app.window.frameAutosaveName, MainWindowController.frameAutosaveName)
 

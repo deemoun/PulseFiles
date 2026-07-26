@@ -324,3 +324,11 @@
 "Selecting Request Access asks macOS for access when needed." = "Selecting Request Access asks macOS for access when needed.";
 "Go back" = "Go back";
 "Go back to parent folder" = "Go back to parent folder";
+"This folder is empty" = "This folder is empty";
+
+/* Application language */
+"Language" = "Language";
+"App language" = "App language";
+"English" = "English";
+"Russian" = "Russian";
+"Language changes apply after restarting PulseFiles." = "Language changes apply after restarting PulseFiles.";

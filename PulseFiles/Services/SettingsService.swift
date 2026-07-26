@@ -35,6 +35,7 @@ struct StartupDirectoryResolution {
 }
 
 final class SettingsService {
+    static let appLanguageDefaultsKey = "appLanguage"
     static var jsonSettingsURL: URL {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
@@ -162,6 +163,14 @@ final class SettingsService {
     var defaultSidebarVisible: Bool {
         get { defaults.object(forKey: "defaultSidebarVisible") as? Bool ?? defaults.object(forKey: "isSidebarVisible") as? Bool ?? true }
         set { set(newValue, forKey: "defaultSidebarVisible") }
+    }
+
+    var appLanguage: AppLanguage {
+        get { AppLanguage(rawValue: defaults.string(forKey: Self.appLanguageDefaultsKey) ?? "") ?? .english }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.appLanguageDefaultsKey)
+            writeSettingsJSONIfNeeded()
+        }
     }
 
     var liquidGlassEnabled: Bool {
@@ -428,6 +437,7 @@ final class SettingsService {
 
     private func makeJSONSettings() -> SettingsJSON {
         SettingsJSON(
+            appLanguage: appLanguage.rawValue,
             defaultSidebarVisible: defaultSidebarVisible,
             liquidGlassEnabled: liquidGlassEnabled,
             experimentalTerminalEnabled: experimentalTerminalEnabled,
@@ -457,6 +467,7 @@ final class SettingsService {
         isSyncingJSON = true
         defer { isSyncingJSON = false }
 
+        defaults.set(AppLanguage(rawValue: settings.appLanguage ?? "")?.rawValue ?? AppLanguage.english.rawValue, forKey: Self.appLanguageDefaultsKey)
         if let value = settings.defaultSidebarVisible { defaults.set(value, forKey: "defaultSidebarVisible") }
         if let value = settings.liquidGlassEnabled { defaults.set(value, forKey: LiquidGlassStyle.preferenceKey) }
         if let value = settings.experimentalTerminalEnabled { defaults.set(value, forKey: "experimentalTerminalEnabled") }
@@ -508,6 +519,7 @@ private struct SettingsJSONDocument: Codable {
 }
 
 private struct SettingsJSON: Codable {
+    var appLanguage: String?
     var defaultSidebarVisible: Bool?
     var liquidGlassEnabled: Bool?
     var experimentalTerminalEnabled: Bool?

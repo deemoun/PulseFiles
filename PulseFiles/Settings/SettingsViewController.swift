@@ -50,6 +50,7 @@ final class SettingsViewController: NSViewController {
     private let terminalCheckbox = NSButton(checkboxWithTitle: "Show Beta Terminal by default".localized, target: nil, action: nil)
     private let singlePaneCheckbox = NSButton(checkboxWithTitle: "Use single pane by default".localized, target: nil, action: nil)
     private let hiddenFilesCheckbox = NSButton(checkboxWithTitle: "Show hidden files by default".localized, target: nil, action: nil)
+    private let languageSelector = NSPopUpButton()
     private let confirmCopyCheckbox = NSButton(checkboxWithTitle: "Confirm copy operations".localized, target: nil, action: nil)
     private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations".localized, target: nil, action: nil)
     private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations".localized, target: nil, action: nil)
@@ -141,6 +142,7 @@ final class SettingsViewController: NSViewController {
         sidebarWidthSlider.action = #selector(controlChanged(_:))
         sidebarWidthLabel.alignment = .right
         sidebarWidthLabel.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        configureLanguageSelector()
 
         [leftDirectoryField, rightDirectoryField, scratchDirectoryField].forEach {
             $0.isEditable = false
@@ -271,6 +273,10 @@ final class SettingsViewController: NSViewController {
         switch category {
         case .general:
             return [
+                settingsSection(
+                    title: "Language".localized,
+                    views: [languageRow()]
+                ),
                 settingsSection(
                     title: "Appearance & Layout".localized,
                     views: [
@@ -739,6 +745,7 @@ final class SettingsViewController: NSViewController {
     }
 
     private func loadSettings() {
+        languageSelector.selectItem(at: AppLanguage.allCases.firstIndex(of: settings.appLanguage) ?? 0)
         sidebarCheckbox.state = settings.defaultSidebarVisible ? .on : .off
         liquidGlassCheckbox.state = settings.liquidGlassEnabled ? .on : .off
         terminalEnabledCheckbox.state = settings.experimentalTerminalEnabled ? .on : .off
@@ -758,6 +765,38 @@ final class SettingsViewController: NSViewController {
         updateDirectoryFields()
         updateColorWells()
     }
+
+    private func configureLanguageSelector() {
+        languageSelector.removeAllItems()
+        AppLanguage.allCases.forEach { languageSelector.addItem(withTitle: $0.localizedDisplayName) }
+        languageSelector.target = self
+        languageSelector.action = #selector(languageChanged(_:))
+        languageSelector.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.languageSelector)
+    }
+
+    private func languageRow() -> NSView {
+        let label = NSTextField(labelWithString: "App language".localized)
+        let restart = NSTextField(wrappingLabelWithString: "Language changes apply after restarting PulseFiles.".localized)
+        restart.textColor = .secondaryLabelColor
+        let text = NSStackView(views: [label, restart])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 3
+        let row = NSStackView(views: [text, languageSelector])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return row
+    }
+
+    @objc private func languageChanged(_ sender: NSPopUpButton) {
+        guard AppLanguage.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
+        settings.appLanguage = AppLanguage.allCases[sender.indexOfSelectedItem]
+        onChange?()
+    }
+
+    var appLanguageSelectorForTesting: NSPopUpButton { languageSelector }
 
 
     private func updateColorWells() {

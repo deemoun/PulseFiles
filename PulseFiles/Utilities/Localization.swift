@@ -1,22 +1,60 @@
 import Foundation
 
+enum AppLanguage: String, CaseIterable, Codable {
+    case english = "en"
+    case russian = "ru"
+
+    var localizedDisplayName: String {
+        switch self {
+        case .english: return "English".localized
+        case .russian: return "Russian".localized
+        }
+    }
+
+    var locale: Locale {
+        Locale(identifier: rawValue == "ru" ? "ru_RU" : "en_US")
+    }
+}
+
+/// The single synchronization point for application-controlled localization.
+/// Bundle selection is immutable between explicit configuration calls, and all
+/// reads are protected so background-created status strings are safe.
+enum LocalizationConfiguration {
+    private static let lock = NSLock()
+    private static var _language: AppLanguage = .english
+
+    static var language: AppLanguage {
+        lock.withLock { _language }
+    }
+
+    static func configure(language: AppLanguage) {
+        lock.withLock { _language = language }
+    }
+
+    static func localizedString(forKey key: String) -> String {
+        let selectedLanguage = language
+        let resources = Bundle.pulseFilesLocalization
+        guard let path = resources.path(forResource: selectedLanguage.rawValue, ofType: "lproj"),
+              let languageBundle = Bundle(path: path) else {
+            return resources.localizedString(forKey: key, value: key, table: nil)
+        }
+        return languageBundle.localizedString(forKey: key, value: key, table: nil)
+    }
+}
+
 extension String {
     var localized: String {
-        NSLocalizedString(self, bundle: .pulseFilesLocalization, comment: "")
+        LocalizationConfiguration.localizedString(forKey: self)
     }
 
     func localized(with arguments: CVarArg...) -> String {
-        String(format: localized, locale: .current, arguments: arguments)
+        String(format: localized, locale: LocalizationConfiguration.language.locale, arguments: arguments)
     }
 }
 
 private extension Bundle {
     static var pulseFilesLocalization: Bundle {
-        if let bundle = pulseFilesResourceBundle {
-            return bundle
-        }
-
-        return .main
+        pulseFilesResourceBundle ?? .main
     }
 
     static var pulseFilesResourceBundle: Bundle? {
@@ -31,12 +69,9 @@ private extension Bundle {
         for candidateURL in candidateURLs.compactMap({ $0 }) {
             for bundleExtension in ["bundle", "resources"] {
                 let bundleURL = candidateURL.appendingPathComponent(bundleName + "." + bundleExtension)
-                if let bundle = Bundle(url: bundleURL) {
-                    return bundle
-                }
+                if let bundle = Bundle(url: bundleURL) { return bundle }
             }
         }
-
         return nil
     }
 }
