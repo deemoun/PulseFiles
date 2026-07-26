@@ -140,6 +140,7 @@ final class MainWindowViewController: NSViewController {
     private var activeFilterText = ""
     private var settingsWindowController: NSWindowController?
     private var debugLogWindowController: NSWindowController?
+    private var patternSelectionPanelController: PatternSelectionPanelController?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var flagsChangedEventMonitor: Any?
@@ -525,6 +526,16 @@ final class MainWindowViewController: NSViewController {
             showInfoForFocusedItem()
         case .selectAll:
             targetPane().selectAllItems()
+        case .deselectAll:
+            targetPane().deselectAllItems()
+        case .selectByPattern:
+            presentPatternSelection(mutation: .select)
+        case .deselectByPattern:
+            presentPatternSelection(mutation: .deselect)
+        case .selectSameExtension:
+            targetPane().applySameExtensionMarks(.select)
+        case .deselectSameExtension:
+            targetPane().applySameExtensionMarks(.deselect)
         case .invertSelection:
             targetPane().invertSelection()
         case .undo:
@@ -602,6 +613,25 @@ final class MainWindowViewController: NSViewController {
             presentDebugLogs(nil)
         case .exportDiagnostics:
             exportDiagnostics()
+        }
+    }
+
+    private func presentPatternSelection(mutation: MarkMutation) {
+        let pane = targetPane()
+        let controller = PatternSelectionPanelController(items: pane.viewModel.visibleItems, mutation: mutation)
+        controller.onApply = { [weak pane] matches in
+            pane?.applyMarks(matchingURLs: matches, mutation: mutation)
+        }
+        controller.onClose = { [weak self, weak pane] in
+            if let pane { self?.view.window?.makeFirstResponder(pane.tableView) }
+            self?.patternSelectionPanelController = nil
+        }
+        patternSelectionPanelController = controller
+        guard let panel = controller.window else { return }
+        if let window = view.window {
+            window.beginSheet(panel)
+        } else {
+            controller.showWindow(nil)
         }
     }
 
@@ -2436,6 +2466,11 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuDuplicate(_ sender: Any?) { performCommand(.duplicate) }
     @objc func menuGetInfo(_ sender: Any?) { performCommand(.getInfo) }
     @objc func menuSelectAll(_ sender: Any?) { performCommand(.selectAll) }
+    @objc func menuDeselectAll(_ sender: Any?) { performCommand(.deselectAll) }
+    @objc func menuSelectByPattern(_ sender: Any?) { performCommand(.selectByPattern) }
+    @objc func menuDeselectByPattern(_ sender: Any?) { performCommand(.deselectByPattern) }
+    @objc func menuSelectSameExtension(_ sender: Any?) { performCommand(.selectSameExtension) }
+    @objc func menuDeselectSameExtension(_ sender: Any?) { performCommand(.deselectSameExtension) }
     @objc func menuInvertSelection(_ sender: Any?) { performCommand(.invertSelection) }
     @objc func menuUndo(_ sender: Any?) { performCommand(.undo) }
     @objc func menuOpenWith(_ sender: Any?) { performCommand(.openWith) }
@@ -2585,6 +2620,11 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuDuplicate(_:)): self = .duplicate
         case #selector(MainWindowViewController.menuGetInfo(_:)): self = .getInfo
         case #selector(MainWindowViewController.menuSelectAll(_:)): self = .selectAll
+        case #selector(MainWindowViewController.menuDeselectAll(_:)): self = .deselectAll
+        case #selector(MainWindowViewController.menuSelectByPattern(_:)): self = .selectByPattern
+        case #selector(MainWindowViewController.menuDeselectByPattern(_:)): self = .deselectByPattern
+        case #selector(MainWindowViewController.menuSelectSameExtension(_:)): self = .selectSameExtension
+        case #selector(MainWindowViewController.menuDeselectSameExtension(_:)): self = .deselectSameExtension
         case #selector(MainWindowViewController.menuInvertSelection(_:)): self = .invertSelection
         case #selector(MainWindowViewController.menuUndo(_:)): self = .undo
         case #selector(MainWindowViewController.menuOpenWith(_:)): self = .openWith

@@ -117,6 +117,23 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertNil(router.commandForKeyDown(keyCode: 49, isTextInputFocused: true), "Space should remain text input in search text fields.")
         XCTAssertEqual(router.commandForKeyDown(keyCode: 47, command: true, isTextInputFocused: true), .cancelOperation)
         XCTAssertEqual(router.commandForKeyDown(keyCode: 50, command: true, isTextInputFocused: true), .toggleTerminal)
+        for shortcut in [(0, false), (24, false), (27, false), (24, true), (27, true)] {
+            XCTAssertNil(router.commandForKeyDown(keyCode: UInt16(shortcut.0), command: true, option: shortcut.1, isTextInputFocused: true))
+        }
+    }
+
+    func testPatternAndExtensionShortcutsAreExactAndOutsideTextInput() {
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 0, command: true, option: true), .deselectAll)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 24, command: true), .selectByPattern)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 27, command: true), .deselectByPattern)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 24, command: true, option: true), .selectSameExtension)
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 27, command: true, option: true), .deselectSameExtension)
+    }
+
+    func testSameExtensionCommandsHaveExplicitNoRealFocusedItemReason() {
+        let state = makeState(activePaneID: .left)
+        XCTAssertEqual(router.route(.selectSameExtension, in: state), .disabled(command: .selectSameExtension, reason: .noRealFocusedItem))
+        XCTAssertEqual(router.route(.deselectSameExtension, in: state), .disabled(command: .deselectSameExtension, reason: .noRealFocusedItem))
     }
 
     func testDebugLogsRouteAsAlwaysEnabledCommand() {

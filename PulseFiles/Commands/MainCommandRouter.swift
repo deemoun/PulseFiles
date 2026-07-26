@@ -55,6 +55,7 @@ struct MainCommandRoutingState: Equatable {
 enum MainCommandRoutingDisabledReason: Equatable {
     case noSelection
     case noFocusedItem
+    case noRealFocusedItem
     case noOppositePane
     case sandboxRejectedSelection
     case fileOperationInProgress
@@ -95,6 +96,11 @@ struct MainCommandRouter {
             return focusedRoute(command, in: state) {
                 .focusedItem(command: command, pane: state.activePaneID, url: $0)
             }
+        case .selectSameExtension, .deselectSameExtension:
+            guard state.activePane.focusedURL != nil else {
+                return .disabled(command: command, reason: .noRealFocusedItem)
+            }
+            return .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
         case .followSymbolicLink:
             guard state.activePane.focusedItemIsSymbolicLink else {
                 return .disabled(command: command, reason: .focusedItemIsNotSymbolicLink)
@@ -127,7 +133,7 @@ struct MainCommandRouter {
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
-        case .refresh, .toggleHiddenFiles, .sortByName, .sortByKind, .sortBySize, .sortByModified, .sortAscending, .sortDescending, .back, .forward, .parent, .selectAll, .invertSelection:
+        case .refresh, .toggleHiddenFiles, .sortByName, .sortByKind, .sortBySize, .sortByModified, .sortAscending, .sortDescending, .back, .forward, .parent, .selectAll, .deselectAll, .selectByPattern, .deselectByPattern, .invertSelection:
             return .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
         default:
             return .enabled(command: command)

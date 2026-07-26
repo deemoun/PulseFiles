@@ -352,3 +352,20 @@
 "Prefix or suffix" = "Начинается или заканчивается";
 "Filter matching files" = "Показывать только совпадения";
 "Show all files and highlight matches" = "Показывать все файлы и выделять совпадения";
+
+/* Pattern selection */
+"Deselect All" = "Снять все отметки";
+"Select by Pattern…" = "Выбрать по шаблону…";
+"Deselect by Pattern…" = "Снять выбор по шаблону…";
+"Select by Pattern" = "Выбрать по шаблону";
+"Deselect by Pattern" = "Снять выбор по шаблону";
+"Select Same Extension" = "Выбрать с тем же расширением";
+"Deselect Same Extension" = "Снять выбор с тем же расширением";
+"Glob" = "Маска";
+"Regular Expression" = "Регулярное выражение";
+"Pattern:" = "Шаблон:";
+"Example: *.swift" = "Пример: *.swift";
+"Select" = "Выбрать";
+"Deselect" = "Снять выбор";
+"0 matches" = "Совпадений: 0";
+"%d matches" = "Совпадений: %d";

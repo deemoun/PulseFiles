@@ -216,6 +216,27 @@ final class FilePaneViewController: NSViewController {
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
     }
 
+    func deselectAllItems() {
+        let focusedURL = viewModel.focusedURL
+        tableView.deselectAll(nil)
+        viewModel.setFocusedURL(focusedURL)
+    }
+
+    func applyMarks(matchingURLs: Set<URL>, mutation: MarkMutation) {
+        let focusedURL = viewModel.focusedURL
+        let visibleURLs = Set(viewModel.visibleItems.map(\.url))
+        let currentMarks = Set(selectedItems.map(\.url))
+        let updated = mutation.applying(matches: matchingURLs.intersection(visibleURLs), to: currentMarks)
+        let rows = IndexSet(viewModel.visibleItems.enumerated().compactMap { updated.contains($0.element.url) ? $0.offset + realRowOffset : nil })
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+        viewModel.setFocusedURL(focusedURL)
+    }
+
+    func applySameExtensionMarks(_ mutation: MarkMutation) {
+        guard let matches = SameExtensionMatcher.matchingURLs(focusedItem: focusedItem, visibleItems: viewModel.visibleItems) else { return }
+        applyMarks(matchingURLs: matches, mutation: mutation)
+    }
+
     func invertSelection() {
         let allRows = Set(realRowOffset..<tableView.numberOfRows)
         let inverted = IndexSet(allRows.subtracting(tableView.selectedRowIndexes))
@@ -1387,6 +1408,9 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
             menu.addItem(contextMenuItem("Duplicate", action: #selector(contextDuplicate)))
             menu.addItem(contextMenuItem("Get Info", action: #selector(contextGetInfo)))
+            menu.addItem(.separator())
+            menu.addItem(contextMenuItem("Select Same Extension".localized, action: #selector(contextSelectSameExtension), command: .selectSameExtension))
+            menu.addItem(contextMenuItem("Deselect Same Extension".localized, action: #selector(contextDeselectSameExtension), command: .deselectSameExtension))
             if hasOppositePane {
                 menu.addItem(.separator())
                 menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
@@ -1406,16 +1430,23 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             menu.addItem(.separator())
             menu.addItem(contextMenuItem("Refresh", action: #selector(contextRefresh)))
             menu.addItem(contextMenuItem("Select All", action: #selector(contextSelectAll)))
+            menu.addItem(contextMenuItem("Deselect All".localized, action: #selector(contextDeselectAll), command: .deselectAll))
+            menu.addItem(contextMenuItem("Select by Pattern…".localized, action: #selector(contextSelectByPattern), command: .selectByPattern))
+            menu.addItem(contextMenuItem("Deselect by Pattern…".localized, action: #selector(contextDeselectByPattern), command: .deselectByPattern))
             menu.addItem(contextMenuItem("Invert Selection", action: #selector(contextInvertSelection)))
             menu.addItem(contextMenuItem(viewModel.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", action: #selector(contextToggleHidden)))
         }
         return menu
     }
 
-    private func contextMenuItem(_ title: String, action: Selector) -> NSMenuItem {
+    private func contextMenuItem(_ title: String, action: Selector, command: MainCommand? = nil) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         item.setAccessibilityLabel(title)
+        if let command {
+            item.identifier = NSUserInterfaceItemIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
+            item.setAccessibilityIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
+        }
         return item
     }
 
@@ -1462,6 +1493,11 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     @objc private func contextNewFolder() { onCommand?(.newFolder) }
     @objc private func contextRefresh() { onCommand?(.refresh) }
     @objc private func contextSelectAll() { onCommand?(.selectAll) }
+    @objc private func contextDeselectAll() { onCommand?(.deselectAll) }
+    @objc private func contextSelectByPattern() { onCommand?(.selectByPattern) }
+    @objc private func contextDeselectByPattern() { onCommand?(.deselectByPattern) }
+    @objc private func contextSelectSameExtension() { onCommand?(.selectSameExtension) }
+    @objc private func contextDeselectSameExtension() { onCommand?(.deselectSameExtension) }
     @objc private func contextInvertSelection() { onCommand?(.invertSelection) }
     @objc private func contextReveal() { onCommand?(.reveal) }
     @objc private func contextToggleHidden() { onCommand?(.toggleHiddenFiles) }
