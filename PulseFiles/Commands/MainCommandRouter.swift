@@ -6,13 +6,15 @@ struct MainCommandRoutingPane: Equatable {
     var selectedURLs: [URL]
     var focusedURL: URL?
     var focusedItemIsSymbolicLink: Bool
+    var tabCount: Int
 
-    init(id: PaneID, currentDirectory: URL, selectedURLs: [URL] = [], focusedURL: URL? = nil, focusedItemIsSymbolicLink: Bool = false) {
+    init(id: PaneID, currentDirectory: URL, selectedURLs: [URL] = [], focusedURL: URL? = nil, focusedItemIsSymbolicLink: Bool = false, tabCount: Int = 1) {
         self.id = id
         self.currentDirectory = currentDirectory
         self.selectedURLs = selectedURLs
         self.focusedURL = focusedURL
         self.focusedItemIsSymbolicLink = focusedItemIsSymbolicLink
+        self.tabCount = tabCount
     }
 }
 
@@ -62,6 +64,7 @@ enum MainCommandRoutingDisabledReason: Equatable {
     case noActiveFileOperation
     case noUndoRecovery
     case focusedItemIsNotSymbolicLink
+    case lastTab
 }
 
 enum MainCommandRoute: Equatable {
@@ -86,6 +89,9 @@ struct MainCommandRouter {
         }
 
         switch command {
+        case .closeTab:
+            guard state.activePane.tabCount > 1 else { return .disabled(command: command, reason: .lastTab) }
+            return .activePane(command: command, pane: state.activePaneID, urls: [])
         case .switchPane:
             return .switchPane(to: state.activePaneID.opposite)
         case .swapPanes, .syncOppositePane:
@@ -133,7 +139,7 @@ struct MainCommandRouter {
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
-        case .refresh, .toggleHiddenFiles, .sortByName, .sortByExtension, .sortByKind, .sortBySize, .sortByModified, .sortByCreated, .sortByAdded, .sortByAccessed, .sortAscending, .sortDescending, .back, .forward, .parent, .selectAll, .deselectAll, .selectByPattern, .deselectByPattern, .invertSelection:
+        case .refresh, .toggleHiddenFiles, .sortByName, .sortByExtension, .sortByKind, .sortBySize, .sortByModified, .sortByCreated, .sortByAdded, .sortByAccessed, .sortAscending, .sortDescending, .back, .forward, .parent, .selectAll, .deselectAll, .selectByPattern, .deselectByPattern, .invertSelection, .newTab, .nextTab, .previousTab:
             return .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
         default:
             return .enabled(command: command)

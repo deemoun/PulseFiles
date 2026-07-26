@@ -39,6 +39,10 @@ enum MainCommand: CaseIterable, Equatable {
     case toggleTerminal
     case toggleSidebar
     case togglePaneLayout
+    case newTab
+    case closeTab
+    case nextTab
+    case previousTab
     case back
     case forward
     case parent
@@ -67,6 +71,10 @@ enum MainCommand: CaseIterable, Equatable {
         case .move: self = .move
         case .delete: self = .trash
         case .cancelOperation: self = .cancelOperation
+        case .newTab: self = .newTab
+        case .closeTab: self = .closeTab
+        case .nextTab: self = .nextTab
+        case .previousTab: self = .previousTab
         case .view: self = .open
         }
     }

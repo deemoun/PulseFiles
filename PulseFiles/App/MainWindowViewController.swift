@@ -104,6 +104,7 @@ final class MainWindowViewController: NSViewController {
             initialDirectory: leftStartupResolution.directory,
             showsHiddenFiles: settings.showHiddenFilesByDefault,
             sort: settings.sortDescriptor(for: .left),
+            restoration: settings.leftPaneTabRestoration,
             fileSystem: fileSystem,
             accessPolicy: accessPolicy,
             quickSearchMatchMode: settings.quickSearchMatchMode,
@@ -116,6 +117,7 @@ final class MainWindowViewController: NSViewController {
             initialDirectory: rightStartupResolution.directory,
             showsHiddenFiles: settings.showHiddenFilesByDefault,
             sort: settings.sortDescriptor(for: .right),
+            restoration: settings.rightPaneTabRestoration,
             fileSystem: fileSystem,
             accessPolicy: accessPolicy,
             quickSearchMatchMode: settings.quickSearchMatchMode,
@@ -444,6 +446,10 @@ final class MainWindowViewController: NSViewController {
             }
         }
         [leftPane, rightPane].forEach { pane in
+            pane.onTabsChanged = { [weak self, weak pane] state in
+                guard let self, let pane else { return }
+                self.settings.setPaneTabRestoration(PaneRestorationState(paneState: state), for: pane.paneID)
+            }
             pane.onSearchQueryChanged = { [weak self, weak pane] query in
                 guard let self, pane?.paneID == self.activePaneID else { return }
                 self.activeFilterText = query
@@ -590,6 +596,14 @@ final class MainWindowViewController: NSViewController {
             toggleSidebar()
         case .togglePaneLayout:
             setSinglePaneMode(!isSinglePaneMode, focusPane: activePaneID)
+        case .newTab:
+            targetPane().newTab()
+        case .closeTab:
+            targetPane().closeTab()
+        case .nextTab:
+            targetPane().nextTab()
+        case .previousTab:
+            targetPane().previousTab()
         case .back:
             targetPane().goBack()
         case .forward:
@@ -2544,6 +2558,10 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuToggleTerminal(_ sender: Any?) { performCommand(.toggleTerminal) }
     @objc func menuToggleSidebar(_ sender: Any?) { performCommand(.toggleSidebar) }
     @objc func menuTogglePaneLayout(_ sender: Any?) { performCommand(.togglePaneLayout) }
+    @objc func menuNewTab(_ sender: Any?) { performCommand(.newTab) }
+    @objc func menuCloseTab(_ sender: Any?) { performCommand(.closeTab) }
+    @objc func menuNextTab(_ sender: Any?) { performCommand(.nextTab) }
+    @objc func menuPreviousTab(_ sender: Any?) { performCommand(.previousTab) }
     @objc func menuBack(_ sender: Any?) { performCommand(.back) }
     @objc func menuForward(_ sender: Any?) { performCommand(.forward) }
     @objc func menuParent(_ sender: Any?) { performCommand(.parent) }
@@ -2653,14 +2671,16 @@ extension MainWindowViewController: NSMenuItemValidation {
                 currentDirectory: leftPane.currentDirectory,
                 selectedURLs: leftSelectedURLs,
                 focusedURL: leftFocusedURL,
-                focusedItemIsSymbolicLink: leftPane.focusedItem?.isSymbolicLink == true
+                focusedItemIsSymbolicLink: leftPane.focusedItem?.isSymbolicLink == true,
+                tabCount: leftPane.viewModel.tabs.count
             ),
             rightPane: MainCommandRoutingPane(
                 id: .right,
                 currentDirectory: rightPane.currentDirectory,
                 selectedURLs: rightSelectedURLs,
                 focusedURL: rightFocusedURL,
-                focusedItemIsSymbolicLink: rightPane.focusedItem?.isSymbolicLink == true
+                focusedItemIsSymbolicLink: rightPane.focusedItem?.isSymbolicLink == true,
+                tabCount: rightPane.viewModel.tabs.count
             ),
             isSinglePaneMode: isSinglePaneMode,
             isFileOperationActive: isFileOperationActive,
@@ -2710,6 +2730,10 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuToggleTerminal(_:)): self = .toggleTerminal
         case #selector(MainWindowViewController.menuToggleSidebar(_:)): self = .toggleSidebar
         case #selector(MainWindowViewController.menuTogglePaneLayout(_:)): self = .togglePaneLayout
+        case #selector(MainWindowViewController.menuNewTab(_:)): self = .newTab
+        case #selector(MainWindowViewController.menuCloseTab(_:)): self = .closeTab
+        case #selector(MainWindowViewController.menuNextTab(_:)): self = .nextTab
+        case #selector(MainWindowViewController.menuPreviousTab(_:)): self = .previousTab
         case #selector(MainWindowViewController.menuBack(_:)): self = .back
         case #selector(MainWindowViewController.menuForward(_:)): self = .forward
         case #selector(MainWindowViewController.menuParent(_:)): self = .parent

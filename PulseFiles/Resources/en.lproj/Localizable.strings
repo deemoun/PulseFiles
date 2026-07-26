@@ -220,6 +220,11 @@
 "Toggle Hidden Files" = "Toggle Hidden Files";
 "Toggle Sidebar" = "Toggle Sidebar";
 "Toggle Single Pane" = "Toggle Single Pane";
+"New Tab" = "New Tab";
+"Close Tab" = "Close Tab";
+"Next Tab" = "Next Tab";
+"Previous Tab" = "Previous Tab";
+"Pane tabs" = "Pane tabs";
 "Toggle Beta Terminal" = "Toggle Beta Terminal";
 "PulseFiles Beta Terminal" = "PulseFiles Beta Terminal";
 "Acknowledge the Beta Terminal warning before running shell commands." = "Acknowledge the Beta Terminal warning before running shell commands.";

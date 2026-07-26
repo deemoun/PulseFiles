@@ -9,6 +9,7 @@
 | Select All | V1 | Selection-only command scoped to visible real file rows; it never selects the synthetic parent row. |
 | Invert Selection | V1 | Selection-only command scoped to visible real file rows, preserving the same parent-row safety rule as Select All. |
 | Batch Rename | Post-V1 | Requires a previewable, atomic-or-recoverable rename plan, collision handling, cancellation semantics, and clear confirmation. Single-item rename remains the V1 safe path. |
+| Pane tabs and layout shortcuts | V1 | Command-T is reserved for creating a tab in the active pane, matching macOS convention. Pane layout moves to Option-Command-\\; Command-W closes a pane tab, and Control-Tab / Control-Shift-Tab cycle tabs. Closing the final tab is disabled. |
 
 ## Safety gate for post-V1 mutations
 
