@@ -4,6 +4,8 @@ protocol FileTableViewActionDelegate: AnyObject {
     func fileTableViewDidActivate(_ tableView: FileTableView)
     func fileTableView(_ tableView: FileTableView, didRequestLocation url: URL)
     func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu?
+    func fileTableView(_ tableView: FileTableView, didFocusRow row: Int)
+    func fileTableView(_ tableView: FileTableView, moveFocusBy delta: Int) -> Bool
 }
 
 final class FileTableView: NSTableView {
@@ -11,7 +13,9 @@ final class FileTableView: NSTableView {
 
     override func mouseDown(with event: NSEvent) {
         actionDelegate?.fileTableViewDidActivate(self)
+        let row = row(at: convert(event.locationInWindow, from: nil))
         super.mouseDown(with: event)
+        if row >= 0 { actionDelegate?.fileTableView(self, didFocusRow: row) }
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -25,6 +29,12 @@ final class FileTableView: NSTableView {
         // Global commands are resolved by MainCommandRouter before the table receives the event.
         // These two locations are pane-only conveniences with no MainCommand representation.
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        // Plain arrows move the stable keyboard focus without collapsing marks.
+        // Modified arrows remain AppKit selection gestures.
+        if flags.isEmpty, event.keyCode == 125,
+           actionDelegate?.fileTableView(self, moveFocusBy: 1) == true { return }
+        if flags.isEmpty, event.keyCode == 126,
+           actionDelegate?.fileTableView(self, moveFocusBy: -1) == true { return }
         if flags == [.command, .shift], event.keyCode == 2 {
             actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.desktop)
             return

@@ -130,8 +130,16 @@ final class FilePaneViewController: NSViewController {
     }
 
     var focusedItem: FileItem? {
-        let row = tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow
-        return item(forRow: row)
+        viewModel.focusedURL.flatMap(item(for:))
+    }
+
+    private func setFocusedURL(_ url: URL?) {
+        let oldRow = focusedItem.flatMap(row(for:))
+        viewModel.setFocusedURL(url)
+        let newRow = focusedItem.flatMap(row(for:))
+        let rows = IndexSet([oldRow, newRow].compactMap { $0 })
+        guard !rows.isEmpty, tableView.numberOfColumns > 0 else { return }
+        tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
     }
 
     private var parentURL: URL {
@@ -186,7 +194,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func logicalStateSnapshot() -> PaneState {
-        viewModel.logicalStateSnapshot(focusedURL: focusedItem?.url)
+        viewModel.logicalStateSnapshot()
     }
 
     func restoreLogicalState(_ snapshot: PaneState) throws {
@@ -198,6 +206,7 @@ final class FilePaneViewController: NSViewController {
 
     func preparePendingSelection(_ url: URL?) {
         pendingSelectionURL = url
+        if let url { setFocusedURL(url) }
     }
 
     /// Selection commands intentionally operate only on real file rows; the
@@ -313,14 +322,13 @@ final class FilePaneViewController: NSViewController {
 
     @discardableResult
     func beginInlineRename() -> Bool {
-        guard selectedItems.count == 1, let item = focusedItem else { return false }
+        guard let item = focusedItem else { return false }
         guard let row = row(for: item), !isParentRow(row) else { return false }
         guard let nameColumn = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }) else { return false }
         inlineRenameRow = row
         inlineRenameItem = item
         inlineRenameSession.begin(for: item.url)
         updateInlineRenameField(at: row, for: item.url)
-        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         view.window?.makeFirstResponder(tableView)
         tableView.editColumn(nameColumn, row: row, with: nil, select: true)
@@ -336,7 +344,6 @@ final class FilePaneViewController: NSViewController {
         if viewModel.searchQuery.isEmpty, !query.isEmpty {
             quickSearchFocusedURL = focusedItem?.url
         }
-        pendingSelectionURL = quickSearchFocusedURL ?? focusedItem?.url
         viewModel.setSearchQuery(query)
         if query.isEmpty { quickSearchFocusedURL = nil }
     }
@@ -568,11 +575,16 @@ final class FilePaneViewController: NSViewController {
     }
 
     private func selectDefaultRow() {
+        if let focusedURL = viewModel.focusedURL,
+           let item = item(for: focusedURL), let row = row(for: item) {
+            tableView.scrollRowToVisible(row)
+            return
+        }
         guard let row = defaultFocusRow(), row >= 0, row < tableView.numberOfRows else {
-            tableView.deselectAll(nil)
             return
         }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        if let item = item(forRow: row) { setFocusedURL(item.url) }
         tableView.scrollRowToVisible(row)
     }
 
@@ -622,11 +634,15 @@ final class FilePaneViewController: NSViewController {
         defer { isReloadingData = false }
         breadcrumb.configure(url: viewModel.currentDirectory)
         directoryIcon.image = FileIconProvider.shared.image(for: FileIconKey(fileType: .folder, fileExtension: ""))
+        // NSTableView otherwise preserves row indexes across reloads, which can
+        // silently attach marks to different URLs after sorting or navigation.
+        tableView.deselectAll(nil)
         tableView.reloadData()
         pruneInvalidSelection()
         restorePreviousSelectionIfPossible()
         previousSelectedRowIndexes = tableView.selectedRowIndexes
-        if !selectPendingItemIfAvailable(), tableView.selectedRow == -1, tableView.numberOfRows > 0 {
+        if !selectPendingItemIfAvailable(), focusedItem == nil,
+           viewModel.searchQuery.isEmpty, tableView.numberOfRows > 0 {
             selectDefaultRow()
         }
         previousSelectionURLs = selectedItems.map(\.url)
@@ -666,6 +682,7 @@ final class FilePaneViewController: NSViewController {
         let row = itemIndex + realRowOffset
         guard row >= 0, row < tableView.numberOfRows else { return false }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        setFocusedURL(selectedURL)
         tableView.scrollRowToVisible(row)
         self.pendingSelectionURL = nil
         previousSelectedRowIndexes = tableView.selectedRowIndexes
@@ -884,6 +901,9 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let rowView = FileTableRowView()
         rowView.drawsActiveSelection = isPaneActive
+        rowView.drawsKeyboardFocus = item(forRow: row).map { item in
+            viewModel.focusedURL.map { isSameFileURL(item.url, $0) } == true
+        } ?? false
         return rowView
     }
 
@@ -965,7 +985,13 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         configureStatusView()
         configureContentOverlay()
         onSelectionChanged?(selectedItems)
+        // Selection changes not initiated by our focus-only arrow handling are
+        // standard AppKit mouse, modified-key, or accessibility mark gestures.
+        if !isReloadingData, let item = item(forRow: tableView.selectedRow) {
+            setFocusedURL(item.url)
+        }
         if !isReloadingData {
+            viewModel.setMarkedURLs(Set(selectedItems.map(\.url)))
             previousSelectionURLs = selectedItems.map(\.url)
         }
         if !isReloadingData {
@@ -1320,11 +1346,28 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         onActivate?()
     }
 
+    func fileTableView(_ tableView: FileTableView, didFocusRow row: Int) {
+        if let item = item(forRow: row) { setFocusedURL(item.url) }
+    }
+
+    func fileTableView(_ tableView: FileTableView, moveFocusBy delta: Int) -> Bool {
+        guard let destinationURL = PaneFocusNavigation.destination(
+            currentURL: viewModel.focusedURL,
+            visibleURLs: viewModel.visibleItems.map(\.url),
+            delta: delta
+        ), let item = item(for: destinationURL), let destination = row(for: item) else { return false }
+        setFocusedURL(destinationURL)
+        tableView.scrollRowToVisible(destination)
+        tableView.setAccessibilityFocused(true)
+        return true
+    }
+
     func fileTableView(_ tableView: FileTableView, didRequestLocation url: URL) {
         navigate(to: url)
     }
 
     func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu? {
+        if let item = item(forRow: row) { setFocusedURL(item.url) }
         if row >= 0, !tableView.selectedRowIndexes.contains(row) {
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
