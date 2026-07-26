@@ -312,6 +312,17 @@ protocol FileOperationServicing {
     func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan
+    func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult
+}
+
+extension FileOperationServicing {
+    func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { throw ArchiveOperationError.unsupportedFormat }
+    func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { throw ArchiveOperationError.unsupportedFormat }
+    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan { throw BatchRenameError.countMismatch }
+    func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult { .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true) }
 }
 
 protocol FileOperationFileManaging {
@@ -564,6 +575,22 @@ final class FileOperationService: FileOperationServicing {
             appropriateFor: destination,
             create: true
         )
+    }
+
+    func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
+        try await ArchiveOperationService(accessPolicy: accessPolicy).create(request, progressHandler: progressHandler)
+    }
+
+    func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
+        try await ArchiveOperationService(accessPolicy: accessPolicy).extract(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+    }
+
+    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
+        try BatchRenameService(accessPolicy: accessPolicy).plan(request)
+    }
+
+    func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult {
+        await BatchRenameService(accessPolicy: accessPolicy).execute(plan, progressHandler: progressHandler)
     }
 
     func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {

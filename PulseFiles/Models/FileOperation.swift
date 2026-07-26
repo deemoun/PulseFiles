@@ -8,6 +8,63 @@ enum FileOperationKind {
     case trash
     case delete
     case rename
+    case createArchive
+    case extractArchive
+    case batchRename
+}
+
+/// A deliberately narrow archive format. PulseFiles writes ZIP files itself;
+/// it never interpolates paths into a shell command.
+enum ArchiveFormat: Equatable { case zip }
+
+struct ArchiveSafetyLimits: Equatable {
+    var maximumItemCount: Int
+    var maximumExpandedBytes: Int64
+    var maximumPathDepth: Int
+
+    static let `default` = ArchiveSafetyLimits(maximumItemCount: 100_000, maximumExpandedBytes: 10 * 1_024 * 1_024 * 1_024, maximumPathDepth: 100)
+}
+
+struct ArchiveCreateRequest: Equatable {
+    let sources: [URL]
+    let destinationURL: URL
+    let format: ArchiveFormat
+    let limits: ArchiveSafetyLimits
+
+    init(sources: [URL], destinationURL: URL, format: ArchiveFormat = .zip, limits: ArchiveSafetyLimits = .default) {
+        self.sources = sources; self.destinationURL = destinationURL; self.format = format; self.limits = limits
+    }
+}
+
+struct ArchiveExtractRequest: Equatable {
+    let archiveURL: URL
+    let destinationDirectory: URL
+    let limits: ArchiveSafetyLimits
+
+    init(archiveURL: URL, destinationDirectory: URL, limits: ArchiveSafetyLimits = .default) {
+        self.archiveURL = archiveURL; self.destinationDirectory = destinationDirectory; self.limits = limits
+    }
+}
+
+struct BatchRenameItem: Equatable {
+    let sourceURL: URL
+    let destinationURL: URL
+}
+
+/// Immutable preview. Execution accepts only this complete preflight product,
+/// so the UI cannot rename an unpreviewed path.
+struct BatchRenamePlan: Equatable {
+    let items: [BatchRenameItem]
+}
+
+struct BatchRenameRequest: Equatable {
+    let sources: [URL]
+    /// Produces the proposed name for the source and its zero-based index.
+    let proposedNames: [String]
+
+    init(sources: [URL], proposedNames: [String]) {
+        self.sources = sources; self.proposedNames = proposedNames
+    }
 }
 
 struct FileOperation {
