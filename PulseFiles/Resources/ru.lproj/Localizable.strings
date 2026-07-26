@@ -343,3 +343,12 @@
 "Could Not Reveal Item" = "Не удалось показать объект";
 "Could Not Follow Symbolic Link" = "Не удалось перейти по символической ссылке";
 "The symbolic link target does not exist." = "Объект, на который указывает символическая ссылка, не существует.";
+"Quick search matching" = "Режим быстрого поиска";
+"Quick search results" = "Результаты быстрого поиска";
+"Fuzzy" = "Нечёткое совпадение";
+"Contains" = "Содержит";
+"Prefix" = "Начинается с";
+"Suffix" = "Заканчивается на";
+"Prefix or suffix" = "Начинается или заканчивается";
+"Filter matching files" = "Показывать только совпадения";
+"Show all files and highlight matches" = "Показывать все файлы и выделять совпадения";

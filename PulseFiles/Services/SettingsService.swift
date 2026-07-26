@@ -206,6 +206,16 @@ final class SettingsService {
         set { set(newValue, forKey: "showHiddenFilesByDefault") }
     }
 
+    var quickSearchMatchMode: QuickSearchMatchMode {
+        get { QuickSearchMatchMode(rawValue: defaults.string(forKey: "quickSearchMatchMode") ?? "") ?? .contains }
+        set { defaults.set(newValue.rawValue, forKey: "quickSearchMatchMode"); writeSettingsJSONIfNeeded() }
+    }
+
+    var quickSearchPresentation: QuickSearchPresentation {
+        get { QuickSearchPresentation(rawValue: defaults.string(forKey: "quickSearchPresentation") ?? "") ?? .filterMatches }
+        set { defaults.set(newValue.rawValue, forKey: "quickSearchPresentation"); writeSettingsJSONIfNeeded() }
+    }
+
     var confirmCopyOperations: Bool {
         get { defaults.object(forKey: "confirmCopyOperations") as? Bool ?? true }
         set { set(newValue, forKey: "confirmCopyOperations") }
@@ -445,6 +455,8 @@ final class SettingsService {
             defaultTerminalVisible: defaultTerminalVisible,
             defaultSinglePaneMode: defaultSinglePaneMode,
             showHiddenFilesByDefault: showHiddenFilesByDefault,
+            quickSearchMatchMode: quickSearchMatchMode,
+            quickSearchPresentation: quickSearchPresentation,
             confirmCopyOperations: confirmCopyOperations,
             confirmMoveOperations: confirmMoveOperations,
             confirmDeleteOperations: confirmDeleteOperations,
@@ -475,6 +487,8 @@ final class SettingsService {
         if let value = settings.defaultTerminalVisible { defaults.set(value, forKey: "defaultTerminalVisible") }
         if let value = settings.defaultSinglePaneMode { defaults.set(value, forKey: "defaultSinglePaneMode") }
         if let value = settings.showHiddenFilesByDefault { defaults.set(value, forKey: "showHiddenFilesByDefault") }
+        if let value = settings.quickSearchMatchMode { defaults.set(value.rawValue, forKey: "quickSearchMatchMode") }
+        if let value = settings.quickSearchPresentation { defaults.set(value.rawValue, forKey: "quickSearchPresentation") }
         if let value = settings.confirmCopyOperations { defaults.set(value, forKey: "confirmCopyOperations") }
         if let value = settings.confirmMoveOperations { defaults.set(value, forKey: "confirmMoveOperations") }
         if let value = settings.confirmDeleteOperations { defaults.set(value, forKey: "confirmDeleteOperations") }
@@ -527,6 +541,8 @@ private struct SettingsJSON: Codable {
     var defaultTerminalVisible: Bool?
     var defaultSinglePaneMode: Bool?
     var showHiddenFilesByDefault: Bool?
+    var quickSearchMatchMode: QuickSearchMatchMode?
+    var quickSearchPresentation: QuickSearchPresentation?
     var confirmCopyOperations: Bool?
     var confirmMoveOperations: Bool?
     var confirmDeleteOperations: Bool?

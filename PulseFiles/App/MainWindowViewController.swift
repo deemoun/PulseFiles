@@ -103,7 +103,9 @@ final class MainWindowViewController: NSViewController {
             showsHiddenFiles: settings.showHiddenFilesByDefault,
             sort: settings.defaultSortDescriptor,
             fileSystem: fileSystem,
-            accessPolicy: accessPolicy
+            accessPolicy: accessPolicy,
+            quickSearchMatchMode: settings.quickSearchMatchMode,
+            quickSearchPresentation: settings.quickSearchPresentation
         )
     )
     private lazy var rightPane = FilePaneViewController(
@@ -113,7 +115,9 @@ final class MainWindowViewController: NSViewController {
             showsHiddenFiles: settings.showHiddenFilesByDefault,
             sort: settings.defaultSortDescriptor,
             fileSystem: fileSystem,
-            accessPolicy: accessPolicy
+            accessPolicy: accessPolicy,
+            quickSearchMatchMode: settings.quickSearchMatchMode,
+            quickSearchPresentation: settings.quickSearchPresentation
         )
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, settings: settings, accessPolicy: accessPolicy)
@@ -436,6 +440,11 @@ final class MainWindowViewController: NSViewController {
             }
         }
         [leftPane, rightPane].forEach { pane in
+            pane.onSearchQueryChanged = { [weak self, weak pane] query in
+                guard let self, pane?.paneID == self.activePaneID else { return }
+                self.activeFilterText = query
+                self.toolbarSearchField?.stringValue = query
+            }
             pane.onDisplayPreferencesChanged = { [weak self] showsHiddenFiles, sort in
                 self?.settings.showHiddenFilesByDefault = showsHiddenFiles
                 self?.settings.defaultSortDescriptor = sort
@@ -754,6 +763,7 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
+        if targetPane().handleQuickSearchKeyDown(event) { return true }
         if event.keyCode == 53 {
             if isFileOperationActive {
                 cancelActiveFileOperation()
@@ -1053,6 +1063,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         rightPane.setShowsHiddenFiles(settings.showHiddenFilesByDefault)
         leftPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
         rightPane.setSort(settings.defaultSortDescriptor.key, ascending: settings.defaultSortDescriptor.ascending)
+        leftPane.viewModel.setQuickSearchOptions(matchMode: settings.quickSearchMatchMode, presentation: settings.quickSearchPresentation)
+        rightPane.viewModel.setQuickSearchOptions(matchMode: settings.quickSearchMatchMode, presentation: settings.quickSearchPresentation)
         #if DEBUG
         sandboxRootEnsurer()
         #endif

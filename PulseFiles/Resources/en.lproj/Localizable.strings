@@ -1,4 +1,13 @@
 /* English development localization for PulseFiles. */
+"Quick search matching" = "Quick search matching";
+"Quick search results" = "Quick search results";
+"Fuzzy" = "Fuzzy";
+"Contains" = "Contains";
+"Prefix" = "Prefix";
+"Suffix" = "Suffix";
+"Prefix or suffix" = "Prefix or suffix";
+"Filter matching files" = "Filter matching files";
+"Show all files and highlight matches" = "Show all files and highlight matches";
 
 "Get Support" = "Get Support";
 "Privacy Policy" = "Privacy Policy";
