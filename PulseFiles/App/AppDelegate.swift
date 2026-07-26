@@ -343,6 +343,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Toggle Beta Terminal".localized, action: #selector(MainWindowViewController.menuToggleTerminal(_:)), command: .toggleTerminal))
         submenu.addItem(menuItem("Toggle Single Pane".localized, action: #selector(MainWindowViewController.menuTogglePaneLayout(_:)), command: .togglePaneLayout))
+        submenu.addItem(.separator())
+        submenu.addItem(menuItem("New Tab".localized, action: #selector(MainWindowViewController.menuNewTab(_:)), command: .newTab))
+        submenu.addItem(menuItem("Close Tab".localized, action: #selector(MainWindowViewController.menuCloseTab(_:)), command: .closeTab))
+        submenu.addItem(menuItem("Next Tab".localized, action: #selector(MainWindowViewController.menuNextTab(_:)), command: .nextTab))
+        submenu.addItem(menuItem("Previous Tab".localized, action: #selector(MainWindowViewController.menuPreviousTab(_:)), command: .previousTab))
         submenu.addItem(menuItem("Toggle Sidebar".localized, action: #selector(MainWindowViewController.menuToggleSidebar(_:)), command: .toggleSidebar))
         item.submenu = submenu
         return item

@@ -242,7 +242,7 @@ extension CommandBarAction {
         switch self {
         case .delete:
             return true
-        case .rename, .view, .copy, .move, .newFolder, .newFile, .cancelOperation:
+        case .rename, .view, .copy, .move, .newFolder, .newFile, .cancelOperation, .newTab, .closeTab, .nextTab, .previousTab:
             return false
         }
     }
@@ -255,7 +255,7 @@ extension CommandBarAction {
         switch self {
         case .view, .copy, .move, .delete:
             return .mustHold
-        case .rename, .newFolder, .newFile:
+        case .rename, .newFolder, .newFile, .newTab, .closeTab, .nextTab, .previousTab:
             return .detachOnlyIfNecessary
         case .cancelOperation:
             return .mustHold

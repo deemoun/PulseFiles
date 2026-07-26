@@ -9,6 +9,10 @@ enum CommandBarAction: String, CaseIterable {
     case newFile = "New File"
     case delete = "Delete"
     case cancelOperation = "Cancel Operation"
+    case newTab = "New Tab"
+    case closeTab = "Close Tab"
+    case nextTab = "Next Tab"
+    case previousTab = "Previous Tab"
 
     var title: String {
         switch self {
@@ -20,6 +24,10 @@ enum CommandBarAction: String, CaseIterable {
         case .newFile: return "New File".localized
         case .delete: return "Delete".localized
         case .cancelOperation: return "Cancel Operation".localized
+        case .newTab: return "New Tab".localized
+        case .closeTab: return "Close Tab".localized
+        case .nextTab: return "Next Tab".localized
+        case .previousTab: return "Previous Tab".localized
         }
     }
 

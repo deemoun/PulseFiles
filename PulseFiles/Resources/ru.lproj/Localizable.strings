@@ -211,6 +211,11 @@
 "Toggle Hidden Files" = "Русский: Toggle Hidden Files";
 "Toggle Sidebar" = "Русский: Toggle Sidebar";
 "Toggle Single Pane" = "Русский: Toggle Single Pane";
+"New Tab" = "Русский: New Tab";
+"Close Tab" = "Русский: Close Tab";
+"Next Tab" = "Русский: Next Tab";
+"Previous Tab" = "Русский: Previous Tab";
+"Pane tabs" = "Русский: Pane tabs";
 "Toggle Beta Terminal" = "Русский: Toggle Beta Terminal";
 "PulseFiles Beta Terminal" = "Русский: PulseFiles Beta Terminal";
 "Acknowledge the Beta Terminal warning before running shell commands." = "Русский: Acknowledge the Beta Terminal warning before running shell commands.";

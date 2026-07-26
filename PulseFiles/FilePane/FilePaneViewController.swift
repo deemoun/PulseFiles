@@ -76,11 +76,13 @@ final class FilePaneViewController: NSViewController {
     var onSelectionChanged: (([FileItem]) -> Void)?
     var onDirectoryAccessGranted: ((URL) -> Void)?
     var onSearchQueryChanged: ((String) -> Void)?
+    var onTabsChanged: ((PaneState) -> Void)?
 
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
     private let directoryIcon = NSImageView()
     private let hiddenButton = NSButton()
+    private let tabSelector = NSSegmentedControl()
     private let scrollView = NSScrollView()
     private let contentOverlay = PaneContentOverlayView()
     private let statusView = PaneStatusView()
@@ -210,6 +212,15 @@ final class FilePaneViewController: NSViewController {
         try viewModel.restoreLogicalState(snapshot) { [weak self] in
             self?.selectPendingItemIfAvailable()
         }
+    }
+
+    func newTab() { viewModel.newTab() }
+    @discardableResult func closeTab() -> Bool { viewModel.closeTab() }
+    func nextTab() { viewModel.selectNextTab() }
+    func previousTab() { viewModel.selectPreviousTab() }
+    func selectTab(id: UUID) { viewModel.selectTab(id: id) }
+    @discardableResult func reorderTab(from sourceIndex: Int, to destinationIndex: Int) -> Bool {
+        viewModel.reorderTab(from: sourceIndex, to: destinationIndex)
     }
 
     func preparePendingSelection(_ url: URL?) {
@@ -430,6 +441,27 @@ final class FilePaneViewController: NSViewController {
 
         breadcrumb.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.breadcrumb(for: paneID))
         breadcrumb.onSelect = { [weak self] url in self?.navigate(to: url) }
+        tabSelector.segmentStyle = .texturedRounded
+        tabSelector.trackingMode = .selectOne
+        tabSelector.target = self
+        tabSelector.action = #selector(selectTabSegment)
+        tabSelector.setAccessibilityLabel("Pane tabs".localized)
+        refreshTabSelector()
+    }
+
+    @objc private func selectTabSegment() {
+        guard viewModel.tabs.indices.contains(tabSelector.selectedSegment) else { return }
+        viewModel.selectTab(id: viewModel.tabs[tabSelector.selectedSegment].id)
+    }
+
+    private func refreshTabSelector() {
+        tabSelector.segmentCount = viewModel.tabs.count
+        for (index, tab) in viewModel.tabs.enumerated() {
+            let title = tab.currentDirectory.lastPathComponent.isEmpty ? "/" : tab.currentDirectory.lastPathComponent
+            tabSelector.setLabel(title, forSegment: index)
+            tabSelector.setToolTip(tab.currentDirectory.path, forSegment: index)
+        }
+        tabSelector.selectedSegment = viewModel.state.activeTabIndex
     }
 
     private func buildTable() {
@@ -536,7 +568,7 @@ final class FilePaneViewController: NSViewController {
 
         activeStripe.wantsLayer = true
         activeStripe.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.activeIndicator(for: paneID))
-        let headerStack = NSStackView(views: [directoryIcon, breadcrumb, hiddenButton])
+        let headerStack = NSStackView(views: [tabSelector, directoryIcon, breadcrumb, hiddenButton])
         headerStack.orientation = .horizontal
         headerStack.alignment = .centerY
         headerStack.spacing = 8
@@ -582,6 +614,11 @@ final class FilePaneViewController: NSViewController {
         viewModel.onDirectoryChanged = { [weak self] url in self?.onDirectoryChanged?(url) }
         viewModel.onDisplayPreferencesChanged = { [weak self] showsHiddenFiles, sort in
             self?.onDisplayPreferencesChanged?(showsHiddenFiles, sort)
+        }
+        viewModel.onTabsChanged = { [weak self] in
+            self?.refreshTabSelector()
+            self?.onSearchQueryChanged?(self?.viewModel.searchQuery ?? "")
+            if let snapshot = self?.viewModel.logicalStateSnapshot() { self?.onTabsChanged?(snapshot) }
         }
         reloadData()
     }

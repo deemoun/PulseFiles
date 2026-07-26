@@ -40,6 +40,9 @@ PulseFiles is licensed under the [GNU General Public License v3.0 or later](LICE
 | Control-Command-1…7 | Sort by name, extension, kind, size, modified date, created date, or added date |
 | Command-` | Toggle the Experimental Terminal after enabling it in Settings |
 | Command-Period | Cancel the active file operation |
+| Command-T / Command-W | Create / close a tab in the active pane |
+| Control-Tab / Control-Shift-Tab | Select the next / previous tab in the active pane |
+| Option-Command-\\ | Toggle single- and dual-pane layout |
 
 ## Experimental sandbox access
 

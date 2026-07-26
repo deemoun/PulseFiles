@@ -37,6 +37,7 @@ final class FilePaneViewModel {
     var onChange: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
+    var onTabsChanged: (() -> Void)?
 
     struct DirectoryLoadFailure {
         let directory: URL
@@ -67,6 +68,7 @@ final class FilePaneViewModel {
         initialDirectory: URL,
         showsHiddenFiles: Bool = false,
         sort: FileSortDescriptor = FileSortDescriptor(),
+        restoration: PaneRestorationState? = nil,
         fileSystem: FileSystemServicing,
         accessPolicy: SandboxFileAccessPolicy = .current,
         directoryLoadTimeout: TimeInterval = 15,
@@ -82,12 +84,17 @@ final class FilePaneViewModel {
         self.quickSearchPresentation = quickSearchPresentation
         self.directoryLoadTimeout = directoryLoadTimeout
         let validatedDirectory = accessPolicy.validatedDirectory(initialDirectory)
-        state = PaneState(
-            currentDirectory: validatedDirectory,
-            history: NavigationHistory(initialURL: validatedDirectory),
-            sort: sort,
-            showsHiddenFiles: showsHiddenFiles
-        )
+        let restoredTabs = restoration?.tabs.compactMap { saved -> PaneTabState? in
+            guard accessPolicy.canAccess(saved.directory),
+                  (try? saved.directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return nil }
+            let directory = saved.directory.standardizedFileURL
+            return PaneTabState(id: saved.id, currentDirectory: directory, history: NavigationHistory(initialURL: directory), sort: saved.sort, showsHiddenFiles: saved.showsHiddenFiles)
+        } ?? []
+        if restoredTabs.isEmpty {
+            state = PaneState(currentDirectory: validatedDirectory, history: NavigationHistory(initialURL: validatedDirectory), sort: sort, showsHiddenFiles: showsHiddenFiles)
+        } else {
+            state = PaneState(tabs: restoredTabs, activeTabID: restoration?.activeTabID)
+        }
         directoryMonitor.onChange = { [weak self] in
             guard let self else { return }
             self.reloadAfterExternalDirectoryChange()
@@ -120,6 +127,8 @@ final class FilePaneViewModel {
     var focusedURL: URL? { state.focusedURL }
     var backDestination: URL? { state.history.backStack.last }
     var navigationHistory: NavigationHistory { state.history }
+    var tabs: [PaneTabState] { state.tabs }
+    var activeTabID: UUID { state.activeTabID }
     var visibleItems: [FileItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }
@@ -163,12 +172,74 @@ final class FilePaneViewModel {
     /// Restores a snapshot atomically after its destination passes the same
     /// sandbox policy used by ordinary navigation.
     func restoreLogicalState(_ snapshot: PaneState, onLoaded: (() -> Void)? = nil) throws {
-        try accessPolicy.validateAccess(to: snapshot.currentDirectory)
+        try snapshot.tabs.forEach { try accessPolicy.validateAccess(to: $0.currentDirectory) }
         var restored = snapshot
         restored.currentDirectory = snapshot.currentDirectory.standardizedFileURL
         state = restored
         searchQuery = restored.searchQuery
         load(directory: restored.currentDirectory, addToHistory: false, forceRefresh: false, onLoaded: onLoaded)
+        onTabsChanged?()
+    }
+
+    @discardableResult
+    func newTab(directory: URL? = nil) -> UUID {
+        let requested = directory ?? state.currentDirectory
+        let validated = accessPolicy.validatedDirectory(requested, fallback: state.currentDirectory)
+        let tab = PaneTabState(
+            currentDirectory: validated,
+            history: NavigationHistory(initialURL: validated),
+            sort: state.sort,
+            showsHiddenFiles: state.showsHiddenFiles
+        )
+        state.tabs.append(tab)
+        selectTab(id: tab.id)
+        return tab.id
+    }
+
+    @discardableResult
+    func closeTab(id: UUID? = nil) -> Bool {
+        guard state.tabs.count > 1,
+              let index = state.tabs.firstIndex(where: { $0.id == (id ?? state.activeTabID) }) else { return false }
+        let wasActive = state.tabs[index].id == state.activeTabID
+        state.tabs.remove(at: index)
+        if wasActive {
+            state.activeTabID = state.tabs[min(index, state.tabs.count - 1)].id
+            activateCurrentTab()
+        }
+        onTabsChanged?()
+        return true
+    }
+
+    func selectTab(id: UUID) {
+        guard id != state.activeTabID, state.tabs.contains(where: { $0.id == id }) else { return }
+        state.searchQuery = searchQuery
+        state.activeTabID = id
+        activateCurrentTab()
+        onTabsChanged?()
+    }
+
+    func selectNextTab() { selectRelativeTab(offset: 1) }
+    func selectPreviousTab() { selectRelativeTab(offset: -1) }
+
+    @discardableResult
+    func reorderTab(from sourceIndex: Int, to destinationIndex: Int) -> Bool {
+        guard state.tabs.indices.contains(sourceIndex), destinationIndex >= 0, destinationIndex < state.tabs.count,
+              sourceIndex != destinationIndex else { return false }
+        let tab = state.tabs.remove(at: sourceIndex)
+        state.tabs.insert(tab, at: destinationIndex)
+        onTabsChanged?()
+        return true
+    }
+
+    private func selectRelativeTab(offset: Int) {
+        guard state.tabs.count > 1 else { return }
+        let index = (state.activeTabIndex + offset + state.tabs.count) % state.tabs.count
+        selectTab(id: state.tabs[index].id)
+    }
+
+    private func activateCurrentTab() {
+        searchQuery = state.searchQuery
+        load(directory: state.currentDirectory, addToHistory: false, forceRefresh: false)
     }
 
     /// Keeps parent-row presentation and keyboard navigation subject to the
@@ -307,6 +378,7 @@ final class FilePaneViewModel {
         guard searchQuery != query else { return }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchQuery = query
+        state.searchQuery = query
         DiagnosticLogger.log(.debug, category: "FilePane", "Search filter changed: active=\(!trimmedQuery.isEmpty); queryLength=\(trimmedQuery.count); totalItems=\(items.count); visibleItems=\(visibleItems.count)")
         onChange?()
     }
@@ -505,6 +577,7 @@ final class FilePaneViewModel {
         state.currentDirectory = directory
         if addToHistory && directory != previousDirectory { state.history.visit(directory) }
         onDirectoryChanged?(directory)
+        onTabsChanged?()
         directoryMonitor.startMonitoring(directory)
         isLoading = false
         onChange?()

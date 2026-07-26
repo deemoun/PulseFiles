@@ -95,6 +95,34 @@ final class SettingsService {
         set { set(newValue, forKey: "lastRightDirectory") }
     }
 
+    var leftPaneTabRestoration: PaneRestorationState? {
+        get { paneRestoration(forKey: "leftPaneTabRestoration") }
+        set { setPaneRestoration(newValue, forKey: "leftPaneTabRestoration") }
+    }
+
+    var rightPaneTabRestoration: PaneRestorationState? {
+        get { paneRestoration(forKey: "rightPaneTabRestoration") }
+        set { setPaneRestoration(newValue, forKey: "rightPaneTabRestoration") }
+    }
+
+    func paneTabRestoration(for pane: PaneID) -> PaneRestorationState? {
+        pane == .left ? leftPaneTabRestoration : rightPaneTabRestoration
+    }
+
+    func setPaneTabRestoration(_ restoration: PaneRestorationState?, for pane: PaneID) {
+        if pane == .left { leftPaneTabRestoration = restoration } else { rightPaneTabRestoration = restoration }
+    }
+
+    private func paneRestoration(forKey key: String) -> PaneRestorationState? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(PaneRestorationState.self, from: data)
+    }
+
+    private func setPaneRestoration(_ restoration: PaneRestorationState?, forKey key: String) {
+        defaults.set(restoration.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
+        writeSettingsJSONIfNeeded()
+    }
+
     var launchLeftDirectory: URL { startupDirectoryResolution(for: .left).directory }
     var launchRightDirectory: URL { startupDirectoryResolution(for: .right).directory }
 
