@@ -1,172 +1,135 @@
 # PulseFiles
 
-PulseFiles is a native macOS AppKit file manager scaffolded for a fast, keyboard-first, dual-pane workflow.
+PulseFiles is a native, keyboard-first macOS file manager built with AppKit. It combines two independently navigable file panes, predictable file operations, fast keyboard commands, and native macOS integration in a focused alternative to Finder for people who prefer an orthodox dual-pane workflow.
 
-## Current Phase
+## Development status
 
-Phase 1 is implemented:
+> [!WARNING]
+> PulseFiles is under active development and is **not yet ready for general V1 use**. The current V1 candidate has broad core functionality, but signed-app release validation and the storage-provider compatibility matrix are still incomplete. Use it on backed-up, non-critical data and review the [release checklist](RELEASE_CHECKLIST.md) before treating a build as production-ready.
 
-- AppKit application entry point and main window.
-- Unified toolbar with back, forward, search, a clearly labeled Experimental Terminal, sidebar, view, and settings controls.
-- Dual independently loading `NSTableView` file panes.
-- Breadcrumb headers with clickable path components.
-- Native file icons and `Name`, `Size`, and `Modified` columns.
-- Folder-first sorting with sortable table headers.
-- Directory navigation by double-click, Return, Backspace, and Command-Up.
-- Active-pane switching with Tab.
-- Right shortcuts/recent sidebar.
-- The Experimental Terminal is hidden by default and requires the explicit “Enable Experimental Terminal” setting before it can be shown.
-- Bottom command bar.
-- Model, service, controller, view, command, and utility separation.
-- Unit tests for navigation history, sorting, path utilities, and bookmark persistence.
-- Release builds default to normal file-manager access behavior, subject to macOS permissions and any user-granted folders. DEBUG builds are unrestricted by default too, but can opt into the experimental sandbox with `--pulsefiles-enable-experimental-sandbox` or the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key. When that flag is enabled, browsing and file operations are restricted to `~/Library/Application Support/PulseFiles/ExperimentalSandbox` unless the user explicitly grants access to an outside folder.
+## Preview
 
-## License
+<p align="center">
+  <img src="PulseFiles/Resources/PulseFilesAppIconSource.png" alt="PulseFiles app icon" width="192">
+</p>
 
-PulseFiles is licensed under the [GNU General Public License v3.0 or later](LICENSE) (`GPL-3.0-or-later`). Redistributions of modified versions must provide the corresponding source code under that license.
+The repository-owned app icon above ships with PulseFiles. Runnable debug and release bundles can be produced locally using the instructions below.
+
+## Features
+
+- Native AppKit interface with independent dual-pane navigation and per-pane tabs.
+- Folder-first sortable file lists, breadcrumbs, search, hidden-file control, and multiple selection.
+- Keyboard-driven copy, move, rename, trash, delete, folder creation, preview, and navigation.
+- Conflict-aware, cancellable file operations with preflight checks and progress reporting.
+- Sidebar shortcuts and recent locations, Quick Look, and a read-only text/hex viewer.
+- Optional single-pane layout and an explicitly opt-in experimental terminal.
+
+## System requirements
+
+- macOS 13 Ventura or later.
+- Swift 5.9 or later.
+- Xcode or compatible Apple command-line developer tools.
+
+## Install and launch
+
+PulseFiles does not yet provide a generally available signed release. Build it from source:
+
+```sh
+git clone https://github.com/deemoun/PulseFiles.git
+cd PulseFiles
+./scripts/build_app.sh
+open artifacts/PulseFiles.app
+```
+
+To build and launch in one step, run `./scripts/build_app.sh --run`. The debug bundle is written to `artifacts/PulseFiles.app`. For a local release build, run `./scripts/build_release_app.sh`; its unsigned-by-default bundle is written to `artifacts/release/PulseFiles.app` and can be launched with `open artifacts/release/PulseFiles.app`.
 
 ## Keyboard shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| Tab | Switch pane |
-| Return | Open the selected item, or rename/confirm text when editing |
-| F3 | Open the selected file in the read-only incremental text/hex viewer |
+| Tab | Switch the active pane |
+| Return | Open the selected item, or confirm an edit |
+| F3 | Open the selected file in the read-only text/hex viewer |
 | F4 | Open the selected item normally |
 | Space | Preview the selected item with Quick Look |
 | Backspace / Command-Up | Navigate to the parent folder |
 | Command-[ / Command-] | Navigate back / forward |
-| Command-Shift-G | Go to folder |
-| Command-N / Command-Shift-N | Create a new folder / file |
-| Command-C / Command-X / Command-V | Copy / cut / paste with the clipboard |
+| Command-Shift-G | Go to a folder |
+| Command-N / Command-Shift-N | Create a folder / file |
+| Command-C / Command-X / Command-V | Copy / cut / paste |
 | Command-Shift-. | Show or hide hidden files |
-| Control-Command-1…7 | Sort by name, extension, kind, size, modified date, created date, or added date |
+| Control-Command-1…7 | Sort by name, extension, kind, size, modified, created, or added date |
 | Command-` | Toggle the Experimental Terminal after enabling it in Settings |
 | Command-Period | Cancel the active file operation |
 | Command-T / Command-W | Create / close a tab in the active pane |
 | Control-Tab / Control-Shift-Tab | Select the next / previous tab in the active pane |
 | Option-Command-\\ | Toggle single- and dual-pane layout |
 
-## Experimental sandbox access
+The eighth sort criterion, **Accessed**, is available through menus and table headers but has no numbered shortcut.
 
-Release builds default to normal file-manager access behavior: PulseFiles is not restricted to its experimental sandbox by default, and access is governed by macOS permissions plus any folders the user explicitly grants.
+## Safety model
 
-DEBUG builds also default to unrestricted normal file-manager behavior. For development and testing, launch a DEBUG build with `--pulsefiles-enable-experimental-sandbox` or set the `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` UserDefaults key to `true` to restrict browsing and file operations. `--pulsefiles-disable-experimental-sandbox` forces the restriction off. In release builds, `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` resolves to `false`; persisted sandbox preferences are ignored/removed by settings import/export behavior.
+### DEBUG experimental sandbox
 
-When `ExperimentalFlags.restrictFileAccessToAppSandboxRoot` is enabled in DEBUG, PulseFiles creates and uses this root:
+Release builds use normal file-manager access, subject to macOS permissions and explicit folder grants. DEBUG builds can opt into a cautious restriction with `--pulsefiles-enable-experimental-sandbox`; while enabled, browsing and file operations remain under `~/Library/Application Support/PulseFiles/ExperimentalSandbox` unless access to another folder is explicitly granted. Access continues to route through the app's sandbox access policy in every build.
 
-```text
-~/Library/Application Support/PulseFiles/ExperimentalSandbox
-```
+### Destructive operations
 
-Restricted DEBUG browsing and file operations should stay inside that root unless the user explicitly grants an outside folder through the app's access policy flow.
+Copy, move, rename, trash, and permanent-delete operations are preflighted before mutation. PulseFiles validates sources and destinations, prompts for conflicts and configured confirmations, supports cancellation, and reports partial failures; nevertheless, test development builds only with backed-up, disposable data.
 
-## Experimental Terminal policy
+### Opt-in terminal
 
-The Experimental Terminal is an opt-in feature, not a security boundary or a supported shell environment. It is hidden and disabled by default. Every visible entry point uses the **Experimental Terminal** label; to try it, enable **Enable Experimental Terminal** in Settings, then optionally enable **Show Experimental Terminal by default**.
+The Experimental Terminal is disabled and hidden by default. It must be enabled in Settings, shows a first-use warning, and is not a security boundary: commands can modify or delete any files that macOS permits the app to access. Cancellation terminates the process on a best-effort basis and cannot roll back commands that already ran.
 
-The Experimental Terminal runs a non-interactive shell command in the active pane folder when that folder is authorized by `SandboxFileAccessPolicy`; otherwise it falls back to the policy root or rejects the launch. It keeps the applicable access scope only while the command runs, streams bounded combined output/error text, reports startup and non-zero-exit failures in the panel, and terminates the active process when the panel is removed or the window is torn down. Cancellation is best-effort process termination, not a transactional rollback: shell commands may already have changed files. First use requires acknowledgement that commands can modify or delete files that macOS permits PulseFiles to access, including security-scoped folder grants when sandbox restrictions are disabled.
+Implementation details for these boundaries are in the [architecture and maintenance guide](DOCUMENTATION.md#filesystem-access-and-safety), and release scenarios are in the [release checklist](RELEASE_CHECKLIST.md).
 
 ## Version 1.0 storage compatibility
 
-The following table describes the intended 1.0 behavior, not release-verified
-provider support. The current candidate has not completed the signed-app storage
-matrix, so none of the conditional rows below should be represented as verified
-support in marketing or release communications. Support may be claimed only
-after the matching signed-app scenarios in `RELEASE_CHECKLIST.md` have evidence
-for the release candidate.
+This table describes intended V1 behavior, not verified provider support. Conditional support must not be claimed until the corresponding signed-app scenarios have evidence in the [release checklist](RELEASE_CHECKLIST.md).
 
-| Item class | 1.0 status | Behavior and recovery |
+| Item class | V1 status | Behavior and recovery |
 | --- | --- | --- |
-| iCloud Drive and cloud-provider folders | Candidate behavior; signed-app verification pending | Browsing and normal operations use macOS access checks. A cloud-only iCloud item is intended to be rejected before mutation; download it in Finder and retry. Provider sync conflicts, provider-specific metadata, and providers that do not expose normal file semantics are not guaranteed. |
-| Network shares and removable media | Candidate behavior; signed-app verification pending | Operations are intended to preflight and re-check availability before mutation. A disconnected volume should be reported as unavailable; reconnect/remount it and retry. Read-only media should be rejected with a writable-media recovery message. |
-| Packages | Candidate behavior; signed-app verification pending | PulseFiles is intended to list packages as packages and copy/move their contents as a tree. Test application-specific package integrity before replacing production packages. |
-| Symbolic links | Candidate behavior; signed-app verification pending | Copy is intended to preserve the stored link destination without resolving or traversing the target. This prevents a link from reading an unselected external target. |
-| Finder aliases | Not supported for mutation in 1.0 | PulseFiles detects a Finder alias before mutation and leaves it unchanged. Use Finder to manage the alias or operate on the original item. Finder aliases are not symbolic links. |
-| Metadata preservation | Candidate best-effort behavior; signed-app verification pending | Copy paths are intended to preserve POSIX permissions, ownership IDs where permitted, timestamps, Finder tags/labels, extended attributes, and ACLs. If a destination/provider rejects metadata, content should remain copied and PulseFiles should report a cleanup warning; verify metadata on the destination before removing the source. |
+| iCloud Drive and cloud-provider folders | Candidate behavior; signed-app verification pending | Browsing and normal operations use macOS access checks. A cloud-only iCloud item is intended to be rejected before mutation; download it in Finder and retry. Provider sync conflicts, provider-specific metadata, and providers without normal file semantics are not guaranteed. |
+| Network shares and removable media | Candidate behavior; signed-app verification pending | Operations are intended to preflight and re-check availability before mutation. Reconnect or remount an unavailable volume and retry. Read-only media should be rejected with a writable-media recovery message. |
+| Packages | Candidate behavior; signed-app verification pending | PulseFiles is intended to list packages as packages and copy or move their contents as a tree. Test application-specific package integrity before replacing production packages. |
+| Symbolic links | Candidate behavior; signed-app verification pending | Copy is intended to preserve the stored link destination without resolving or traversing the target, preventing a link from reading an unselected external target. |
+| Finder aliases | Not supported for mutation in V1 | PulseFiles detects a Finder alias before mutation and leaves it unchanged. Use Finder to manage the alias or operate on the original item. |
+| Metadata preservation | Candidate best-effort behavior; signed-app verification pending | Copy paths are intended to preserve POSIX permissions, ownership IDs where permitted, timestamps, Finder tags and labels, extended attributes, and ACLs. If a destination rejects metadata, content should remain copied and PulseFiles should report a cleanup warning; verify metadata before removing the source. |
 
-Do not treat a successful file-content transfer as a guarantee that cloud-provider state, custom metadata, or application-specific package internals were preserved. These limits are intentionally reflected in the release-facing copy rather than hidden behind a generic "all files" claim.
+A successful content transfer does not guarantee preservation of cloud-provider state, custom metadata, or application-specific package internals.
 
-## Opening
+## Development quick start
 
-Open the repository folder or `Package.swift` in Xcode. The local environment used to create this project only has Command Line Tools active, so full Xcode project generation/build verification was left for a machine with Xcode selected.
-
-## Build Notes
-
-Run the complete automated test suite through the safe disposable entry point:
+Run these commands from the repository root:
 
 ```sh
+# Unit and in-process tests
+swift test
+
+# Package a local debug app at artifacts/PulseFiles.app
+./scripts/build_app.sh
+
+# Package an unsigned local release app at artifacts/release/PulseFiles.app
+./scripts/build_release_app.sh
+
+# Run the disposable automation entry point
 ./scripts/run_automation_tests.sh
 ```
 
-It isolates preferences and all mutation-capable DEBUG UI fixtures, enables the
-experimental sandbox for DEBUG UI automation, and skips AppKit UI automation on
-non-macOS hosts. Release evidence remains separate in
-`scripts/release_validation.sh`; its DEBUG mutation harness is opt-in.
+On macOS hosts without Accessibility permission, use `./scripts/run_automation_tests.sh --skip-system-events` to retain Swift and in-process AppKit coverage while skipping the external System Events harness. Generated `.build/` and `artifacts/` content must not be committed. Detailed testing, packaging, and release-validation procedures live in [DOCUMENTATION.md](DOCUMENTATION.md#testing-builds-and-agent-checklist) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
-For non-destructive macOS CI, retain the Swift unit and in-process AppKit UI
-coverage while skipping the external System Events mutation harness (which
-requires Accessibility permission):
+## Architecture
 
-```sh
-./scripts/run_automation_tests.sh --skip-system-events
-# Or: PULSEFILES_SKIP_SYSTEM_EVENTS=1 ./scripts/run_automation_tests.sh
-```
+PulseFiles is a Swift Package Manager executable organized by responsibility: `App` composes the window and menus; `FilePane`, `Sidebar`, and `Terminal` provide UI surfaces; `Commands` coordinates actions and shortcuts; `Services` owns persistence, access policy, filesystem loading, and operations; and `Models` and `Utilities` contain focused supporting types. See the [PulseFiles Architecture and Maintenance Guide](DOCUMENTATION.md) for the runtime flow and component reference.
 
-Without this option or environment variable, the System Events runner remains
-enabled for local macOS automation.
+## Roadmap
 
-Build a local test `.app` bundle:
+The [orthodox file-manager feature-gap audit](docs/orthodox-feature-gap-audit.md) tracks implemented behaviors, remaining V1 gaps, future directions, and explicitly deferred work.
 
-```sh
-./scripts/build_app.sh
-```
+## Contributing, testing, and project policies
 
-Build and launch the test bundle:
-
-```sh
-./scripts/build_app.sh --run
-```
-
-Build and launch a release bundle (unsigned by default, with signing flags reserved for future distribution):
-
-```sh
-./scripts/build_release_app.sh --run
-```
-
-The debug app is written to `artifacts/PulseFiles.app`, while the release app is written to `artifacts/release/PulseFiles.app`. You can also launch them manually:
-
-```sh
-open artifacts/PulseFiles.app
-open artifacts/release/PulseFiles.app
-```
-
-The Swift package target is named `PulseFiles` and uses AppKit directly. The source tree is organized to mirror the planned Xcode project structure:
-
-- `PulseFiles/App`
-- `PulseFiles/Models`
-- `PulseFiles/Services`
-- `PulseFiles/FilePane`
-- `PulseFiles/Sidebar`
-- `PulseFiles/Terminal`
-- `PulseFiles/Commands`
-- `PulseFiles/Utilities`
-- `PulseFilesTests`
-
-## Export diagnostics for support
-
-Choose **Help → Export Diagnostics…** and select a destination folder. PulseFiles creates a timestamped `PulseFiles-Diagnostics-…` folder locally; it does not collect or upload diagnostics automatically. Review the included `diagnostics.txt` and `REDACTION_POLICY.txt`, then attach the folder (or a zip you create from it) to your support request along with a description of what happened.
-
-The export includes app/version/build and macOS information, sanitized in-memory diagnostic entries, and count-only summaries of recent file-operation results. It excludes filesystem paths, security-scoped bookmark data, clipboard contents, terminal commands/output, and password/token/secret/credential/API-key values. Entries categorized as Terminal, Clipboard, or Bookmark are excluded entirely.
-
-## Support, privacy, and issue reporting
-
-- **Support:** use **Help → Get Support** or file a support request at <https://github.com/deemoun/PulseFiles/issues>.
-- **Privacy policy:** use **Help → Privacy Policy** or read [PRIVACY.md](PRIVACY.md).
-- **Issue reporting:** use **Help → Report an Issue** or open <https://github.com/deemoun/PulseFiles/issues/new/choose>.
-
-## File sorting
-
-Each pane remembers its own sort key, direction, text comparison mode, and folder-first preference. The eight sort criteria are **Name, Extension, Kind, Size, Modified, Created, Added, and Accessed**. Selecting the current criterion again reverses its direction; folder-first grouping, when enabled, remains in force in either direction. Missing date metadata is shown as `--` and ordered consistently.
-
-The authoritative shortcut range requested for sorting contains seven keys, so Control-Command-1 through Control-Command-7 map in the order shown above to Name through Added. **Accessed is the eighth criterion and intentionally remains menu/table-header only**; it is not silently omitted from the product, assigned an overlapping shortcut, or allowed to displace an existing shortcut.
+- **Contributing:** Read [AGENTS.md](AGENTS.md) for repository conventions, safety constraints, and the change checklist, then open a focused pull request.
+- **Testing:** Follow the [development quick start](#development-quick-start) and the detailed [testing guide](DOCUMENTATION.md#testing-builds-and-agent-checklist).
+- **Privacy:** PulseFiles does not automatically upload diagnostics; read the [privacy policy](PRIVACY.md) for local data and permission details.
+- **Support:** Use [GitHub Issues](https://github.com/deemoun/PulseFiles/issues) for support and [the issue chooser](https://github.com/deemoun/PulseFiles/issues/new/choose) for bug reports and feature requests.
+- **License:** PulseFiles is available under the [GNU General Public License v3.0 or later](LICENSE); third-party attribution is listed in [NOTICE](NOTICE).
