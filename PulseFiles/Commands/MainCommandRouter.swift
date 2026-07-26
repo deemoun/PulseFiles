@@ -5,12 +5,14 @@ struct MainCommandRoutingPane: Equatable {
     var currentDirectory: URL
     var selectedURLs: [URL]
     var focusedURL: URL?
+    var focusedItemIsSymbolicLink: Bool
 
-    init(id: PaneID, currentDirectory: URL, selectedURLs: [URL] = [], focusedURL: URL? = nil) {
+    init(id: PaneID, currentDirectory: URL, selectedURLs: [URL] = [], focusedURL: URL? = nil, focusedItemIsSymbolicLink: Bool = false) {
         self.id = id
         self.currentDirectory = currentDirectory
         self.selectedURLs = selectedURLs
         self.focusedURL = focusedURL
+        self.focusedItemIsSymbolicLink = focusedItemIsSymbolicLink
     }
 }
 
@@ -58,12 +60,16 @@ enum MainCommandRoutingDisabledReason: Equatable {
     case fileOperationInProgress
     case noActiveFileOperation
     case noUndoRecovery
+    case focusedItemIsNotSymbolicLink
 }
 
 enum MainCommandRoute: Equatable {
     case activePane(command: MainCommand, pane: PaneID, urls: [URL])
     case crossPane(command: MainCommand, sourcePane: PaneID, destinationPane: PaneID, sourceURLs: [URL], destinationDirectory: URL)
     case switchPane(to: PaneID)
+    case dualPane(command: MainCommand, activePane: PaneID, oppositePane: PaneID)
+    case focusedItem(command: MainCommand, pane: PaneID, url: URL)
+    case symbolicLink(command: MainCommand, pane: PaneID, url: URL)
     case enabled(command: MainCommand)
     case disabled(command: MainCommand, reason: MainCommandRoutingDisabledReason)
 }
@@ -81,6 +87,21 @@ struct MainCommandRouter {
         switch command {
         case .switchPane:
             return .switchPane(to: state.activePaneID.opposite)
+        case .swapPanes, .syncOppositePane:
+            guard !state.isSinglePaneMode else { return .disabled(command: command, reason: .noOppositePane) }
+            return .dualPane(command: command, activePane: state.activePaneID, oppositePane: state.inactivePane.id)
+        case .revealInOppositePane:
+            guard !state.isSinglePaneMode else { return .disabled(command: command, reason: .noOppositePane) }
+            return focusedRoute(command, in: state) {
+                .focusedItem(command: command, pane: state.activePaneID, url: $0)
+            }
+        case .followSymbolicLink:
+            guard state.activePane.focusedItemIsSymbolicLink else {
+                return .disabled(command: command, reason: .focusedItemIsNotSymbolicLink)
+            }
+            return focusedRoute(command, in: state) {
+                .symbolicLink(command: command, pane: state.activePaneID, url: $0)
+            }
         case .copy, .move:
             guard !state.isSinglePaneMode else {
                 return .disabled(command: command, reason: .noOppositePane)

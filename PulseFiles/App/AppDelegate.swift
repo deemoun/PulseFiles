@@ -300,6 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Copy to Opposite Pane".localized, action: #selector(MainWindowViewController.menuCopy(_:)), command: .copy))
         submenu.addItem(menuItem("Move to Opposite Pane".localized, action: #selector(MainWindowViewController.menuMove(_:)), command: .move))
+        submenu.addItem(menuItem("Reveal in Opposite Pane".localized, action: #selector(MainWindowViewController.menuRevealInOppositePane(_:)), command: .revealInOppositePane))
         item.submenu = submenu
         return item
     }
@@ -355,6 +356,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         let submenu = NSMenu(title: "Command".localized)
         submenu.addItem(menuItem("Switch Pane".localized, action: #selector(MainWindowViewController.menuSwitchPane(_:)), command: .switchPane))
+        submenu.addItem(menuItem("Swap Panes".localized, action: #selector(MainWindowViewController.menuSwapPanes(_:)), command: .swapPanes))
+        submenu.addItem(menuItem("Sync Opposite Pane".localized, action: #selector(MainWindowViewController.menuSyncOppositePane(_:)), command: .syncOppositePane))
+        submenu.addItem(menuItem("Reveal in Opposite Pane".localized, action: #selector(MainWindowViewController.menuRevealInOppositePane(_:)), command: .revealInOppositePane))
+        submenu.addItem(menuItem("Follow Symbolic Link".localized, action: #selector(MainWindowViewController.menuFollowSymbolicLink(_:)), command: .followSymbolicLink))
         item.submenu = submenu
         return item
     }
@@ -427,6 +432,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut.keyEquivalent)
         item.keyEquivalentModifierMask = shortcut.modifierFlags
         item.target = nil
+        item.identifier = NSUserInterfaceItemIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
+        item.setAccessibilityIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
         return item
     }
 

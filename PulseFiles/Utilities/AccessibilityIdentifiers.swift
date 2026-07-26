@@ -76,6 +76,12 @@ enum AccessibilityIdentifiers {
         static let field = "pulsefiles.commandBar.field"
     }
 
+    enum Command {
+        static func menuItem(_ command: MainCommand) -> String {
+            "pulsefiles.command.\(String(describing: command))"
+        }
+    }
+
     enum FileOperationProgress {
         static let dialog = "pulsefiles.fileOperationProgress.dialog"
         static let indicator = "pulsefiles.fileOperationProgress.indicator"

@@ -25,6 +25,8 @@ struct PaneState {
     var currentDirectory: URL
     var selectedURLs: Set<URL> = []
     var focusedRow: Int = 0
+    var focusedURL: URL?
+    var searchQuery = ""
     var history = NavigationHistory()
     var sort = FileSortDescriptor()
     var showsHiddenFiles = false
@@ -33,6 +35,8 @@ struct PaneState {
         currentDirectory: URL,
         selectedURLs: Set<URL> = [],
         focusedRow: Int = 0,
+        focusedURL: URL? = nil,
+        searchQuery: String = "",
         history: NavigationHistory = NavigationHistory(),
         sort: FileSortDescriptor = FileSortDescriptor(),
         showsHiddenFiles: Bool = false
@@ -40,6 +44,8 @@ struct PaneState {
         self.currentDirectory = currentDirectory
         self.selectedURLs = selectedURLs
         self.focusedRow = focusedRow
+        self.focusedURL = focusedURL
+        self.searchQuery = searchQuery
         self.history = history
         self.sort = sort
         self.showsHiddenFiles = showsHiddenFiles

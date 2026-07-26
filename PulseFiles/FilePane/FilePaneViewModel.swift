@@ -126,6 +126,26 @@ final class FilePaneViewModel {
         try accessPolicy.validateAccess(to: url)
     }
 
+    /// Captures only logical browser state, allowing panes to exchange state
+    /// without exchanging their controller/view instances.
+    func logicalStateSnapshot(focusedURL: URL? = nil) -> PaneState {
+        var snapshot = state
+        snapshot.focusedURL = focusedURL
+        snapshot.searchQuery = searchQuery
+        return snapshot
+    }
+
+    /// Restores a snapshot atomically after its destination passes the same
+    /// sandbox policy used by ordinary navigation.
+    func restoreLogicalState(_ snapshot: PaneState, onLoaded: (() -> Void)? = nil) throws {
+        try accessPolicy.validateAccess(to: snapshot.currentDirectory)
+        var restored = snapshot
+        restored.currentDirectory = snapshot.currentDirectory.standardizedFileURL
+        state = restored
+        searchQuery = restored.searchQuery
+        load(directory: restored.currentDirectory, addToHistory: false, forceRefresh: false, onLoaded: onLoaded)
+    }
+
     /// Keeps parent-row presentation and keyboard navigation subject to the
     /// same access policy as every other directory navigation.
     func canNavigate(to directory: URL) -> Bool {
