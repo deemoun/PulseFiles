@@ -53,7 +53,27 @@ final class DescendantSearchServiceTests: XCTestCase {
         let result = try await task.value
         XCTAssertTrue(result.wasCancelled)
     }
+
+    func testTypedRegexKindSizeAndStreamingBatches() async throws {
+        let fixture = try SandboxFixture(testCase: self)
+        _ = try fixture.allowedFile("typed/one.log", contents: "12345")
+        _ = try fixture.allowedFile("typed/two.txt", contents: "12345")
+        let query = DescendantSearchQuery(nameMatcher: .regularExpression(#"^one\.[a-z]+$"#), fileKinds: [.file], size: .init(minimumBytes: 5, maximumBytes: 5), scopes: [.folder(fixture.allowedDirectory, includeDescendants: true)])
+        let batches = BatchRecorder()
+        let result = try await DescendantSearchService(accessPolicy: fixture.policy).search(query: query, limits: .init(maximumItems: 10, maximumDepth: 10, timeout: 5, batchSize: 1)) { await batches.append($0) }
+        XCTAssertEqual(result.items.map(\.name), ["one.log"])
+        let batchCount = await batches.count
+        XCTAssertEqual(batchCount, 1)
+    }
+
+    func testMalformedRegularExpressionIsRejected() async throws {
+        let fixture = try SandboxFixture(testCase: self)
+        let query = DescendantSearchQuery(nameMatcher: .regularExpression("["), scopes: [.folder(fixture.allowedDirectory, includeDescendants: true)])
+        await XCTAssertThrowsErrorAsync(try await DescendantSearchService(accessPolicy: fixture.policy).search(query: query))
+    }
 }
+
+private actor BatchRecorder { private var batches = [[DescendantSearchItem]](); func append(_ batch: [DescendantSearchItem]) { batches.append(batch) }; var count: Int { batches.count } }
 
 private func XCTAssertThrowsErrorAsync<T>(_ expression: @autoclosure () async throws -> T, file: StaticString = #filePath, line: UInt = #line) async {
     do { _ = try await expression(); XCTFail("Expected error", file: file, line: line) }

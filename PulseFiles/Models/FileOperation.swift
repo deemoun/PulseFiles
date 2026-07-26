@@ -76,9 +76,18 @@ struct FileOperation {
 
 /// Complete before/after state retained only for operations that can be reversed safely.
 struct FileOperationRecovery: Equatable {
+    /// V1 is intentionally an allow-list. Creation, permanent deletion,
+    /// archives, extraction, and batch rename are visibly unsupported.
+    enum Version: Equatable { case v1 }
     /// A recovery is issued only when its original operation completed without
     /// replacement, cancellation, cleanup warnings, or provider uncertainty.
     enum Kind: Equatable { case rename, move, copy, trash }
+    enum Eligibility: Equatable {
+        case eligible
+        case expired
+        case unsupportedOperation
+        case incompleteOperation
+    }
     struct Item: Equatable {
         let originalURL: URL
         let destinationURL: URL
@@ -95,6 +104,26 @@ struct FileOperationRecovery: Equatable {
     }
     let kind: Kind
     let items: [Item]
+    let version: Version
+    let issuedAt: Date
+    let expiresAt: Date
+
+    init(kind: Kind, items: [Item], issuedAt: Date = Date(), lifetime: TimeInterval = 10 * 60) {
+        self.kind = kind; self.items = items; self.version = .v1; self.issuedAt = issuedAt
+        self.expiresAt = issuedAt.addingTimeInterval(max(0, lifetime))
+    }
+
+    func eligibility(at date: Date = Date()) -> Eligibility {
+        guard !items.isEmpty else { return .incompleteOperation }
+        return date < expiresAt ? .eligible : .expired
+    }
+
+    static func supportsV1(_ operation: FileOperationKind) -> Bool {
+        switch operation {
+        case .copy, .move, .trash, .rename: return true
+        case .createFolder, .createFile, .delete, .createArchive, .extractArchive, .batchRename: return false
+        }
+    }
 
     var undoTitle: String {
         switch kind {

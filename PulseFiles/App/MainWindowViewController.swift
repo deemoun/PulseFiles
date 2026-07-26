@@ -85,6 +85,7 @@ final class MainWindowViewController: NSViewController {
     private let symbolicLinkResolver: SymbolicLinkResolutionService
     private lazy var descendantSearch = DescendantSearchService(accessPolicy: accessPolicy)
     private var descendantSearchTask: Task<Void, Never>?
+    private var descendantSearchResultsWindow: NSWindowController?
     private let fileSystemScheduler = FileSystemOperationScheduler.shared
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: fileSystemScheduler)
     private lazy var fileOperations = FileOperationService(accessPolicy: accessPolicy)
@@ -1710,7 +1711,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             self.descendantSearchTask = Task { [weak self, descendantSearch] in
                 guard let self else { return }
                 do {
-                    let result = try await descendantSearch.search(query: query, rootURL: root)
+                    let typedQuery = DescendantSearchQuery(nameMatcher: .glob("*\(query)*"), scopes: [.folder(root, includeDescendants: true)])
+                    let result = try await descendantSearch.search(query: typedQuery)
                     guard !Task.isCancelled else { return }
                     self.presentDescendantSearchResults(result, root: root, query: query)
                 } catch is CancellationError {
@@ -1724,24 +1726,32 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func presentDescendantSearchResults(_ result: DescendantSearchResult, root: URL, query: String) {
-        let alert = NSAlert()
-        alert.messageText = "Search Results".localized
-        var notes: [String] = []
-        if result.hitItemLimit { notes.append("item limit reached".localized) }
-        if result.hitDepthLimit { notes.append("depth limit reached".localized) }
-        if result.timedOut { notes.append("time limit reached".localized) }
-        if !result.inaccessibleURLs.isEmpty { notes.append("%@ inaccessible location(s) skipped".localized(with: result.inaccessibleURLs.count)) }
-        alert.informativeText = "%@ result(s) for “%@” below %@.%@".localized(with: result.items.count, query, root.path, notes.isEmpty ? "" : " Partial: " + notes.joined(separator: ", ") + ".")
-        alert.addButton(withTitle: "Return to Original Folder".localized)
-        let text = NSTextView(frame: NSRect(x: 0, y: 0, width: 620, height: 280))
-        text.isEditable = false
-        text.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        text.string = result.items.map { "\($0.name) — \($0.typeDescription)\n\($0.pathContext)" }.joined(separator: "\n\n")
-        let scroll = NSScrollView(frame: text.frame)
-        scroll.hasVerticalScroller = true
-        scroll.documentView = text
-        alert.accessoryView = scroll
-        if let window = view.window { alert.beginSheetModal(for: window) { _ in } } else { _ = alert.runModal() }
+        do { try accessPolicy.validateAccess(to: root) } catch { showError(message: "Could Not Show Search Results".localized, detail: error.localizedDescription); return }
+        let controller = DescendantSearchResultsViewController(); controller.title = "Search Results for “\(query)”"
+        controller.onAction = { [weak self] action, item in self?.routeSearchResultAction(action, item: item, root: root) }
+        controller.loadViewIfNeeded(); controller.display(result)
+        let window = NSWindow(contentViewController: controller); window.title = controller.title ?? "Search Results"; window.setContentSize(NSSize(width: 760, height: 440))
+        let windowController = NSWindowController(window: window); descendantSearchResultsWindow = windowController; windowController.showWindow(self)
+    }
+
+    private func routeSearchResultAction(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) {
+        do {
+            try accessPolicy.validateAccess(to: root); try accessPolicy.validateAccess(to: item.url)
+            let command: SearchResultAction = action == .open ? .open : (action == .reveal ? .reveal : .navigate)
+            let route = SearchResultActionRouter().route(command, item: item, root: root, canAccess: { accessPolicy.canAccess($0, logDecision: false) }, fileExists: FileManager.default.fileExists(atPath:))
+            guard case .perform(_, let destination) = route else { throw SearchResultRoutingError.staleResult }
+            switch action {
+            case .open: NSWorkspace.shared.open(item.url)
+            case .reveal: NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            case .navigate:
+                try accessPolicy.validateAccess(to: destination); targetPane().preparePendingSelection(item.url); targetPane().navigate(to: destination)
+            }
+        } catch { showError(message: "Search Result Unavailable".localized, detail: error.localizedDescription) }
+    }
+
+    private enum SearchResultRoutingError: LocalizedError {
+        case staleResult
+        var errorDescription: String? { "The result moved, was removed, or is no longer inside the search scope.".localized }
     }
 
     private func goToFolder(path rawPath: String) {
@@ -2773,7 +2783,7 @@ extension MainWindowViewController: NSMenuItemValidation {
             isSinglePaneMode: isSinglePaneMode,
             isFileOperationActive: isFileOperationActive,
             sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs,
-            hasUndoRecovery: undoRecovery != nil
+            hasUndoRecovery: undoRecovery?.eligibility() == .eligible
         )
     }
 }

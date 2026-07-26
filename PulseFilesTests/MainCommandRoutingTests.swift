@@ -3,6 +3,12 @@ import AppKit
 @testable import PulseFiles
 
 final class MainCommandRoutingTests: XCTestCase {
+    func testSearchResultRouterRejectsStaleResult() {
+        let root = URL(fileURLWithPath: "/root")
+        let item = DescendantSearchItem(url: root.appendingPathComponent("gone.txt"), name: "gone.txt", pathContext: root.path, typeDescription: "File", isDirectory: false, isSymbolicLink: false)
+        let route = SearchResultActionRouter().route(.open, item: item, root: root, canAccess: { _ in true }, fileExists: { _ in false })
+        XCTAssertEqual(route, .unavailable)
+    }
     func testViewerOwnsF3WhileReturnAndSpaceKeepExistingActions() {
         let router = MainCommandRouter()
         XCTAssertEqual(router.commandForKeyDown(keyCode: 99), .viewer)
