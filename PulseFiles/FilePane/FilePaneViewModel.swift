@@ -31,6 +31,8 @@ final class FilePaneViewModel {
     private(set) var partialRefreshFailure: DirectoryContentsReadError?
     private(set) var isPartialRefreshRetryScheduled = false
     private(set) var searchQuery = ""
+    private(set) var quickSearchMatchMode: QuickSearchMatchMode
+    private(set) var quickSearchPresentation: QuickSearchPresentation
 
     var onChange: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
@@ -68,12 +70,16 @@ final class FilePaneViewModel {
         fileSystem: FileSystemServicing,
         accessPolicy: SandboxFileAccessPolicy = .current,
         directoryLoadTimeout: TimeInterval = 15,
-        directoryMonitor: DirectoryMonitor = DirectoryMonitor()
+        directoryMonitor: DirectoryMonitor = DirectoryMonitor(),
+        quickSearchMatchMode: QuickSearchMatchMode = .contains,
+        quickSearchPresentation: QuickSearchPresentation = .filterMatches
     ) {
         precondition(directoryLoadTimeout > 0 && directoryLoadTimeout.isFinite)
         self.fileSystem = fileSystem
         self.accessPolicy = accessPolicy
         self.directoryMonitor = directoryMonitor
+        self.quickSearchMatchMode = quickSearchMatchMode
+        self.quickSearchPresentation = quickSearchPresentation
         self.directoryLoadTimeout = directoryLoadTimeout
         let validatedDirectory = accessPolicy.validatedDirectory(initialDirectory)
         state = PaneState(
@@ -115,11 +121,21 @@ final class FilePaneViewModel {
     var visibleItems: [FileItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }
-        return items.filter { item in
-            item.displayName.localizedCaseInsensitiveContains(query)
-                || item.filename.localizedCaseInsensitiveContains(query)
-                || item.fileExtension.localizedCaseInsensitiveContains(query)
-        }
+        guard quickSearchPresentation == .filterMatches else { return items }
+        return items.filter { match(for: $0) != nil }
+    }
+
+    func match(for item: FileItem) -> QuickSearchMatch? {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return nil }
+        return QuickSearchMatcher.match(query, in: item.filename, mode: quickSearchMatchMode)
+    }
+
+    func setQuickSearchOptions(matchMode: QuickSearchMatchMode, presentation: QuickSearchPresentation) {
+        guard quickSearchMatchMode != matchMode || quickSearchPresentation != presentation else { return }
+        quickSearchMatchMode = matchMode
+        quickSearchPresentation = presentation
+        onChange?()
     }
 
     func validateAccess(to url: URL) throws {

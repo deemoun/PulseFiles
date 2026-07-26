@@ -51,6 +51,8 @@ final class SettingsViewController: NSViewController {
     private let singlePaneCheckbox = NSButton(checkboxWithTitle: "Use single pane by default".localized, target: nil, action: nil)
     private let hiddenFilesCheckbox = NSButton(checkboxWithTitle: "Show hidden files by default".localized, target: nil, action: nil)
     private let languageSelector = NSPopUpButton()
+    private let quickSearchMatchSelector = NSPopUpButton()
+    private let quickSearchPresentationSelector = NSPopUpButton()
     private let confirmCopyCheckbox = NSButton(checkboxWithTitle: "Confirm copy operations".localized, target: nil, action: nil)
     private let confirmMoveCheckbox = NSButton(checkboxWithTitle: "Confirm move operations".localized, target: nil, action: nil)
     private let confirmDeleteCheckbox = NSButton(checkboxWithTitle: "Confirm delete operations".localized, target: nil, action: nil)
@@ -143,6 +145,7 @@ final class SettingsViewController: NSViewController {
         sidebarWidthLabel.alignment = .right
         sidebarWidthLabel.widthAnchor.constraint(equalToConstant: 56).isActive = true
         configureLanguageSelector()
+        configureQuickSearchSelectors()
 
         [leftDirectoryField, rightDirectoryField, scratchDirectoryField].forEach {
             $0.isEditable = false
@@ -292,7 +295,9 @@ final class SettingsViewController: NSViewController {
                 settingsSection(
                     title: "File Browser".localized,
                     views: [
-                        hiddenFilesCheckbox
+                        hiddenFilesCheckbox,
+                        labeledPopup(title: "Quick search matching".localized, popup: quickSearchMatchSelector),
+                        labeledPopup(title: "Quick search results".localized, popup: quickSearchPresentationSelector)
                     ]
                 )
             ]
@@ -753,6 +758,8 @@ final class SettingsViewController: NSViewController {
         terminalCheckbox.isEnabled = settings.experimentalTerminalEnabled
         singlePaneCheckbox.state = settings.defaultSinglePaneMode ? .on : .off
         hiddenFilesCheckbox.state = settings.showHiddenFilesByDefault ? .on : .off
+        quickSearchMatchSelector.selectItem(at: QuickSearchMatchMode.allCases.firstIndex(of: settings.quickSearchMatchMode) ?? 0)
+        quickSearchPresentationSelector.selectItem(at: QuickSearchPresentation.allCases.firstIndex(of: settings.quickSearchPresentation) ?? 0)
         confirmCopyCheckbox.state = settings.confirmCopyOperations ? .on : .off
         confirmMoveCheckbox.state = settings.confirmMoveOperations ? .on : .off
         confirmDeleteCheckbox.state = settings.confirmDeleteOperations ? .on : .off
@@ -772,6 +779,35 @@ final class SettingsViewController: NSViewController {
         languageSelector.target = self
         languageSelector.action = #selector(languageChanged(_:))
         languageSelector.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.languageSelector)
+    }
+
+    private func configureQuickSearchSelectors() {
+        let matchTitles = ["Fuzzy".localized, "Contains".localized, "Prefix".localized, "Suffix".localized, "Prefix or suffix".localized]
+        quickSearchMatchSelector.addItems(withTitles: matchTitles)
+        quickSearchMatchSelector.target = self
+        quickSearchMatchSelector.action = #selector(quickSearchChanged(_:))
+        let presentationTitles = ["Filter matching files".localized, "Show all files and highlight matches".localized]
+        quickSearchPresentationSelector.addItems(withTitles: presentationTitles)
+        quickSearchPresentationSelector.target = self
+        quickSearchPresentationSelector.action = #selector(quickSearchChanged(_:))
+    }
+
+    private func labeledPopup(title: String, popup: NSPopUpButton) -> NSView {
+        let row = NSStackView(views: [NSTextField(labelWithString: title), popup])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.distribution = .fillProportionally
+        return row
+    }
+
+    @objc private func quickSearchChanged(_ sender: NSPopUpButton) {
+        if QuickSearchMatchMode.allCases.indices.contains(quickSearchMatchSelector.indexOfSelectedItem) {
+            settings.quickSearchMatchMode = QuickSearchMatchMode.allCases[quickSearchMatchSelector.indexOfSelectedItem]
+        }
+        if QuickSearchPresentation.allCases.indices.contains(quickSearchPresentationSelector.indexOfSelectedItem) {
+            settings.quickSearchPresentation = QuickSearchPresentation.allCases[quickSearchPresentationSelector.indexOfSelectedItem]
+        }
+        onChange?()
     }
 
     private func languageRow() -> NSView {

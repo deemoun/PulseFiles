@@ -67,6 +67,7 @@ final class FilePaneViewController: NSViewController {
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
     var onSelectionChanged: (([FileItem]) -> Void)?
     var onDirectoryAccessGranted: ((URL) -> Void)?
+    var onSearchQueryChanged: ((String) -> Void)?
 
     private let header = NSVisualEffectView()
     private let breadcrumb = BreadcrumbView()
@@ -83,6 +84,7 @@ final class FilePaneViewController: NSViewController {
     /// URLs survive sorting, filtering, and monitor-driven reloads; row indexes do not.
     private var previousSelectionURLs: [URL] = []
     private var pendingSelectionURL: URL?
+    private var quickSearchFocusedURL: URL?
     private var inlineRenameRow: Int?
     /// The item snapshot remains valid while a refresh is deferred, even when
     /// filtering, sorting, or navigation has already changed the view model.
@@ -331,7 +333,40 @@ final class FilePaneViewController: NSViewController {
     }
 
     func setSearchQuery(_ query: String) {
+        if viewModel.searchQuery.isEmpty, !query.isEmpty {
+            quickSearchFocusedURL = focusedItem?.url
+        }
+        pendingSelectionURL = quickSearchFocusedURL ?? focusedItem?.url
         viewModel.setSearchQuery(query)
+        if query.isEmpty { quickSearchFocusedURL = nil }
+    }
+
+    /// Handles only table-owned quick-search gestures. Returning false leaves
+    /// unsupported shortcuts on AppKit's normal responder path.
+    func handleQuickSearchKeyDown(_ event: NSEvent) -> Bool {
+        guard view.window?.firstResponder === tableView else { return false }
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        if event.keyCode == 53, !viewModel.searchQuery.isEmpty {
+            updateQuickSearchQuery("")
+            return true
+        }
+        if event.keyCode == 51, !viewModel.searchQuery.isEmpty, modifiers.isEmpty {
+            updateQuickSearchQuery(String(viewModel.searchQuery.dropLast()))
+            return true
+        }
+        if event.keyCode == 51, viewModel.searchQuery.isEmpty, modifiers.isEmpty {
+            goParent()
+            return true
+        }
+        guard modifiers.isEmpty, let input = event.characters, !input.isEmpty,
+              input.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { return false }
+        updateQuickSearchQuery(viewModel.searchQuery + input)
+        return true
+    }
+
+    private func updateQuickSearchQuery(_ query: String) {
+        setSearchQuery(query)
+        onSearchQueryChanged?(query)
     }
 
     func setDimmedFileURLs(_ urls: [URL]) {
@@ -877,6 +912,14 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         text.drawsBackground = false
         text.lineBreakMode = .byTruncatingMiddle
         if identifier == "name" {
+            if viewModel.quickSearchPresentation == .showAllAndHighlightMatches,
+               let match = viewModel.match(for: item), !match.ranges.isEmpty {
+                let attributed = NSMutableAttributedString(string: item.filename)
+                for range in match.ranges {
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.45), range: NSRange(range, in: item.filename))
+                }
+                text.attributedStringValue = attributed
+            }
             text.textColor = FileTypeColorPalette.textColor(
                 for: item,
                 isSelected: tableView.isRowSelected(row),
