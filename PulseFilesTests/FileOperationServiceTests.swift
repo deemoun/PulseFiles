@@ -1737,6 +1737,20 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(FileOperationRecovery(kind: .trash, items: [item]).undoTitle, "Undo Move to Trash")
     }
 
+    func testV1UndoSupportAndExpirationAreExplicit() {
+        XCTAssertTrue(FileOperationRecovery.supportsV1(.copy))
+        XCTAssertTrue(FileOperationRecovery.supportsV1(.move))
+        XCTAssertTrue(FileOperationRecovery.supportsV1(.rename))
+        XCTAssertTrue(FileOperationRecovery.supportsV1(.trash))
+        XCTAssertFalse(FileOperationRecovery.supportsV1(.delete))
+        XCTAssertFalse(FileOperationRecovery.supportsV1(.createArchive))
+        let issued = Date(timeIntervalSince1970: 100)
+        let item = FileOperationRecovery.Item(originalURL: URL(fileURLWithPath: "/a"), destinationURL: URL(fileURLWithPath: "/b"))
+        let recovery = FileOperationRecovery(kind: .move, items: [item], issuedAt: issued, lifetime: 10)
+        XCTAssertEqual(recovery.eligibility(at: issued.addingTimeInterval(9)), .eligible)
+        XCTAssertEqual(recovery.eligibility(at: issued.addingTimeInterval(10)), .expired)
+    }
+
     func testUndoCopyRejectsReplacementAtDestination() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Copy replacement.txt")

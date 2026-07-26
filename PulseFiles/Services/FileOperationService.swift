@@ -791,7 +791,7 @@ final class FileOperationService: FileOperationServicing {
     }
 
     func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
-        guard !recovery.items.isEmpty else { throw FileOperationError.undoUnavailable }
+        guard recovery.eligibility() == .eligible else { throw FileOperationError.undoUnavailable }
         // Copies are only reversible by removing the exact destination that we
         // created. Never use the source as a precondition: it is expected to
         // remain after a copy.
@@ -808,15 +808,21 @@ final class FileOperationService: FileOperationServicing {
             }
             return try await accessPolicy.withAccess(to: recovery.items.map(\.destinationURL)) {
                 var completed: [URL] = []
+                var failures: [FileOperationItemFailure] = []
+                var wasCancelled = false
                 for (index, item) in recovery.items.enumerated() {
-                    try Task.checkCancellation()
+                    if Task.isCancelled { wasCancelled = true; break }
                     await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
                     // Recheck directly before removal to close the validation/mutation window.
-                    guard itemIdentity(at: item.destinationURL) == item.destinationIdentity else { throw FileOperationError.undoUnavailable }
-                    try descriptorRemove(item.destinationURL)
-                    completed.append(item.destinationURL)
+                    do {
+                        guard itemIdentity(at: item.destinationURL) == item.destinationIdentity else { throw FileOperationError.undoUnavailable }
+                        try descriptorRemove(item.destinationURL)
+                        completed.append(item.destinationURL)
+                    } catch {
+                        failures.append(.init(url: item.destinationURL, error: error))
+                    }
                 }
-                return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: [], wasCancelled: false)
+                return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: failures, wasCancelled: wasCancelled)
             }
         }
         try await prepareCloudPlaceholders(for: recovery.items.map(\.destinationURL), progressHandler: progressHandler)
@@ -837,14 +843,20 @@ final class FileOperationService: FileOperationServicing {
         }
         return try await accessPolicy.withAccess(to: recovery.items.flatMap { [$0.destinationURL, $0.originalURL.deletingLastPathComponent()] }) {
             var completed: [URL] = []
+            var failures: [FileOperationItemFailure] = []
+            var wasCancelled = false
             for (index, item) in recovery.items.enumerated() {
-                try Task.checkCancellation()
+                if Task.isCancelled { wasCancelled = true; break }
                 await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
-                if recovery.kind == .trash, itemIdentity(at: item.destinationURL) != item.destinationIdentity { throw FileOperationError.undoUnavailable }
-                try descriptorRename(item.destinationURL, to: item.originalURL)
-                completed.append(item.originalURL)
+                do {
+                    if recovery.kind == .trash, itemIdentity(at: item.destinationURL) != item.destinationIdentity { throw FileOperationError.undoUnavailable }
+                    try descriptorRename(item.destinationURL, to: item.originalURL)
+                    completed.append(item.originalURL)
+                } catch {
+                    failures.append(.init(url: item.destinationURL, error: error))
+                }
             }
-            return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: [], wasCancelled: false)
+            return FileOperationResult(completedItems: completed, skippedItems: [], failedItems: failures, wasCancelled: wasCancelled)
         }
     }
 
