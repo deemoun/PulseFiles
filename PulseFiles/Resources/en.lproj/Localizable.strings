@@ -394,3 +394,22 @@
 "Sort by Created" = "Sort by Created";
 "Sort by Added" = "Sort by Added";
 "Sort by Accessed" = "Sort by Accessed";
+
+"Batch Rename" = "Batch Rename";
+"Batch Rename…" = "Batch Rename…";
+"Create Archive" = "Create Archive";
+"Create Archive…" = "Create Archive…";
+"Extract Archive" = "Extract Archive";
+"Extract Archive…" = "Extract Archive…";
+"Extract Archive?" = "Extract Archive?";
+"Preview" = "Preview";
+"Rename All" = "Rename All";
+"Confirm Batch Rename" = "Confirm Batch Rename";
+"Could Not Plan Batch Rename" = "Could Not Plan Batch Rename";
+"Every selected item must have a previewed destination name." = "Every selected item must have a previewed destination name.";
+"Batch rename requires items from one folder." = "Batch rename requires items from one folder.";
+"An item was selected more than once." = "An item was selected more than once.";
+"More than one item would be renamed to %@." = "More than one item would be renamed to %@.";
+"%@ already exists and is not part of this rename." = "%@ already exists and is not part of this rename.";
+"Enter a base name. PulseFiles will preview every destination before changing files." = "Enter a base name. PulseFiles will preview every destination before changing files.";
+"Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision." = "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision.";

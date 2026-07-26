@@ -7,6 +7,9 @@ enum MainCommand: CaseIterable, Equatable {
     case newFile
     case newFolder
     case rename
+    case batchRename
+    case createArchive
+    case extractArchive
     case duplicate
     case getInfo
     case selectAll
@@ -67,6 +70,9 @@ enum MainCommand: CaseIterable, Equatable {
         case .newFile: self = .newFile
         case .newFolder: self = .newFolder
         case .rename: self = .rename
+        case .batchRename: self = .batchRename
+        case .createArchive: self = .createArchive
+        case .extractArchive: self = .extractArchive
         case .copy: self = .copy
         case .move: self = .move
         case .delete: self = .trash

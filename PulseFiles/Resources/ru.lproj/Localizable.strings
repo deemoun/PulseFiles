@@ -394,3 +394,15 @@
 "Sort by Created" = "Сортировать по дате создания";
 "Sort by Added" = "Сортировать по дате добавления";
 "Sort by Accessed" = "Сортировать по дате доступа";
+
+"Batch Rename" = "Пакетное переименование";
+"Batch Rename…" = "Пакетное переименование…";
+"Create Archive" = "Создать архив";
+"Create Archive…" = "Создать архив…";
+"Extract Archive" = "Распаковать архив";
+"Extract Archive…" = "Распаковать архив…";
+"Extract Archive?" = "Распаковать архив?";
+"Preview" = "Предпросмотр";
+"Rename All" = "Переименовать всё";
+"Confirm Batch Rename" = "Подтвердите переименование";
+"Could Not Plan Batch Rename" = "Не удалось спланировать переименование";

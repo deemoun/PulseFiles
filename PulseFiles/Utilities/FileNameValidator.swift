@@ -39,22 +39,26 @@ struct FileNameValidator {
         replacing existingItemURL: URL? = nil,
         fileManager: FileManager = .default
     ) throws -> String {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !name.isEmpty else { throw ValidationError.empty }
-        guard !name.contains("/") else { throw ValidationError.containsSlash }
-        guard name != ".", name != ".." else { throw ValidationError.reservedRelativePath }
-        guard !name.contains("\0") else { throw ValidationError.containsNullCharacter }
-
-        if reservedNames.contains(name) {
-            throw ValidationError.reservedName(name)
-        }
+        let name = try validateSyntax(rawName)
 
         let shouldCaseFoldDuplicates = try shouldCheckCaseInsensitiveCollisions(in: directory, fileManager: fileManager)
         if let duplicateName = try duplicateName(for: name, in: directory, replacing: existingItemURL, caseFold: shouldCaseFoldDuplicates, fileManager: fileManager) {
             throw ValidationError.duplicateName(duplicateName)
         }
 
+        return name
+    }
+
+    /// Validates a proposed name without consulting directory contents. This
+    /// is used by batch-rename preflight, where existing sources may legally be
+    /// one another's destinations and are moved through private temporary names.
+    static func validateSyntax(_ rawName: String) throws -> String {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw ValidationError.empty }
+        guard !name.contains("/") else { throw ValidationError.containsSlash }
+        guard name != ".", name != ".." else { throw ValidationError.reservedRelativePath }
+        guard !name.contains("\0") else { throw ValidationError.containsNullCharacter }
+        if reservedNames.contains(name) { throw ValidationError.reservedName(name) }
         return name
     }
 

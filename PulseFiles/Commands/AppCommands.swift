@@ -2,6 +2,9 @@ import Foundation
 
 enum CommandBarAction: String, CaseIterable {
     case rename = "Rename"
+    case batchRename = "Batch Rename"
+    case createArchive = "Create Archive"
+    case extractArchive = "Extract Archive"
     case view = "View"
     case copy = "Copy"
     case move = "Move"
@@ -17,6 +20,9 @@ enum CommandBarAction: String, CaseIterable {
     var title: String {
         switch self {
         case .rename: return "Rename".localized
+        case .batchRename: return "Batch Rename".localized
+        case .createArchive: return "Create Archive".localized
+        case .extractArchive: return "Extract Archive".localized
         case .view: return "View".localized
         case .copy: return "Copy".localized
         case .move: return "Move".localized

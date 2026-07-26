@@ -131,11 +131,11 @@ struct MainCommandRouter {
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
-        case .open, .quickLook, .rename, .getInfo, .reveal:
+        case .open, .quickLook, .rename, .extractArchive, .getInfo, .reveal:
             return focusedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: [$0])
             }
-        case .openWith, .trash, .duplicate:
+        case .openWith, .trash, .duplicate, .batchRename, .createArchive:
             return selectedRoute(command, in: state) {
                 .activePane(command: command, pane: state.activePaneID, urls: state.activePane.selectedURLs)
             }
@@ -229,7 +229,7 @@ struct ScratchDirectoryCommandRouter {
 extension MainCommand {
     var conflictsWithFileOperation: Bool {
         switch self {
-        case .newFile, .newFolder, .rename, .duplicate, .undo, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
+        case .newFile, .newFolder, .rename, .batchRename, .createArchive, .extractArchive, .duplicate, .undo, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
             return true
         default:
             return false

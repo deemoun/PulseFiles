@@ -529,6 +529,12 @@ final class MainWindowViewController: NSViewController {
             promptForNewFolder()
         case .rename:
             beginInlineRename()
+        case .batchRename:
+            promptForBatchRename()
+        case .createArchive:
+            promptForArchiveCreation()
+        case .extractArchive:
+            confirmArchiveExtraction()
         case .duplicate:
             confirmDuplicateSelectedItems()
         case .getInfo:
@@ -641,6 +647,57 @@ final class MainWindowViewController: NSViewController {
         case .exportDiagnostics:
             exportDiagnostics()
         }
+    }
+
+    private func promptForArchiveCreation() {
+        let sources = targetPane().selectedItems.map(\.url)
+        guard !sources.isEmpty else { NSSound.beep(); return }
+        let panel = NSSavePanel(); panel.title = "Create Archive".localized; panel.nameFieldStringValue = "Archive.zip".localized
+        panel.directoryURL = targetPane().currentDirectory; panel.allowedContentTypes = [.zip]
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        let request = ArchiveCreateRequest(sources: sources, destinationURL: destination)
+        startFileOperation(named: "Create Archive".localized) { [fileOperations] progress in
+            try await fileOperations.createArchive(request, progressHandler: progress)
+        }
+    }
+
+    private func confirmArchiveExtraction() {
+        guard let archive = targetPane().focusedItem?.url else { NSSound.beep(); return }
+        let alert = NSAlert(); alert.messageText = "Extract Archive?".localized
+        alert.informativeText = "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision.".localized
+        alert.addButton(withTitle: "Extract".localized); alert.addButton(withTitle: "Cancel".localized)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let request = ArchiveExtractRequest(archiveURL: archive, destinationDirectory: targetPane().currentDirectory)
+        startFileOperation(named: "Extract Archive".localized) { [weak self, fileOperations] progress in
+            try await fileOperations.extractArchive(request, conflictHandler: { destination in
+                guard let self else { return .cancel }
+                return await self.promptForConflict(destination: destination, operationName: "Extract Archive".localized)
+            }, progressHandler: progress)
+        }
+    }
+
+    private func promptForBatchRename() {
+        let sources = targetPane().selectedItems.map(\.url)
+        guard !sources.isEmpty else { NSSound.beep(); return }
+        let alert = NSAlert(); alert.messageText = "Batch Rename".localized
+        alert.informativeText = "Enter a base name. PulseFiles will preview every destination before changing files.".localized
+        let field = NSTextField(string: "Item"); field.frame.size.width = 320; alert.accessoryView = field
+        alert.addButton(withTitle: "Preview".localized); alert.addButton(withTitle: "Cancel".localized)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let names = sources.enumerated().map { index, source in
+            let suffix = source.pathExtension.isEmpty ? "" : ".\(source.pathExtension)"
+            return "\(field.stringValue) \(index + 1)\(suffix)"
+        }
+        do {
+            let plan = try fileOperations.planBatchRename(.init(sources: sources, proposedNames: names))
+            let preview = plan.items.map { "\($0.sourceURL.lastPathComponent) → \($0.destinationURL.lastPathComponent)" }.joined(separator: "\n")
+            let confirmation = NSAlert(); confirmation.messageText = "Confirm Batch Rename".localized
+            confirmation.informativeText = preview; confirmation.addButton(withTitle: "Rename All".localized); confirmation.addButton(withTitle: "Cancel".localized)
+            guard confirmation.runModal() == .alertFirstButtonReturn else { return }
+            startFileOperation(named: "Batch Rename".localized) { [fileOperations] progress in
+                await fileOperations.batchRename(plan, progressHandler: progress)
+            }
+        } catch { showError(message: "Could Not Plan Batch Rename".localized, detail: error.localizedDescription) }
     }
 
     private func presentQuickLocations() {
@@ -2525,6 +2582,9 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
+    @objc func menuBatchRename(_ sender: Any?) { performCommand(.batchRename) }
+    @objc func menuCreateArchive(_ sender: Any?) { performCommand(.createArchive) }
+    @objc func menuExtractArchive(_ sender: Any?) { performCommand(.extractArchive) }
     @objc func menuDuplicate(_ sender: Any?) { performCommand(.duplicate) }
     @objc func menuGetInfo(_ sender: Any?) { performCommand(.getInfo) }
     @objc func menuSelectAll(_ sender: Any?) { performCommand(.selectAll) }
@@ -2697,6 +2757,9 @@ private extension MainCommand {
         case #selector(MainWindowViewController.menuNewFile(_:)): self = .newFile
         case #selector(MainWindowViewController.menuNewFolder(_:)): self = .newFolder
         case #selector(MainWindowViewController.menuRename(_:)): self = .rename
+        case #selector(MainWindowViewController.menuBatchRename(_:)): self = .batchRename
+        case #selector(MainWindowViewController.menuCreateArchive(_:)): self = .createArchive
+        case #selector(MainWindowViewController.menuExtractArchive(_:)): self = .extractArchive
         case #selector(MainWindowViewController.menuDuplicate(_:)): self = .duplicate
         case #selector(MainWindowViewController.menuGetInfo(_:)): self = .getInfo
         case #selector(MainWindowViewController.menuSelectAll(_:)): self = .selectAll
