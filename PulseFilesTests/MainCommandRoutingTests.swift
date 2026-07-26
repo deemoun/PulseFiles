@@ -358,7 +358,44 @@ final class MainCommandDestinationResolverTests: XCTestCase {
     }
 }
 
+final class ScratchDirectoryCommandRoutingTests: XCTestCase {
+    private let router = ScratchDirectoryCommandRouter()
+    private let scratch = URL(fileURLWithPath: "/workspace/scratch", isDirectory: true)
+
+    func testConfiguredAccessibleFolderRoutesToNavigation() {
+        XCTAssertEqual(router.route(configuredDirectory: scratch, canAccess: { _ in true }), .navigate(scratch))
+    }
+
+    func testUnconfiguredFolderRoutesToConfigurationPrompt() {
+        XCTAssertEqual(router.route(configuredDirectory: nil, canAccess: { _ in true }), .promptForConfiguration)
+    }
+
+    func testInaccessibleFolderRoutesToAccessRecovery() {
+        XCTAssertEqual(router.route(configuredDirectory: scratch, canAccess: { _ in false }), .requestAccess(scratch))
+    }
+
+    func testCancelledAccessRecoveryDoesNotRouteToNavigation() {
+        XCTAssertEqual(router.routeAfterAccessRecovery(to: scratch, wasGranted: false), .cancelled)
+    }
+
+    func testScratchShortcutSupportsActiveAndAlternatePaneConventions() {
+        let commandRouter = MainCommandRouter()
+        XCTAssertEqual(commandRouter.commandForKeyDown(keyCode: 5, command: true, control: true), .scratchDirectory)
+        XCTAssertEqual(commandRouter.commandForKeyDown(keyCode: 5, command: true, option: true, control: true), .scratchDirectory)
+        XCTAssertNil(commandRouter.commandForKeyDown(keyCode: 5, command: true, control: true, isTextInputFocused: true))
+    }
+}
+
 final class MainMenuConstructionTests: XCTestCase {
+    func testScratchFolderCommandIsAvailableFromGoMenu() {
+        let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.scratchFolder")!
+        defaults.removePersistentDomain(forName: "MainMenuConstructionTests.scratchFolder")
+
+        let menu = AppDelegate(launchArguments: ["PulseFiles"], userDefaults: defaults).buildMainMenu()
+
+        XCTAssertTrue(menu.containsItem(titled: "Go to Scratch Folder"))
+    }
+
     func testDebugLogsMenuItemIsAvailableFromWindowMenu() {
         let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.debugLogs")!
         defaults.removePersistentDomain(forName: "MainMenuConstructionTests.debugLogs")

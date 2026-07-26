@@ -344,6 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(menuItem("Home".localized, action: #selector(MainWindowViewController.menuHome(_:)), command: .home))
         submenu.addItem(menuItem("Downloads".localized, action: #selector(MainWindowViewController.menuDownloads(_:)), command: .downloads))
         submenu.addItem(menuItem("Applications".localized, action: #selector(MainWindowViewController.menuApplications(_:)), command: .applications))
+        submenu.addItem(menuItem("Go to Scratch Folder".localized, action: #selector(MainWindowViewController.menuScratchDirectory(_:)), command: .scratchDirectory))
         item.submenu = submenu
         return item
     }

@@ -568,6 +568,8 @@ final class MainWindowViewController: NSViewController {
             promptForDescendantSearch()
         case .home, .downloads, .applications:
             targetPane().navigate(to: MainCommandDestinationResolver.destination(for: command))
+        case .scratchDirectory:
+            performScratchDirectoryCommand(useInactive: NSEvent.modifierFlags.contains(.option))
         case .switchPane:
             activePaneID = activePaneID.opposite
             if isSinglePaneMode {
@@ -581,6 +583,75 @@ final class MainWindowViewController: NSViewController {
         case .exportDiagnostics:
             exportDiagnostics()
         }
+    }
+
+    private func performScratchDirectoryCommand(useInactive: Bool) {
+        let router = ScratchDirectoryCommandRouter()
+        switch router.route(configuredDirectory: settings.scratchDirectory, canAccess: { accessPolicy.canAccess($0) }) {
+        case .promptForConfiguration:
+            let alert = NSAlert()
+            alert.messageText = "No Scratch Folder Configured".localized
+            alert.informativeText = "Choose a folder to use as your scratch workspace.".localized
+            alert.addButton(withTitle: "Choose Folder…".localized)
+            alert.addButton(withTitle: "Cancel".localized)
+            let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+                guard response == .alertFirstButtonReturn else { return }
+                self?.chooseScratchDirectory(useInactive: useInactive)
+            }
+            if let window = view.window { alert.beginSheetModal(for: window, completionHandler: completion) }
+            else { completion(alert.runModal()) }
+        case .requestAccess(let directory):
+            accessPolicy.requestAccess(to: directory, window: view.window) { [weak self] granted in
+                guard let self else { return }
+                if case .navigate(let recovered) = router.routeAfterAccessRecovery(to: directory, wasGranted: granted) {
+                    self.navigateToScratchDirectory(recovered, useInactive: useInactive)
+                }
+            }
+        case .navigate(let directory):
+            navigateToScratchDirectory(directory, useInactive: useInactive)
+        case .cancelled:
+            break
+        }
+    }
+
+    private func chooseScratchDirectory(useInactive: Bool) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose".localized
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
+            guard let self, response == .OK, let directory = panel?.url,
+                  self.accessPolicy.grantSelectedFolder(directory, for: directory) else { return }
+            let selection: ScratchFolderSelection
+            do {
+                selection = try ScratchFolderCleanupService(
+                    accessPolicy: self.accessPolicy,
+                    activePaneRoots: { [weak self] in
+                        guard let self else { return [] }
+                        return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
+                    }
+                ).captureSelection(for: directory)
+            } catch {
+                self.showError(message: "Could Not Configure Scratch Folder".localized, detail: error.localizedDescription)
+                return
+            }
+            self.settings.scratchDirectory = selection.directory
+            self.settings.scratchFolderSelection = selection
+            self.navigateToScratchDirectory(selection.directory, useInactive: useInactive)
+            self.sidebar.refresh()
+        }
+        if let window = view.window { panel.beginSheetModal(for: window, completionHandler: completion) }
+        else { completion(panel.runModal()) }
+    }
+
+    private func navigateToScratchDirectory(_ directory: URL, useInactive: Bool) {
+        activeFilterText = ""
+        toolbarSearchField?.stringValue = ""
+        let pane = targetPane(useInactive: useInactive)
+        pane.setSearchQuery("")
+        pane.navigate(to: directory)
+        view.window?.makeFirstResponder(pane.tableView)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -2307,6 +2378,7 @@ extension MainWindowViewController: NSMenuItemValidation {
     @objc func menuHome(_ sender: Any?) { performCommand(.home) }
     @objc func menuDownloads(_ sender: Any?) { performCommand(.downloads) }
     @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
+    @objc func menuScratchDirectory(_ sender: Any?) { performCommand(.scratchDirectory) }
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
     @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
