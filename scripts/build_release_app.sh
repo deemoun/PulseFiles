@@ -3,7 +3,6 @@ set -euo pipefail
 
 APP_NAME="PulseFiles"
 RUN_AFTER_BUILD=false
-CLEAN_ARTIFACT=false
 SIGN_RELEASE=false
 SIGN_IDENTITY="${PULSEFILES_SIGN_IDENTITY:-}"
 ENTITLEMENTS_PATH="${PULSEFILES_ENTITLEMENTS_PATH:-}"
@@ -19,7 +18,7 @@ workflows, but no signing identity is required for today's local release package
 
 Options:
   --run                       Launch the app bundle after packaging.
-  --clean                     Remove the previous release app artifact before packaging.
+  --clean                     Compatibility no-op; release packaging is always clean.
   --sign                      Sign the bundle after packaging. Requires a signing identity.
   --sign-identity IDENTITY    Signing identity to use, or set PULSEFILES_SIGN_IDENTITY.
   --entitlements PATH         Optional entitlements plist, or set PULSEFILES_ENTITLEMENTS_PATH.
@@ -33,7 +32,8 @@ while [[ $# -gt 0 ]]; do
             RUN_AFTER_BUILD=true
             ;;
         --clean)
-            CLEAN_ARTIFACT=true
+            # Retained for existing release automation. All builds now use a
+            # fresh staging bundle regardless of whether this flag is present.
             ;;
         --sign)
             SIGN_RELEASE=true
@@ -78,12 +78,12 @@ SECURITY_PATH="${BUILD_PATH}/swiftpm-security"
 CLANG_CACHE_PATH="${BUILD_PATH}/clang-module-cache"
 ARTIFACTS_DIR="${REPO_ROOT}/artifacts/release"
 APP_BUNDLE="${ARTIFACTS_DIR}/${APP_NAME}.app"
-CONTENTS_DIR="${APP_BUNDLE}/Contents"
-MACOS_DIR="${CONTENTS_DIR}/MacOS"
-RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 MATERIALIZED_INFO_PLIST="${BUILD_PATH}/PulseFiles-Release-Info.plist"
 APP_RESOURCES_DIR="${REPO_ROOT}/PulseFiles/Resources"
 CONFIGURATION="release"
+
+# shellcheck source=scripts/release_packaging.sh
+source "${SCRIPT_DIR}/release_packaging.sh"
 
 if [[ "${SIGN_RELEASE}" == true ]]; then
     if [[ -z "${SIGN_IDENTITY}" ]]; then
@@ -118,29 +118,23 @@ if [[ ! -x "${EXECUTABLE_PATH}" ]]; then
     exit 1
 fi
 
-if [[ "${CLEAN_ARTIFACT}" == true ]]; then
-    echo "Cleaning previous release app artifact..."
-    rm -rf "${APP_BUNDLE}"
-fi
-
 echo "Packaging ${APP_BUNDLE}..."
-mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
-cp "${EXECUTABLE_PATH}" "${MACOS_DIR}/${APP_NAME}"
-cp "${MATERIALIZED_INFO_PLIST}" "${CONTENTS_DIR}/Info.plist"
-if [[ -d "${APP_RESOURCES_DIR}" ]]; then
-    cp -R "${APP_RESOURCES_DIR}/." "${RESOURCES_DIR}/"
-fi
+mkdir -p "${ARTIFACTS_DIR}"
+STAGING_ROOT="$(mktemp -d "${ARTIFACTS_DIR}/.${APP_NAME}.release.XXXXXX")"
+STAGED_APP_BUNDLE="${STAGING_ROOT}/${APP_NAME}.app"
+cleanup_staging() {
+    rm -rf "${STAGING_ROOT}"
+}
+trap cleanup_staging EXIT
 
-for RESOURCE_BUNDLE_PATH in \
-    "${BUILD_PATH}/${CONFIGURATION}/${APP_NAME}_${APP_NAME}.bundle" \
-    "${BUILD_PATH}/${CONFIGURATION}/${APP_NAME}_${APP_NAME}.resources"
-do
-    if [[ -d "${RESOURCE_BUNDLE_PATH}" ]]; then
-        rm -rf "${RESOURCES_DIR}/$(basename "${RESOURCE_BUNDLE_PATH}")"
-        cp -R "${RESOURCE_BUNDLE_PATH}" "${RESOURCES_DIR}/"
-    fi
-done
-chmod +x "${MACOS_DIR}/${APP_NAME}"
+assemble_release_bundle \
+    "${STAGED_APP_BUNDLE}" \
+    "${APP_NAME}" \
+    "${EXECUTABLE_PATH}" \
+    "${MATERIALIZED_INFO_PLIST}" \
+    "${APP_RESOURCES_DIR}" \
+    "${BUILD_PATH}" \
+    "${CONFIGURATION}"
 
 if [[ "${SIGN_RELEASE}" == true ]]; then
     CODESIGN_ARGS=(--force --options runtime --timestamp --sign "${SIGN_IDENTITY}")
@@ -148,10 +142,12 @@ if [[ "${SIGN_RELEASE}" == true ]]; then
         CODESIGN_ARGS+=(--entitlements "${ENTITLEMENTS_PATH}")
     fi
     echo "Signing ${APP_NAME}.app with identity: ${SIGN_IDENTITY}"
-    codesign "${CODESIGN_ARGS[@]}" "${APP_BUNDLE}"
+    codesign "${CODESIGN_ARGS[@]}" "${STAGED_APP_BUNDLE}"
 else
     echo "Skipping release signing. Pass --sign with --sign-identity when distribution signing is ready."
 fi
+
+publish_release_bundle "${STAGED_APP_BUNDLE}" "${APP_BUNDLE}"
 
 echo
 echo "Built release app bundle:"

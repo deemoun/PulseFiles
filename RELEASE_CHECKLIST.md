@@ -9,7 +9,9 @@ Record signed-app results with [`qa/release-evidence-template.md`](qa/release-ev
 Run both command-line verification and manual app-bundle verification before release:
 
 - [ ] `swift test` passes from the repository root.
+- [ ] `./scripts/test_release_packaging.sh` passes its disposable stale-resource regression check.
 - [ ] `./scripts/build_app.sh --release` creates `artifacts/PulseFiles.app` successfully.
+- [ ] `./scripts/build_release_app.sh` constructs a fresh staged bundle, signs that staged bundle when requested, and replaces the complete `artifacts/release/PulseFiles.app`; release packaging never inherits files from an earlier invocation (`--clean` is a compatibility no-op because clean packaging is mandatory).
 - [ ] A signed release app is produced and launched outside SwiftPM.
 - [ ] `scripts/release_validation.sh --signed-app artifacts/release/PulseFiles.app` runs on macOS, including the signed-app UI harness, or any skipped harness run is documented with an environment reason.
 

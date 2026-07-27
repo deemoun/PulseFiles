@@ -13,9 +13,10 @@ Usage: scripts/release_validation.sh [--signed-app PATH] [--ui-artifacts-dir PAT
 
 Runs PulseFiles release validation checks:
   1. swift test
-  2. optional release app packaging via scripts/build_release_app.sh --clean when --build is passed
-  3. non-mutating signed-app UI smoke harness against the supplied .app bundle (unless skipped), preserving release evidence when requested
-  4. optional disposable DEBUG mutation harness only when --run-debug-mutation-harness is passed
+  2. release packaging stale-resource regression check
+  3. optional always-clean release app packaging via scripts/build_release_app.sh when --build is passed
+  4. non-mutating signed-app UI smoke harness against the supplied .app bundle (unless skipped), preserving release evidence when requested
+  5. optional disposable DEBUG mutation harness only when --run-debug-mutation-harness is passed
 
 The non-mutating UI smoke harness requires macOS Accessibility automation permission and a valid signed app.
 EOF_USAGE
@@ -65,9 +66,12 @@ swift test
 echo "==> Validating release version metadata"
 scripts/release_version.sh validate
 
+echo "==> Checking deterministic clean release packaging"
+scripts/test_release_packaging.sh
+
 if [[ "${BUILD_RELEASE}" == true ]]; then
   echo "==> Building release app bundle"
-  scripts/build_release_app.sh --clean
+  scripts/build_release_app.sh
 fi
 
 if [[ "${SKIP_UI_HARNESS}" == true ]]; then
