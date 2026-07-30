@@ -144,7 +144,6 @@ final class MainWindowViewController: NSViewController {
     private let mainStack = NSView()
     private weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
-    private var activeFilterText = ""
     private var settingsWindowController: NSWindowController?
     private var debugLogWindowController: NSWindowController?
     private var patternSelectionPanelController: PatternSelectionPanelController?
@@ -458,7 +457,6 @@ final class MainWindowViewController: NSViewController {
             }
             pane.onSearchQueryChanged = { [weak self, weak pane] query in
                 guard let self, pane?.paneID == self.activePaneID else { return }
-                self.activeFilterText = query
                 self.toolbarSearchField?.stringValue = query
             }
             pane.onDisplayPreferencesChanged = { [weak self, weak pane] showsHiddenFiles, sort in
@@ -483,7 +481,6 @@ final class MainWindowViewController: NSViewController {
     /// is deliberate: one event changes one visible destination, while any
     /// additional folders in the same event are left untouched.
     func openAcceptedFolderFromExternalEvent(_ directory: URL) {
-        activeFilterText = ""
         let pane = targetPane()
         pane.setSearchQuery("")
         pane.navigate(to: directory)
@@ -500,12 +497,10 @@ final class MainWindowViewController: NSViewController {
         leftPane.setActive(activePaneID == .left)
         rightPane.setActive(activePaneID == .right)
         terminal.suggestedWorkingDirectory = targetPane().currentDirectory
-        leftPane.setSearchQuery(activePaneID == .left ? activeFilterText : "")
-        rightPane.setSearchQuery(activePaneID == .right ? activeFilterText : "")
+        toolbarSearchField?.stringValue = targetPane().viewModel.searchQuery
         sidebar.showSelection(targetPane().selectedItems)
-        targetPane().focusDefaultRowForActivation()
         if view.window?.firstResponder !== toolbarSearchField {
-            view.window?.makeFirstResponder(targetPane().tableView)
+            targetPane().makeTableFirstResponder()
         }
     }
 
@@ -767,8 +762,7 @@ final class MainWindowViewController: NSViewController {
             try accessPolicy.validateAccess(to: rightState.currentDirectory)
             try leftPane.restoreLogicalState(rightState)
             try rightPane.restoreLogicalState(leftState)
-            activeFilterText = targetPane().logicalStateSnapshot().searchQuery
-            toolbarSearchField?.stringValue = activeFilterText
+            toolbarSearchField?.stringValue = targetPane().viewModel.searchQuery
             view.window?.makeFirstResponder(targetPane().tableView)
         } catch {
             showError(message: "Could Not Swap Panes".localized, detail: error.localizedDescription)
@@ -883,7 +877,6 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func navigateToScratchDirectory(_ directory: URL, useInactive: Bool) {
-        activeFilterText = ""
         toolbarSearchField?.stringValue = ""
         let pane = targetPane(useInactive: useInactive)
         pane.setSearchQuery("")
@@ -1291,8 +1284,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     @objc private func toolbarSearchChanged(_ sender: NSSearchField) {
-        activeFilterText = sender.stringValue
-        targetPane().setSearchQuery(activeFilterText)
+        targetPane().setSearchQuery(sender.stringValue)
     }
 
     private func setSinglePaneMode(_ singlePane: Bool, focusPane: PaneID) {
@@ -2589,6 +2581,10 @@ extension MainWindowViewController {
         let rightDirectory: URL
         let leftSearchQuery: String
         let rightSearchQuery: String
+        let leftFocusedURL: URL?
+        let rightFocusedURL: URL?
+        let leftMarkedURLs: [URL]
+        let rightMarkedURLs: [URL]
     }
 
     var uiHarnessState: UIHarnessState {
@@ -2597,7 +2593,11 @@ extension MainWindowViewController {
             leftDirectory: leftPane.currentDirectory,
             rightDirectory: rightPane.currentDirectory,
             leftSearchQuery: leftPane.viewModel.searchQuery,
-            rightSearchQuery: rightPane.viewModel.searchQuery
+            rightSearchQuery: rightPane.viewModel.searchQuery,
+            leftFocusedURL: leftPane.viewModel.focusedURL,
+            rightFocusedURL: rightPane.viewModel.focusedURL,
+            leftMarkedURLs: leftPane.selectedItems.map(\.url),
+            rightMarkedURLs: rightPane.selectedItems.map(\.url)
         )
     }
 
@@ -2607,8 +2607,12 @@ extension MainWindowViewController {
     }
 
     func uiHarnessSetSearchQuery(_ query: String) {
-        activeFilterText = query
         targetPane().setSearchQuery(query)
+        toolbarSearchField?.stringValue = query
+    }
+
+    func uiHarnessPane(_ paneID: PaneID) -> FilePaneViewController {
+        pane(for: paneID)
     }
 }
 #endif
