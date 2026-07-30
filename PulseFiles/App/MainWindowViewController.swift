@@ -722,7 +722,7 @@ final class MainWindowViewController: NSViewController {
                 volumes: volumes,
                 scratchDirectory: settings.scratchDirectory,
                 oppositeDirectory: opposite,
-                canAccess: { accessPolicy.canAccess($0) },
+                canAccess: { self.accessPolicy.canAccess($0) },
                 exists: { FileManager.default.fileExists(atPath: $0.path) }
             )
             guard active === self.targetPane() else { return }
@@ -1729,7 +1729,8 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         do { try accessPolicy.validateAccess(to: root) } catch { showError(message: "Could Not Show Search Results".localized, detail: error.localizedDescription); return }
         let controller = DescendantSearchResultsViewController(); controller.title = "Search Results for “\(query)”"
         controller.onAction = { [weak self] action, item in self?.routeSearchResultAction(action, item: item, root: root) }
-        controller.loadViewIfNeeded(); controller.display(result)
+        _ = controller.view
+        controller.display(result)
         let window = NSWindow(contentViewController: controller); window.title = controller.title ?? "Search Results"; window.setContentSize(NSSize(width: 760, height: 440))
         let windowController = NSWindowController(window: window); descendantSearchResultsWindow = windowController; windowController.showWindow(self)
     }

@@ -806,7 +806,7 @@ final class FileOperationService: FileOperationServicing {
                 try validateWritableMutationTarget(item.destinationURL.deletingLastPathComponent())
                 try accessPolicy.validateAccess(to: item.destinationURL)
             }
-            return try await accessPolicy.withAccess(to: recovery.items.map(\.destinationURL)) {
+            return await accessPolicy.withAccess(to: recovery.items.map(\.destinationURL)) {
                 var completed: [URL] = []
                 var failures: [FileOperationItemFailure] = []
                 var wasCancelled = false
@@ -841,7 +841,7 @@ final class FileOperationService: FileOperationServicing {
             try accessPolicy.validateDestinationAccess(to: item.originalURL)
             if fileManager.fileExists(atPath: item.originalURL.path) { throw FileOperationError.destinationExists(item.originalURL) }
         }
-        return try await accessPolicy.withAccess(to: recovery.items.flatMap { [$0.destinationURL, $0.originalURL.deletingLastPathComponent()] }) {
+        return await accessPolicy.withAccess(to: recovery.items.flatMap { [$0.destinationURL, $0.originalURL.deletingLastPathComponent()] }) {
             var completed: [URL] = []
             var failures: [FileOperationItemFailure] = []
             var wasCancelled = false

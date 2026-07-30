@@ -96,8 +96,11 @@ final class DescendantSearchService {
                 var inaccessible = Set<URL>(); var cancelled = false; var itemLimit = false; var depthLimit = false; var timedOut = false
                 let keys: Set<URLResourceKey> = [.nameKey, .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .localizedTypeDescriptionKey, .isPackageKey, .fileSizeKey, .contentModificationDateKey]
                 searchLoop: for scope in query.scopes {
-                    let root: URL; let recursive: Bool
-                    if case .folder(let url, let includeDescendants) = scope { root = url; recursive = includeDescendants }
+                    let (root, recursive): (URL, Bool)
+                    switch scope {
+                    case .folder(let url, let includeDescendants):
+                        (root, recursive) = (url, includeDescendants)
+                    }
                     let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: { url, _ in inaccessible.insert(url); return true })
                     while let url = enumerator?.nextObject() as? URL {
                         if Task.isCancelled { cancelled = true; break searchLoop }

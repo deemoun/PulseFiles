@@ -17,6 +17,7 @@ final class ThumbnailLoadingService {
 
     func thumbnail(for url: URL, size: CGSize, scale: CGFloat) async -> NSImage? {
         if let cached = cache.object(forKey: url as NSURL) { return cached }
+        let operationBox = ThumbnailOperationBox()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 let operation = ThumbnailOperation(url: url, size: size, scale: scale) { [weak self] image in
@@ -26,13 +27,34 @@ final class ThumbnailLoadingService {
                     }
                     continuation.resume(returning: image)
                 }
+                operationBox.set(operation)
                 queue.addOperation(operation)
             }
         } onCancel: {
-            // QLThumbnailGenerator cancellation is scoped by request; queued work
-            // also checks Operation cancellation before it starts.
-            QLThumbnailGenerator.shared.cancelAllRequests()
+            operationBox.cancel()
         }
+    }
+}
+
+private final class ThumbnailOperationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var operation: ThumbnailOperation?
+    private var isCancelled = false
+
+    func set(_ operation: ThumbnailOperation) {
+        lock.lock()
+        self.operation = operation
+        let shouldCancel = isCancelled
+        lock.unlock()
+        if shouldCancel { operation.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let operation = operation
+        lock.unlock()
+        operation?.cancel()
     }
 }
 
@@ -41,17 +63,18 @@ private final class ThumbnailOperation: Operation, @unchecked Sendable {
     private let size: CGSize
     private let scale: CGFloat
     private let completion: (NSImage?) -> Void
+    private let request: QLThumbnailGenerator.Request
 
     init(url: URL, size: CGSize, scale: CGFloat, completion: @escaping (NSImage?) -> Void) {
         self.url = url
         self.size = size
         self.scale = scale
         self.completion = completion
+        request = QLThumbnailGenerator.Request(fileAt: url, size: size, scale: scale, representationTypes: .thumbnail)
     }
 
     override func main() {
         guard !isCancelled else { completion(nil); return }
-        let request = QLThumbnailGenerator.Request(fileAt: url, size: size, scale: scale, representationTypes: .thumbnail)
         let semaphore = DispatchSemaphore(value: 0)
         var result: NSImage?
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
@@ -60,5 +83,10 @@ private final class ThumbnailOperation: Operation, @unchecked Sendable {
         }
         semaphore.wait()
         completion(isCancelled ? nil : result)
+    }
+
+    override func cancel() {
+        super.cancel()
+        QLThumbnailGenerator.shared.cancel(request)
     }
 }
