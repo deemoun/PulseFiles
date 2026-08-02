@@ -359,7 +359,12 @@ final class FilePaneViewController: NSViewController {
         // click. Updating existing row views is sufficient presentation work
         // and cannot change the clicked row's backing item.
         for row in 0..<tableView.numberOfRows {
-            tableView.rowView(atRow: row, makeIfNecessary: false)?.drawsActiveSelection = active
+            guard let rowView = tableView.rowView(
+                atRow: row,
+                makeIfNecessary: false
+            ) as? FileTableRowView else { continue }
+            rowView.drawsActiveSelection = active
+            rowView.needsDisplay = true
         }
     }
 
