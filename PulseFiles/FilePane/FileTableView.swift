@@ -12,6 +12,9 @@ final class FileTableView: NSTableView {
     weak var actionDelegate: FileTableViewActionDelegate?
 
     override func mouseDown(with event: NSEvent) {
+        // Activation is intentionally before AppKit dispatches a double action
+        // so command routing already targets this pane. Its delegate contract
+        // must remain presentation-only: it may not reload or reorder rows.
         actionDelegate?.fileTableViewDidActivate(self)
         let row = row(at: convert(event.locationInWindow, from: nil))
         super.mouseDown(with: event)

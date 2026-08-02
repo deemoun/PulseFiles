@@ -355,7 +355,12 @@ final class FilePaneViewController: NSViewController {
         guard isPaneActive != active else { return }
         isPaneActive = active
         updatePaneChrome()
-        requestTableReload()
+        // Activation must not reload the table while AppKit is dispatching a
+        // click. Updating existing row views is sufficient presentation work
+        // and cannot change the clicked row's backing item.
+        for row in 0..<tableView.numberOfRows {
+            tableView.rowView(atRow: row, makeIfNecessary: false)?.drawsActiveSelection = active
+        }
     }
 
     func setHasOppositePane(_ hasOppositePane: Bool) {
@@ -374,6 +379,12 @@ final class FilePaneViewController: NSViewController {
 
     func focusDefaultRowForActivation() {
         selectDefaultRow()
+        makeTableFirstResponder()
+    }
+
+    /// Makes keyboard commands target this pane without changing its stable
+    /// focused URL or marked selection.
+    func makeTableFirstResponder() {
         view.window?.makeFirstResponder(tableView)
     }
 
