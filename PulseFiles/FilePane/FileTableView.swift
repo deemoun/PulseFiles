@@ -2,10 +2,9 @@ import AppKit
 
 protocol FileTableViewActionDelegate: AnyObject {
     func fileTableViewDidActivate(_ tableView: FileTableView)
-    func fileTableView(_ tableView: FileTableView, didRequestLocation url: URL)
     func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu?
     func fileTableView(_ tableView: FileTableView, didFocusRow row: Int)
-    func fileTableView(_ tableView: FileTableView, moveFocusBy delta: Int) -> Bool
+    func fileTableView(_ tableView: FileTableView, handleKeyDown event: NSEvent) -> Bool
 }
 
 final class FileTableView: NSTableView {
@@ -29,28 +28,12 @@ final class FileTableView: NSTableView {
     }
 
     override func keyDown(with event: NSEvent) {
-        // Global commands are resolved by MainCommandRouter before the table receives the event.
-        // These two locations are pane-only conveniences with no MainCommand representation.
-        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        // Plain arrows move the stable keyboard focus without collapsing marks.
-        // Modified arrows remain AppKit selection gestures.
-        if flags.isEmpty, event.keyCode == 125,
-           actionDelegate?.fileTableView(self, moveFocusBy: 1) == true { return }
-        if flags.isEmpty, event.keyCode == 126,
-           actionDelegate?.fileTableView(self, moveFocusBy: -1) == true { return }
-        if flags == [.command, .shift], event.keyCode == 2 {
-            actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.desktop)
-            return
-        }
-        if flags == [.command, .shift], event.keyCode == 31 {
-            actionDelegate?.fileTableView(self, didRequestLocation: ShortcutLocations.documents)
-            return
-        }
+        if actionDelegate?.fileTableView(self, handleKeyDown: event) == true { return }
         super.keyDown(with: event)
     }
 }
 
-private enum ShortcutLocations {
+enum ShortcutLocations {
     static var home: URL {
         ExperimentalFlags.restrictFileAccessToAppSandboxRoot
             ? ExperimentalFlags.appSandboxRoot
