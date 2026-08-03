@@ -312,18 +312,23 @@ protocol FileOperationServicing {
     func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult
     func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+}
+
+/// Optional archive capability kept separate so small filesystem clients and
+/// their test doubles cannot accidentally inherit a silent no-op.
+protocol FileOperationArchiveServicing {
     func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
     func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
+}
+
+/// Optional batch-rename capability. Conformers must implement every entry
+/// point; there are deliberately no fallback implementations.
+protocol FileOperationBatchRenameServicing {
     func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan
     func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult
 }
 
-extension FileOperationServicing {
-    func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { throw ArchiveOperationError.unsupportedFormat }
-    func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { throw ArchiveOperationError.unsupportedFormat }
-    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan { throw BatchRenameError.countMismatch }
-    func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult { .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true) }
-}
+typealias FileOperationCoordinating = FileOperationServicing & FileOperationArchiveServicing & FileOperationBatchRenameServicing
 
 protocol FileOperationFileManaging {
     func fileExists(atPath path: String) -> Bool
@@ -431,7 +436,7 @@ extension FileManager: FileOperationFileManaging {
     }
 }
 
-final class FileOperationService: FileOperationServicing {
+final class FileOperationService: FileOperationServicing, FileOperationArchiveServicing, FileOperationBatchRenameServicing {
     /// PulseFiles copies symbolic links as links, never as the item they point
     /// to. This avoids unintentionally reading content outside the selected
     /// tree, prevents directory-link cycles, and preserves the user's link.
@@ -541,6 +546,9 @@ final class FileOperationService: FileOperationServicing {
     private let traversalLimits: TraversalLimits
     private let replacementDirectoryProvider: (URL) throws -> URL
     private let stagingRegistry: StagingOwnershipRegistry
+    private let archiveAdapter: FileOperationArchiveAdapter
+    private let batchRenameAdapter: FileOperationBatchRenameAdapter
+    private let undoPlanBuilder = FileOperationUndoPlanBuilder()
 
     init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
         self.fileManager = fileManager
@@ -553,6 +561,8 @@ final class FileOperationService: FileOperationServicing {
         self.traversalLimits = traversalLimits
         self.replacementDirectoryProvider = replacementDirectoryProvider
         self.stagingRegistry = stagingRegistry
+        self.archiveAdapter = FileOperationArchiveAdapter(accessPolicy: accessPolicy)
+        self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
     }
 
     init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationService.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationService.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationService.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileOperationService.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
@@ -566,6 +576,8 @@ final class FileOperationService: FileOperationServicing {
         self.traversalLimits = traversalLimits
         self.replacementDirectoryProvider = replacementDirectoryProvider
         self.stagingRegistry = stagingRegistry
+        self.archiveAdapter = FileOperationArchiveAdapter(accessPolicy: accessPolicy)
+        self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
     }
 
     static func systemReplacementDirectory(appropriateFor destination: URL) throws -> URL {
@@ -578,19 +590,19 @@ final class FileOperationService: FileOperationServicing {
     }
 
     func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
-        try await ArchiveOperationService(accessPolicy: accessPolicy).create(request, progressHandler: progressHandler)
+        try await archiveAdapter.createArchive(request, progressHandler: progressHandler)
     }
 
     func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
-        try await ArchiveOperationService(accessPolicy: accessPolicy).extract(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+        try await archiveAdapter.extractArchive(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
     }
 
     func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
-        try BatchRenameService(accessPolicy: accessPolicy).plan(request)
+        try batchRenameAdapter.planBatchRename(request)
     }
 
     func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult {
-        await BatchRenameService(accessPolicy: accessPolicy).execute(plan, progressHandler: progressHandler)
+        await batchRenameAdapter.batchRename(plan, progressHandler: progressHandler)
     }
 
     func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {
@@ -779,7 +791,7 @@ final class FileOperationService: FileOperationServicing {
                 try descriptorRename(source, to: destination)
             }
             await progressHandler?(FileOperationProgress(currentItemName: destination.lastPathComponent, completedCount: 1, totalCount: 1))
-            let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false, recovery: FileOperationRecovery(kind: .rename, items: [.init(originalURL: source, destinationURL: destination)]))
+            let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false, recovery: undoPlanBuilder.rename(from: source, to: destination))
             logCompletion(operation: "rename", result: result)
             return result
         } catch {
@@ -933,8 +945,9 @@ final class FileOperationService: FileOperationServicing {
                 #endif
             }
         }
-        let recoverableResult = result.succeededCompletely && trashedItems.count == urls.count
-            ? FileOperationResult(completedItems: result.completedItems, skippedItems: result.skippedItems, failedItems: result.failedItems, cleanupWarnings: result.cleanupWarnings, wasCancelled: result.wasCancelled, needsVerification: result.needsVerification, recovery: .init(kind: .trash, items: trashedItems))
+        let trashRecovery = result.succeededCompletely ? undoPlanBuilder.trash(trashedItems, expectedCount: urls.count) : nil
+        let recoverableResult = trashRecovery != nil
+            ? FileOperationResult(completedItems: result.completedItems, skippedItems: result.skippedItems, failedItems: result.failedItems, cleanupWarnings: result.cleanupWarnings, wasCancelled: result.wasCancelled, needsVerification: result.needsVerification, recovery: trashRecovery)
             : result
         logCompletion(operation: "trash", result: recoverableResult)
         return recoverableResult
@@ -958,43 +971,16 @@ final class FileOperationService: FileOperationServicing {
         progressHandler: FileOperationProgressHandler?,
         operation: (FileOperationFileManaging, URL) throws -> Void
     ) async -> FileOperationResult {
-        var completedItems: [URL] = []
-        var failedItems: [FileOperationItemFailure] = []
-        let totalCount = urls.count
-        var completedCount = 0
-
-        for url in urls {
-            if Task.isCancelled {
-                DiagnosticLogger.log(.info, category: "FileOperation", "Delete operation cancelled: completedCount=\(completedItems.count); failedCount=\(failedItems.count)")
-                return FileOperationResult(completedItems: completedItems, skippedItems: [], failedItems: failedItems, wasCancelled: true)
-            }
-            await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
-            guard fileManager.fileExists(atPath: url.path) else {
-                failedItems.append(FileOperationItemFailure(url: url, error: FileOperationError.sourceMissing(url)))
-                break
-            }
-            do {
+        await FileOperationTrashDeleteExecutor(fileManager: fileManager).execute(
+            urls,
+            progressHandler: progressHandler,
+            validate: { url in
                 try validateAvailableSource(url)
                 try validateWritableMutationTarget(url.deletingLastPathComponent())
-            } catch {
-                failedItems.append(FileOperationItemFailure(url: url, error: error))
-                break
-            }
-            do {
-                try operation(fileManager, url)
-                completedItems.append(url)
-            } catch {
-                DiagnosticLogger.log(.error, category: "FileOperation", "Item operation failed: path=\(DiagnosticLogger.sanitizedPath(url)); reason=\(error.localizedDescription)")
-                failedItems.append(FileOperationItemFailure(url: url, error: error))
-                if isUnavailableVolumeError(error) {
-                    break
-                }
-            }
-            completedCount += 1
-            await progressHandler?(FileOperationProgress(currentItemName: url.lastPathComponent, completedCount: completedCount, totalCount: totalCount))
-        }
-
-        return FileOperationResult(completedItems: completedItems, skippedItems: [], failedItems: failedItems, wasCancelled: false)
+            },
+            shouldStopAfterError: isUnavailableVolumeError,
+            operation: operation
+        )
     }
 
     private func performTransfer(
@@ -1152,14 +1138,14 @@ final class FileOperationService: FileOperationServicing {
         let recovery: FileOperationRecovery?
         switch kind {
         case .move where canRecover:
-            recovery = FileOperationRecovery(kind: .move, items: activePlans.map { .init(originalURL: $0.source, destinationURL: $0.destination) })
+            recovery = undoPlanBuilder.move(activePlans.map { (source: $0.source, destination: $0.destination) })
         case .copy where canRecover:
             let items = activePlans.map { plan in
                 FileOperationRecovery.Item(originalURL: plan.source, destinationURL: plan.destination, destinationIdentity: itemIdentity(at: plan.destination))
             }
             // Provider files without a stable resource identity are explicitly
             // non-undoable: deleting a path alone could delete another item.
-            recovery = items.allSatisfy { $0.destinationIdentity != nil } ? FileOperationRecovery(kind: .copy, items: items) : nil
+            recovery = undoPlanBuilder.copy(items)
         default:
             recovery = nil
         }

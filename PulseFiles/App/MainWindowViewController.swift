@@ -88,7 +88,7 @@ final class MainWindowViewController: NSViewController {
     private var descendantSearchResultsWindow: NSWindowController?
     private let fileSystemScheduler = FileSystemOperationScheduler.shared
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: fileSystemScheduler)
-    private let fileOperations: any FileOperationServicing
+    private let fileOperations: any FileOperationCoordinating
     private lazy var volumeChangeMonitor = VolumeChangeMonitor()
     private let fileSystemProbe: any FileSystemProbing
     private let recentLocations: any RecentLocationRecording
