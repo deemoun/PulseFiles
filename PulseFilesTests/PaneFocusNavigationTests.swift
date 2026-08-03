@@ -56,6 +56,19 @@ final class PaneFocusNavigationTests: XCTestCase {
         XCTAssertNil(PaneFocusNavigation.destination(current: nil, displayed: [], delta: -1))
     }
 
+    func testEveryBoundaryClampsWithoutSkippingAVisibleDestination() {
+        let first = PaneFocusDestination.item(directory.appendingPathComponent("first"))
+        let second = PaneFocusDestination.item(directory.appendingPathComponent("second"))
+        let displayed: [PaneFocusDestination] = [.parent, first, second]
+
+        XCTAssertEqual(PaneFocusNavigation.destination(current: .parent, displayed: displayed, delta: 1), first)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: first, displayed: displayed, delta: 1), second)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: second, displayed: displayed, delta: -1), first)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: first, displayed: displayed, delta: -1), .parent)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: .parent, displayed: displayed, delta: -1), .parent)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: second, displayed: displayed, delta: 1), second)
+    }
+
     func testLegacySelectedURLsAliasMapsToMarkedSet() {
         let item = directory.appendingPathComponent("item")
         var state = PaneState(currentDirectory: directory)

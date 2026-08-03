@@ -49,6 +49,41 @@ final class AppKitUIHarness {
         window.contentViewController?.view.layoutSubtreeIfNeeded()
     }
 
+    /// Sends a hardware-style key event through NSApplication so local event
+    /// monitors, command routing, the window, and the current first responder
+    /// participate exactly as they do for a real key press.
+    func postKey(
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags = [],
+        isRepeat: Bool = false
+    ) throws {
+        let characters: [UInt16: String] = [
+            123: "\u{F702}", 124: "\u{F703}",
+            125: "\u{F701}", 126: "\u{F700}"
+        ]
+        let character = characters[keyCode] ?? ""
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: character,
+            charactersIgnoringModifiers: character,
+            isARepeat: isRepeat,
+            keyCode: keyCode
+        ))
+        NSApplication.shared.postEvent(event, atStart: false)
+        let posted = try XCTUnwrap(NSApplication.shared.nextEvent(
+            matching: .keyDown,
+            until: Date(timeIntervalSinceNow: 1),
+            inMode: .default,
+            dequeue: true
+        ))
+        NSApplication.shared.sendEvent(posted)
+    }
+
     func close() {
         window.orderOut(nil)
         windowController.close()
