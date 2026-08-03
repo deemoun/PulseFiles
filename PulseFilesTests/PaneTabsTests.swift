@@ -44,8 +44,8 @@ final class PaneTabsTests: XCTestCase {
     }
 
     func testApprovedShortcutsReserveCommandTForNewTab() {
-        XCTAssertEqual(MainCommandShortcutRegistry.shortcut(for: .newTab).displayLabel, "⌘T")
-        XCTAssertEqual(MainCommandShortcutRegistry.shortcut(for: .togglePaneLayout).displayLabel, "⌥⌘\\")
+        XCTAssertEqual(MainCommandShortcutRegistry.descriptor(for: .newTab).primaryLabel, "⌘T")
+        XCTAssertEqual(MainCommandShortcutRegistry.descriptor(for: .togglePaneLayout).primaryLabel, "⌥⌘\\")
         XCTAssertEqual(MainCommandRouter().commandForKeyDown(keyCode: 17, command: true), .newTab)
         XCTAssertEqual(MainCommandRouter().commandForKeyDown(keyCode: 42, command: true, option: true), .togglePaneLayout)
     }

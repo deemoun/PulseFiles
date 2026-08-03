@@ -212,8 +212,8 @@ final class MainCommandRoutingTests: XCTestCase {
 
         for shortcut in shortcuts {
             let flags: NSEvent.ModifierFlags = shortcut.shift ? [.shift] : []
-            let registrations = MainCommandShortcutRegistry.shortcuts.filter {
-                $0.keyCode == shortcut.keyCode && $0.modifierFlags == flags
+            let registrations = MainCommandShortcutRegistry.descriptors.filter { descriptor in
+                descriptor.bindings.contains { $0.keyCode == shortcut.keyCode && $0.modifierFlags == flags }
             }
             XCTAssertEqual(
                 registrations.map(\.command),
@@ -462,12 +462,9 @@ final class MainMenuConstructionTests: XCTestCase {
             owners[chord, default: []].insert(owner)
 
             if let command {
-                let registrations = MainCommandShortcutRegistry.shortcuts.filter {
-                    $0.command == command
-                        && $0.keyEquivalent.lowercased() == chord.key
-                        && $0.modifierFlags.intersection(relevantModifiers).rawValue == chord.modifiers
-                }
-                XCTAssertFalse(registrations.isEmpty, "Menu shortcut for \(command) is absent from the registry.")
+                let equivalent = MainCommandShortcutRegistry.descriptor(for: command).menuKeyEquivalent
+                XCTAssertEqual(equivalent?.key.lowercased(), chord.key)
+                XCTAssertEqual(equivalent?.modifierFlags.intersection(relevantModifiers).rawValue, chord.modifiers)
             }
         }
 
@@ -478,21 +475,21 @@ final class MainMenuConstructionTests: XCTestCase {
         let minimize = try XCTUnwrap(menu.flattenedItems.first { $0.action == #selector(NSWindow.performMiniaturize(_:)) })
         XCTAssertEqual(minimize.keyEquivalent, "m")
         XCTAssertEqual(minimize.keyEquivalentModifierMask.intersection(relevantModifiers), [.command])
-        XCTAssertFalse(MainCommandShortcutRegistry.shortcuts.contains {
-            $0.command == .move && $0.keyEquivalent.lowercased() == "m" && $0.modifierFlags.contains(.command)
-        })
+        XCTAssertNotEqual(MainCommandShortcutRegistry.descriptor(for: .move).menuKeyEquivalent?.key.lowercased(), "m")
     }
 
-    func testOrthodoxMoveShortcutLabelsStaySynchronized() throws {
-        XCTAssertEqual(MainCommandShortcutRegistry.shortcut(for: .move).displayLabel, "F6")
+    func testReadmeAndLocalizedHelpUseDescriptorShortcutLabels() throws {
+        let copyLabel = MainCommandShortcutRegistry.descriptor(for: .copy).primaryLabel
+        let moveLabel = MainCommandShortcutRegistry.descriptor(for: .move).primaryLabel
+        XCTAssertEqual(moveLabel, "F6")
         XCTAssertEqual(CommandBarAction.move.shortcut, "F6")
 
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
         let expectedFragments: [(String, String)] = [
-            ("README.md", "| F5 / F6 | Copy / move the selection to the opposite pane |"),
-            ("PulseFiles/Resources/en.lproj/Localizable.strings", "F5 or F6 — Copy or move the selection to the opposite pane"),
-            ("PulseFiles/Resources/ru.lproj/Localizable.strings", "F5 или F6 — копировать или переместить выбранное в другую панель")
+            ("README.md", "| \(copyLabel) / \(moveLabel) | Copy / move the selection to the opposite pane |"),
+            ("PulseFiles/Resources/en.lproj/Localizable.strings", "\(copyLabel) or \(moveLabel) — Copy or move the selection to the opposite pane"),
+            ("PulseFiles/Resources/ru.lproj/Localizable.strings", "\(copyLabel) или \(moveLabel) — копировать или переместить выбранное в другую панель")
         ]
         for (relativePath, fragment) in expectedFragments {
             let contents = try String(contentsOf: repositoryRoot.appendingPathComponent(relativePath), encoding: .utf8)
@@ -584,54 +581,56 @@ private extension NSMenu {
 }
 
 extension MainCommandRoutingTests {
-    func testRegistryContainsEveryMainCommand() {
-        XCTAssertEqual(Set(MainCommandShortcutRegistry.shortcuts.map(\.command)), Set(MainCommand.allCases))
+    func testRegistryContainsExactlyOneDescriptorForEveryMainCommand() {
+        XCTAssertEqual(MainCommandShortcutRegistry.descriptors.count, MainCommand.allCases.count)
+        XCTAssertEqual(Set(MainCommandShortcutRegistry.descriptors.map(\.command)), Set(MainCommand.allCases))
     }
 
-    func testEveryRegisteredKeyboardShortcutResolvesToItsCommand() {
-        for shortcut in MainCommandShortcutRegistry.shortcuts where MainCommandShortcutRegistry.hasKeyboardShortcut(shortcut) {
-            let result = router.commandForKeyDown(
-                keyCode: shortcut.keyCode,
-                command: shortcut.modifierFlags.contains(.command),
-                shift: shortcut.modifierFlags.contains(.shift),
-                option: shortcut.modifierFlags.contains(.option),
-                control: shortcut.modifierFlags.contains(.control),
-                isTextInputFocused: shortcut.scope == .textInputSafe
-            )
-            XCTAssertEqual(result, shortcut.command, "Expected \(shortcut.displayLabel) to resolve to \(shortcut.command).")
-        }
-    }
-
-    func testRegisteredKeyboardChordsDoNotConflict() {
-        let keyboardShortcuts = MainCommandShortcutRegistry.shortcuts.filter(MainCommandShortcutRegistry.hasKeyboardShortcut)
-        for (index, shortcut) in keyboardShortcuts.enumerated() {
-            let duplicates = keyboardShortcuts.dropFirst(index + 1).filter {
-                $0.keyCode == shortcut.keyCode && $0.modifierFlags == shortcut.modifierFlags
+    func testEveryPhysicalBindingResolvesToItsCommand() {
+        for descriptor in MainCommandShortcutRegistry.descriptors {
+            for binding in descriptor.bindings {
+                let result = router.commandForKeyDown(
+                    keyCode: binding.keyCode,
+                    command: binding.modifierFlags.contains(.command),
+                    shift: binding.modifierFlags.contains(.shift),
+                    option: binding.modifierFlags.contains(.option),
+                    control: binding.modifierFlags.contains(.control),
+                    isTextInputFocused: binding.scope == .textInputSafe
+                )
+                XCTAssertEqual(result, descriptor.command, "Expected \(descriptor.primaryLabel) to resolve to \(descriptor.command).")
             }
-            XCTAssertTrue(duplicates.isEmpty, "Conflicting keyboard shortcut for \(shortcut.displayLabel).")
         }
     }
 
-    func testAuthoritativeSevenSortShortcutsAndEighthMenuOnlyCriterion() {
+    func testEveryPhysicalChordIsUnique() {
+        let bindings = MainCommandShortcutRegistry.descriptors.flatMap { descriptor in
+            descriptor.bindings.map { (descriptor.command, $0) }
+        }
+        for (index, shortcut) in bindings.enumerated() {
+            let duplicates = bindings.dropFirst(index + 1).filter {
+                $0.1.keyCode == shortcut.1.keyCode && $0.1.modifierFlags == shortcut.1.modifierFlags
+            }
+            XCTAssertTrue(duplicates.isEmpty, "Conflicting physical binding for \(shortcut.0).")
+        }
+    }
+
+    func testAuthoritativeSevenSortShortcutsAndEighthMenuOnlyCriterion() throws {
         let commands: [MainCommand] = [.sortByName, .sortByExtension, .sortByKind, .sortBySize, .sortByModified, .sortByCreated, .sortByAdded]
         for (offset, command) in commands.enumerated() {
-            let shortcut = MainCommandShortcutRegistry.shortcut(for: command)
-            XCTAssertEqual(shortcut.keyEquivalent, String(offset + 1))
+            let shortcut = try XCTUnwrap(MainCommandShortcutRegistry.descriptor(for: command).menuKeyEquivalent)
+            XCTAssertEqual(shortcut.key, String(offset + 1))
             XCTAssertEqual(shortcut.modifierFlags, [.control, .command])
         }
-        XCTAssertFalse(MainCommandShortcutRegistry.hasKeyboardShortcut(MainCommandShortcutRegistry.shortcut(for: .sortByAccessed)))
+        let accessed = MainCommandShortcutRegistry.descriptor(for: .sortByAccessed)
+        XCTAssertNil(accessed.menuKeyEquivalent)
+        XCTAssertTrue(accessed.bindings.isEmpty)
     }
 
     func testEveryCommandBarShortcutHasARegisteredHandler() {
         for action in CommandBarAction.allCases {
-            let command = MainCommand(commandBarAction: action)
+            let descriptor = MainCommandShortcutRegistry.descriptor(for: MainCommand(commandBarAction: action))
             XCTAssertFalse(action.shortcut.isEmpty, "\(action) needs a displayed shortcut.")
-            XCTAssertTrue(
-                MainCommandShortcutRegistry.shortcuts.contains(where: {
-                    $0.command == command && MainCommandShortcutRegistry.hasKeyboardShortcut($0)
-                }),
-                "\(action) displays \(action.shortcut), but \(command) has no keyboard handler."
-            )
+            XCTAssertFalse(descriptor.bindings.isEmpty, "\(action) displays \(action.shortcut), but has no keyboard handler.")
         }
     }
 }

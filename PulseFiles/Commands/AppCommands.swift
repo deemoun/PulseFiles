@@ -38,6 +38,6 @@ enum CommandBarAction: String, CaseIterable {
     }
 
     var shortcut: String {
-        MainCommandShortcutRegistry.shortcut(for: MainCommand(commandBarAction: self)).displayLabel
+        MainCommandShortcutRegistry.descriptor(for: MainCommand(commandBarAction: self)).primaryLabel
     }
 }
