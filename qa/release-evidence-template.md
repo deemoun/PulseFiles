@@ -13,7 +13,13 @@ run`, an unsigned app, or a DEBUG build.
 | Release version | |
 | Build number | |
 | Build SHA (full commit SHA) | |
-| Signed app path, signing identity, and notarization/stapling status | |
+| Signed app path | |
+| Signature authority chain (`codesign --display --verbose=4`, every `Authority=` line) | |
+| Hardened runtime state (`flags` includes `runtime`) | |
+| Apple notarization / Gatekeeper assessment result | |
+| Staple verification result (`xcrun stapler validate`) | |
+| Final distributable ZIP path | |
+| Final ZIP SHA-256 digest and verification result | |
 | Tester (name or team alias) | |
 | Test date (UTC) | |
 | macOS version and build number | |
@@ -71,7 +77,9 @@ documented-limitations record below has an approved owner and target release.
 ## UI harness artifact evidence
 
 When Accessibility automation is available, run `scripts/release_validation.sh`
-with `--ui-artifacts-dir` and attach or link the resulting concise report,
+with `--security-evidence` and `--ui-artifacts-dir`. Attach the security report
+(signature authorities, hardened-runtime state, notarization assessment, staple
+validation, and final archive digest) and the resulting UI report,
 before/after fixture tree snapshots, and screenshot. A missing Accessibility
 permission is not evidence of a pass. Record the workflow set and artifact
 location below.
@@ -86,6 +94,11 @@ location below.
 | --- | --- | --- | --- | --- |
 | Commit SHA matches the signed app | | | | |
 | Version and monotonically increasing build number match `release/VERSION` | | | | |
+| Developer ID signature authority chain recorded | | | | |
+| Hardened runtime enabled | | | | |
+| Apple notarization accepted | | | | |
+| Stapled ticket validated | | | | |
+| Final ZIP SHA-256 digest verified and recorded | | | | |
 | macOS versions tested | | | | |
 | Signed-app UI harness | | | | |
 | Storage-provider matrix (cloud, network, removable, package, symlink, alias, metadata) | | | | |
@@ -113,6 +126,8 @@ owner and target release remains a blocker.
 ## Sign-off
 
 - [ ] Evidence includes a pass/fail result for every signed-app-only scenario.
+- [ ] Security evidence records the signature authority chain, hardened-runtime
+  flag, accepted notarization assessment, valid staple, and verified final ZIP digest.
 - [ ] Target matrix includes macOS 13, 14, 15, and the current macOS release.
 - [ ] Coverage includes at least one clean user account, one upgrade from the
   prior release, Apple Silicon, and Intel.
