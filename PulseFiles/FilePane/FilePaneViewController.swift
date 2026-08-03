@@ -60,6 +60,7 @@ final class FilePaneViewController: NSViewController {
     let paneID: PaneID
     let viewModel: FilePaneViewModel
     let tableView = FileTableView()
+    private let keyboardNavigationController = PaneKeyboardNavigationController()
 
     var onActivate: (() -> Void)?
     var onSwitchPane: (() -> Void)?
@@ -1532,20 +1533,48 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         if let item = item(forRow: row) { setFocusedURL(item.url) }
     }
 
-    func fileTableView(_ tableView: FileTableView, moveFocusBy delta: Int) -> Bool {
+    func fileTableView(_ tableView: FileTableView, handleKeyDown event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        var modifiers: PaneKeyboardModifiers = []
+        if flags.contains(.command) { modifiers.insert(.command) }
+        if flags.contains(.shift) { modifiers.insert(.shift) }
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.control) { modifiers.insert(.control) }
+
+        switch keyboardNavigationController.action(keyCode: event.keyCode, modifiers: modifiers) {
+        case let .moveFocus(delta):
+            moveFocus(by: delta, in: tableView)
+            return true
+        case .openFocusedItem:
+            openFocusedItem()
+            return true
+        case .navigateToParent:
+            goParent()
+            return true
+        case .unhandled:
+            break
+        }
+
+        if modifiers == [.command, .shift], event.keyCode == 2 {
+            navigate(to: ShortcutLocations.desktop)
+            return true
+        }
+        if modifiers == [.command, .shift], event.keyCode == 31 {
+            navigate(to: ShortcutLocations.documents)
+            return true
+        }
+        return handleQuickSearchKeyDown(event)
+    }
+
+    private func moveFocus(by delta: Int, in tableView: FileTableView) {
         guard let destinationURL = PaneFocusNavigation.destination(
             currentURL: viewModel.focusedURL,
             visibleURLs: viewModel.visibleItems.map(\.url),
             delta: delta
-        ), let item = item(for: destinationURL), let destination = row(for: item) else { return false }
+        ), let item = item(for: destinationURL), let destination = row(for: item) else { return }
         setFocusedURL(destinationURL)
         tableView.scrollRowToVisible(destination)
         tableView.setAccessibilityFocused(true)
-        return true
-    }
-
-    func fileTableView(_ tableView: FileTableView, didRequestLocation url: URL) {
-        navigate(to: url)
     }
 
     func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu? {
