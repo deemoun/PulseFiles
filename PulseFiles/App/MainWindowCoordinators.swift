@@ -61,7 +61,7 @@ final class WorkspaceApplicationOpener: ApplicationOpening {
 /// Dependencies are assembled above the view controller so workflow tests can
 /// replace filesystem and OS integration without constructing AppKit panes.
 struct MainWindowDependencies {
-    let fileOperations: any FileOperationServicing
+    let fileOperations: any FileOperationCoordinating
     let fileSystemProbe: any FileSystemProbing
     let descendantSearch: any DescendantSearching
     let recentLocations: any RecentLocationRecording
