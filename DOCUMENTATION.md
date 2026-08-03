@@ -159,6 +159,7 @@ Limits that must remain visible in code and UI:
 | FilePaneViewModel | Per-pane async loading, history, filtering, sorting, hidden files and safe navigation. |
 | FilePaneViewController | Table/breadcrumb/status rendering, selection and drag/drop adaptation. |
 | FileTableView | Converts native table events to delegate requests; owns no operation policy. |
+| PaneKeyboardNavigationController | Maps unmodified pane arrows to focus or horizontal navigation requests. Modified arrows remain in the command/AppKit responder chain; text editors therefore retain normal cursor movement. Horizontal arrows are consumed when their destination is unavailable, making Right Arrow on a file and Left Arrow at a root or access-policy boundary safe no-ops. |
 | BreadcrumbView | Clickable path components. |
 | PaneStatusView / PaneContentOverlayView | Selection/volume information and loading/error recovery UI. |
 | SidebarViewController | Locations/devices/recents and asynchronous selection inspection. |
