@@ -18,7 +18,10 @@ enum PaneKeyboardNavigationAction: Equatable {
 
 /// Converts hardware key input into pane navigation without depending on an
 /// AppKit responder chain. Modified arrows are deliberately left to AppKit's
-/// standard table-selection handling.
+/// standard table-selection and command handling. The caller consumes both
+/// horizontal actions even when navigation is unavailable: Right Arrow on a
+/// regular file and Left Arrow at a root or access-policy boundary are safe
+/// no-ops rather than events forwarded to `NSTableView`.
 final class PaneKeyboardNavigationController {
     func action(keyCode: UInt16, modifiers: PaneKeyboardModifiers) -> PaneKeyboardNavigationAction {
         guard modifiers.isEmpty else { return .unhandled }

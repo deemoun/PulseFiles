@@ -1546,9 +1546,17 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             moveFocus(by: delta, in: tableView)
             return true
         case .openFocusedItem:
-            openFocusedItem()
+            // Horizontal navigation only descends into directories. Consume
+            // Right Arrow on a regular file so NSTableView cannot reinterpret
+            // it as a selection gesture or start an external open operation.
+            if focusedItem?.isDirectory == true || isParentRow(tableView.selectedRow) {
+                openFocusedItem()
+            }
             return true
         case .navigateToParent:
+            // goParent() enforces root and access-policy boundaries. The key is
+            // still consumed when it declines navigation, making Left Arrow a
+            // predictable no-op at either boundary.
             goParent()
             return true
         case .unhandled:
