@@ -970,6 +970,15 @@ final class MainWindowViewController: NSViewController {
             return true
         }
         let isTextInputFocused = isTextInputFirstResponder
+        let paneNavigationModifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        if !isTextInputFocused, paneNavigationModifiers.isEmpty, (123...126).contains(event.keyCode) {
+            // Arrow navigation belongs to the active pane even when pane
+            // activation left a non-table view in the responder chain. Route
+            // it explicitly rather than relying on AppKit to eventually send
+            // the event to the active pane's table view.
+            targetPane().handleKeyDown(event)
+            return true
+        }
         if let routedCommand = commandRouter.commandForKeyDown(event, isTextInputFocused: isTextInputFocused) {
             performCommand(routedCommand, entrySurface: .keyboard)
             return true

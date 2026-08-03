@@ -178,6 +178,8 @@ final class ControllerWiringUITests: XCTestCase {
             let marks = pane.selectedItems.map(\.url)
             let otherFocus = controller.uiHarnessPane(paneID == .left ? .right : .left).viewModel.focusedURL
             app.activate(selector)
+            app.window.makeFirstResponder(nil)
+            XCTAssertNil(app.window.firstResponder, "Pane arrows must not depend on the table remaining first responder")
 
             try app.postKey(keyCode: 125)
             XCTAssertEqual(pane.viewModel.focusedURL, urls[1], "Down must advance exactly one row")
