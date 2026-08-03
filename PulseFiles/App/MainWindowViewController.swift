@@ -910,6 +910,14 @@ final class MainWindowViewController: NSViewController {
 
     private func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
         if targetPane().handleQuickSearchKeyDown(event) { return true }
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        if !isTextInputFirstResponder, modifiers.isEmpty, [125, 126].contains(event.keyCode) {
+            // Route pane navigation explicitly. Controls in the pane header can
+            // otherwise become first responder and swallow arrows before the
+            // active table receives them.
+            targetPane().handleKeyDown(event)
+            return true
+        }
         if event.keyCode == 53 {
             if isFileOperationActive {
                 cancelActiveFileOperation()
