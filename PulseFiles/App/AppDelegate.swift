@@ -459,9 +459,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func menuItem(_ title: String, action: Selector, command: MainCommand) -> NSMenuItem {
-        let shortcut = MainCommandShortcutRegistry.shortcut(for: command)
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut.keyEquivalent)
-        item.keyEquivalentModifierMask = shortcut.modifierFlags
+        let shortcut = MainCommandShortcutRegistry.descriptor(for: command).menuKeyEquivalent
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut?.key ?? "")
+        item.keyEquivalentModifierMask = shortcut?.modifierFlags ?? []
         item.target = nil
         item.identifier = NSUserInterfaceItemIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
         item.setAccessibilityIdentifier(AccessibilityIdentifiers.Command.menuItem(command))

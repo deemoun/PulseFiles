@@ -1,123 +1,128 @@
 import AppKit
 
-/// The authoritative keyboard and menu presentation metadata for application commands.
-struct MainCommandShortcut: Equatable {
-    enum Scope: Equatable {
-        /// The shortcut may be used while a text field is the first responder.
-        case textInputSafe
-        /// The shortcut is reserved for file-manager interaction, not text editing.
-        case outsideTextInput
+/// The authoritative keyboard and menu presentation metadata for one command.
+struct MainCommandShortcutDescriptor: Equatable {
+    struct MenuKeyEquivalent: Equatable {
+        let key: String
+        let modifierFlags: NSEvent.ModifierFlags
+    }
+
+    struct PhysicalBinding: Equatable {
+        enum Scope: Equatable {
+            /// The binding may be used while a text field is the first responder.
+            case textInputSafe
+            /// The binding is reserved for file-manager interaction, not text editing.
+            case outsideTextInput
+        }
+
+        let keyCode: UInt16
+        let modifierFlags: NSEvent.ModifierFlags
+        let scope: Scope
     }
 
     let command: MainCommand
-    let keyEquivalent: String
-    let keyCode: UInt16
-    let modifierFlags: NSEvent.ModifierFlags
-    let displayLabel: String
-    let scope: Scope
+    let menuKeyEquivalent: MenuKeyEquivalent?
+    let primaryLabel: String
+    let bindings: [PhysicalBinding]
 }
 
 enum MainCommandShortcutRegistry {
-    static let shortcuts: [MainCommandShortcut] = [
-        shortcut(.open, "", 36, [], "Return / F4", .outsideTextInput),
-        shortcut(.viewer, "", 99, [], "F3", .outsideTextInput),
-        shortcut(.openWith, "", 65_535, [], ""),
-        shortcut(.quickLook, "", 49, [], "Space", .outsideTextInput),
-        shortcut(.newFile, "n", 45, [.command, .shift], "Shift F7", .outsideTextInput),
-        shortcut(.newFolder, "n", 45, [.command], "F7", .outsideTextInput),
-        shortcut(.rename, "", 120, [], "F2", .outsideTextInput),
-        shortcut(.batchRename, "", 65_535, [], ""),
-        shortcut(.createArchive, "", 65_535, [], ""),
-        shortcut(.extractArchive, "", 65_535, [], ""),
-        shortcut(.duplicate, "d", 2, [.command], "⌘D", .outsideTextInput),
-        shortcut(.getInfo, "i", 34, [.command], "⌘I", .outsideTextInput),
-        shortcut(.selectAll, "a", 0, [.command], "⌘A", .outsideTextInput),
-        shortcut(.deselectAll, "a", 0, [.command, .option], "⌥⌘A", .outsideTextInput),
-        shortcut(.selectByPattern, "=", 24, [.command], "⌘=", .outsideTextInput),
-        shortcut(.deselectByPattern, "-", 27, [.command], "⌘-", .outsideTextInput),
-        shortcut(.selectSameExtension, "=", 24, [.command, .option], "⌥⌘=", .outsideTextInput),
-        shortcut(.deselectSameExtension, "-", 27, [.command, .option], "⌥⌘-", .outsideTextInput),
-        shortcut(.invertSelection, "i", 34, [.command, .shift], "⌘⇧I", .outsideTextInput),
-        shortcut(.undo, "z", 6, [.command], "⌘Z", .outsideTextInput),
-        shortcut(.copy, "", 96, [], "F5", .outsideTextInput),
-        shortcut(.move, "", 97, [], "F6", .outsideTextInput),
-        shortcut(.copyToClipboard, "c", 8, [.command], "⌘C", .outsideTextInput),
-        shortcut(.cutToClipboard, "x", 7, [.command], "⌘X", .outsideTextInput),
-        shortcut(.pasteFromClipboard, "v", 9, [.command], "⌘V", .outsideTextInput),
-        shortcut(.trash, "\u{8}", 51, [.command], "F8", .outsideTextInput),
-        shortcut(.refresh, "r", 15, [.command], "⌘R", .outsideTextInput),
-        shortcut(.reveal, "r", 15, [.command, .shift], "⌘⇧R", .outsideTextInput),
-        shortcut(.toggleHiddenFiles, ".", 47, [.command, .shift], "⌘⇧.", .outsideTextInput),
-        shortcut(.sortByName, "1", 18, [.command, .control], "⌃⌘1"),
-        shortcut(.sortByExtension, "2", 19, [.command, .control], "⌃⌘2"),
-        shortcut(.sortByKind, "3", 20, [.command, .control], "⌃⌘3"),
-        shortcut(.sortBySize, "4", 21, [.command, .control], "⌃⌘4"),
-        shortcut(.sortByModified, "5", 23, [.command, .control], "⌃⌘5"),
-        shortcut(.sortByCreated, "6", 22, [.command, .control], "⌃⌘6"),
-        shortcut(.sortByAdded, "7", 26, [.command, .control], "⌃⌘7"),
-        shortcut(.sortByAccessed, "", 65_535, [], ""),
-        shortcut(.sortAscending, "", 65_535, [], ""), shortcut(.sortDescending, "", 65_535, [], ""),
-        shortcut(.toggleTerminal, "`", 50, [.command], "⌘`", .textInputSafe),
-        shortcut(.toggleSidebar, "s", 1, [.command, .option], "⌥⌘S", .outsideTextInput),
-        shortcut(.togglePaneLayout, "\\", 42, [.command, .option], "⌥⌘\\", .outsideTextInput),
-        shortcut(.newTab, "t", 17, [.command], "⌘T", .outsideTextInput),
-        shortcut(.closeTab, "w", 13, [.command], "⌘W", .outsideTextInput),
-        shortcut(.nextTab, "\t", 48, [.control], "⌃Tab", .outsideTextInput),
-        shortcut(.previousTab, "\t", 48, [.control, .shift], "⌃⇧Tab", .outsideTextInput),
-        shortcut(.back, "[", 33, [.command], "⌘[", .outsideTextInput),
-        shortcut(.forward, "]", 30, [.command], "⌘]", .outsideTextInput),
-        shortcut(.parent, "\u{F700}", 126, [.command], "⌘↑", .outsideTextInput),
-        shortcut(.goToFolder, "g", 5, [.command, .shift], "⌘⇧G", .outsideTextInput),
-        shortcut(.quickLocations, "", 122, [], "F1", .outsideTextInput),
-        shortcut(.searchDescendants, "f", 3, [.command, .shift], "⌘⇧F", .outsideTextInput),
-        shortcut(.home, "h", 4, [.command, .shift], "⌘⇧H", .outsideTextInput),
-        shortcut(.downloads, "l", 37, [.command, .option], "⌥⌘L", .outsideTextInput),
-        shortcut(.applications, "a", 0, [.command, .shift], "⌘⇧A", .outsideTextInput),
-        shortcut(.scratchDirectory, "g", 5, [.command, .control], "⌃⌘G", .outsideTextInput),
-        shortcut(.switchPane, "\t", 48, [], "Tab", .outsideTextInput),
-        shortcut(.swapPanes, "u", 32, [.command], "⌘U", .outsideTextInput),
-        shortcut(.syncOppositePane, "u", 32, [.command, .option], "⌥⌘U", .outsideTextInput),
-        shortcut(.revealInOppositePane, "\r", 36, [.option], "⌥Return", .outsideTextInput),
-        shortcut(.followSymbolicLink, "\u{F703}", 124, [.command], "⌘→", .outsideTextInput),
-        shortcut(.cancelOperation, ".", 47, [.command], "⌘.", .textInputSafe),
-        shortcut(.debugLogs, "", 65_535, [], ""), shortcut(.exportDiagnostics, "", 65_535, [], ""),
-        shortcut(.open, "", 118, [], "F4", .outsideTextInput),
-        shortcut(.newFile, "", 98, [.shift], "Shift F7", .outsideTextInput),
-        shortcut(.newFolder, "", 98, [], "F7", .outsideTextInput),
-        shortcut(.trash, "", 100, [], "F8", .outsideTextInput),
-        shortcut(.trash, "", 51, [.shift], "Shift Delete", .outsideTextInput),
-        shortcut(.parent, "", 51, [], "Delete", .outsideTextInput),
-        shortcut(.scratchDirectory, "g", 5, [.command, .control, .option], "⌥⌃⌘G", .outsideTextInput)
+    typealias Descriptor = MainCommandShortcutDescriptor
+    typealias Binding = Descriptor.PhysicalBinding
+    typealias Scope = Binding.Scope
+
+    static let descriptors: [Descriptor] = [
+        descriptor(.open, label: "Return / F4", bindings: [binding(36), binding(118)]),
+        descriptor(.viewer, label: "F3", bindings: [binding(99)]),
+        descriptor(.openWith),
+        descriptor(.quickLook, label: "Space", bindings: [binding(49)]),
+        descriptor(.newFile, menu: menu("n", [.command, .shift]), label: "Shift F7", bindings: [binding(45, [.command, .shift]), binding(98, [.shift])]),
+        descriptor(.newFolder, menu: menu("n", [.command]), label: "F7", bindings: [binding(45, [.command]), binding(98)]),
+        descriptor(.rename, label: "F2", bindings: [binding(120)]),
+        descriptor(.batchRename), descriptor(.createArchive), descriptor(.extractArchive),
+        descriptor(.duplicate, menu: menu("d", [.command]), label: "⌘D", bindings: [binding(2, [.command])]),
+        descriptor(.getInfo, menu: menu("i", [.command]), label: "⌘I", bindings: [binding(34, [.command])]),
+        descriptor(.selectAll, menu: menu("a", [.command]), label: "⌘A", bindings: [binding(0, [.command])]),
+        descriptor(.deselectAll, menu: menu("a", [.command, .option]), label: "⌥⌘A", bindings: [binding(0, [.command, .option])]),
+        descriptor(.selectByPattern, menu: menu("=", [.command]), label: "⌘=", bindings: [binding(24, [.command])]),
+        descriptor(.deselectByPattern, menu: menu("-", [.command]), label: "⌘-", bindings: [binding(27, [.command])]),
+        descriptor(.selectSameExtension, menu: menu("=", [.command, .option]), label: "⌥⌘=", bindings: [binding(24, [.command, .option])]),
+        descriptor(.deselectSameExtension, menu: menu("-", [.command, .option]), label: "⌥⌘-", bindings: [binding(27, [.command, .option])]),
+        descriptor(.invertSelection, menu: menu("i", [.command, .shift]), label: "⌘⇧I", bindings: [binding(34, [.command, .shift])]),
+        descriptor(.undo, menu: menu("z", [.command]), label: "⌘Z", bindings: [binding(6, [.command])]),
+        descriptor(.copy, label: "F5", bindings: [binding(96)]), descriptor(.move, label: "F6", bindings: [binding(97)]),
+        descriptor(.copyToClipboard, menu: menu("c", [.command]), label: "⌘C", bindings: [binding(8, [.command])]),
+        descriptor(.cutToClipboard, menu: menu("x", [.command]), label: "⌘X", bindings: [binding(7, [.command])]),
+        descriptor(.pasteFromClipboard, menu: menu("v", [.command]), label: "⌘V", bindings: [binding(9, [.command])]),
+        descriptor(.trash, menu: menu("\u{8}", [.command]), label: "F8", bindings: [binding(51, [.command]), binding(100), binding(51, [.shift])]),
+        descriptor(.refresh, menu: menu("r", [.command]), label: "⌘R", bindings: [binding(15, [.command])]),
+        descriptor(.reveal, menu: menu("r", [.command, .shift]), label: "⌘⇧R", bindings: [binding(15, [.command, .shift])]),
+        descriptor(.toggleHiddenFiles, menu: menu(".", [.command, .shift]), label: "⌘⇧.", bindings: [binding(47, [.command, .shift])]),
+        sortDescriptor(.sortByName, "1", 18), sortDescriptor(.sortByExtension, "2", 19),
+        sortDescriptor(.sortByKind, "3", 20), sortDescriptor(.sortBySize, "4", 21),
+        sortDescriptor(.sortByModified, "5", 23), sortDescriptor(.sortByCreated, "6", 22),
+        sortDescriptor(.sortByAdded, "7", 26), descriptor(.sortByAccessed),
+        descriptor(.sortAscending), descriptor(.sortDescending),
+        descriptor(.toggleTerminal, menu: menu("`", [.command]), label: "⌘`", bindings: [binding(50, [.command], .textInputSafe)]),
+        descriptor(.toggleSidebar, menu: menu("s", [.command, .option]), label: "⌥⌘S", bindings: [binding(1, [.command, .option])]),
+        descriptor(.togglePaneLayout, menu: menu("\\", [.command, .option]), label: "⌥⌘\\", bindings: [binding(42, [.command, .option])]),
+        descriptor(.newTab, menu: menu("t", [.command]), label: "⌘T", bindings: [binding(17, [.command])]),
+        descriptor(.closeTab, menu: menu("w", [.command]), label: "⌘W", bindings: [binding(13, [.command])]),
+        descriptor(.nextTab, menu: menu("\t", [.control]), label: "⌃Tab", bindings: [binding(48, [.control])]),
+        descriptor(.previousTab, menu: menu("\t", [.control, .shift]), label: "⌃⇧Tab", bindings: [binding(48, [.control, .shift])]),
+        descriptor(.back, menu: menu("[", [.command]), label: "⌘[", bindings: [binding(33, [.command])]),
+        descriptor(.forward, menu: menu("]", [.command]), label: "⌘]", bindings: [binding(30, [.command])]),
+        descriptor(.parent, menu: menu("\u{F700}", [.command]), label: "⌘↑", bindings: [binding(126, [.command]), binding(51)]),
+        descriptor(.goToFolder, menu: menu("g", [.command, .shift]), label: "⌘⇧G", bindings: [binding(5, [.command, .shift])]),
+        descriptor(.quickLocations, label: "F1", bindings: [binding(122)]),
+        descriptor(.searchDescendants, menu: menu("f", [.command, .shift]), label: "⌘⇧F", bindings: [binding(3, [.command, .shift])]),
+        descriptor(.home, menu: menu("h", [.command, .shift]), label: "⌘⇧H", bindings: [binding(4, [.command, .shift])]),
+        descriptor(.downloads, menu: menu("l", [.command, .option]), label: "⌥⌘L", bindings: [binding(37, [.command, .option])]),
+        descriptor(.applications, menu: menu("a", [.command, .shift]), label: "⌘⇧A", bindings: [binding(0, [.command, .shift])]),
+        descriptor(.scratchDirectory, menu: menu("g", [.command, .control]), label: "⌃⌘G", bindings: [binding(5, [.command, .control]), binding(5, [.command, .control, .option])]),
+        descriptor(.switchPane, menu: menu("\t", []), label: "Tab", bindings: [binding(48)]),
+        descriptor(.swapPanes, menu: menu("u", [.command]), label: "⌘U", bindings: [binding(32, [.command])]),
+        descriptor(.syncOppositePane, menu: menu("u", [.command, .option]), label: "⌥⌘U", bindings: [binding(32, [.command, .option])]),
+        descriptor(.revealInOppositePane, menu: menu("\r", [.option]), label: "⌥Return", bindings: [binding(36, [.option])]),
+        descriptor(.followSymbolicLink, menu: menu("\u{F703}", [.command]), label: "⌘→", bindings: [binding(124, [.command])]),
+        descriptor(.cancelOperation, menu: menu(".", [.command]), label: "⌘.", bindings: [binding(47, [.command], .textInputSafe)]),
+        descriptor(.debugLogs), descriptor(.exportDiagnostics)
     ]
 
-    static func shortcut(for command: MainCommand) -> MainCommandShortcut {
-        guard let shortcut = shortcuts.first(where: { $0.command == command }) else {
+    static func descriptor(for command: MainCommand) -> Descriptor {
+        guard let descriptor = descriptors.first(where: { $0.command == command }) else {
             preconditionFailure("Every MainCommand must have shortcut metadata.")
         }
-        return shortcut
-    }
-
-    static func hasKeyboardShortcut(_ shortcut: MainCommandShortcut) -> Bool {
-        shortcut.keyCode != 65_535
+        return descriptor
     }
 
     static func command(forKeyCode keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, isTextInputFocused: Bool) -> MainCommand? {
         let relevantFlags = modifierFlags.intersection([.command, .shift, .option, .control])
-        return shortcuts.first(where: {
-            $0.keyCode != 65_535 && $0.keyCode == keyCode
-                && $0.modifierFlags == relevantFlags
-                && (!isTextInputFocused || $0.scope == .textInputSafe)
+        return descriptors.first(where: { descriptor in
+            descriptor.bindings.contains {
+                $0.keyCode == keyCode && $0.modifierFlags == relevantFlags
+                    && (!isTextInputFocused || $0.scope == .textInputSafe)
+            }
         })?.command
     }
 
-    /// AppKit's table view treats otherwise-unhandled Delete key combinations as
-    /// text-editing actions. A file table is not editable through those actions,
-    /// so keep unsupported Delete variants from reaching `NSTableView`.
     static func shouldConsumeUnmappedKey(keyCode: UInt16, isTextInputFocused: Bool) -> Bool {
         !isTextInputFocused && (keyCode == 51 || keyCode == 117)
     }
 
-    private static func shortcut(_ command: MainCommand, _ keyEquivalent: String, _ keyCode: UInt16, _ modifierFlags: NSEvent.ModifierFlags, _ displayLabel: String, _ scope: MainCommandShortcut.Scope = .outsideTextInput) -> MainCommandShortcut {
-        MainCommandShortcut(command: command, keyEquivalent: keyEquivalent, keyCode: keyCode, modifierFlags: modifierFlags, displayLabel: displayLabel, scope: scope)
+    private static func descriptor(_ command: MainCommand, menu: Descriptor.MenuKeyEquivalent? = nil, label: String = "", bindings: [Binding] = []) -> Descriptor {
+        Descriptor(command: command, menuKeyEquivalent: menu, primaryLabel: label, bindings: bindings)
+    }
+
+    private static func menu(_ key: String, _ flags: NSEvent.ModifierFlags) -> Descriptor.MenuKeyEquivalent {
+        Descriptor.MenuKeyEquivalent(key: key, modifierFlags: flags)
+    }
+
+    private static func binding(_ keyCode: UInt16, _ flags: NSEvent.ModifierFlags = [], _ scope: Scope = .outsideTextInput) -> Binding {
+        Binding(keyCode: keyCode, modifierFlags: flags, scope: scope)
+    }
+
+    private static func sortDescriptor(_ command: MainCommand, _ key: String, _ keyCode: UInt16) -> Descriptor {
+        descriptor(command, menu: menu(key, [.command, .control]), label: "⌃⌘\(key)", bindings: [binding(keyCode, [.command, .control])])
     }
 }
