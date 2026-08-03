@@ -144,8 +144,8 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    private let recentLocations: RecentLocationService
-    private let bookmarkService: BookmarkService
+    private let recentLocations: any RecentLocationRecording
+    private let bookmarkService: any BookmarkPersisting
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
     private let volumeDiscovery: any VolumeDiscovering
@@ -164,8 +164,8 @@ final class SidebarViewController: NSViewController {
     private var representedSelectionID = UUID()
 
     init(
-        recentLocations: RecentLocationService,
-        bookmarkService: BookmarkService = BookmarkService(),
+        recentLocations: any RecentLocationRecording,
+        bookmarkService: any BookmarkPersisting = BookmarkService(),
         settings: SettingsService = SettingsService(),
         accessPolicy: SandboxFileAccessPolicy = .current,
         volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService(),

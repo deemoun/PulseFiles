@@ -42,7 +42,7 @@ final class FileOperationProgressWindowControllerTests: XCTestCase {
         XCTAssertTrue(result.needsVerification)
         XCTAssertFalse(result.wasCancelled)
         XCTAssertFalse(result.succeededCompletely)
-        let presentation = MainWindowViewController.operationResultPresentation(result, operationName: "Copy")
+        let presentation = FileOperationCoordinator.resultPresentation(result, operationName: "Copy")
         XCTAssertEqual(presentation?.message, "Copy Needs Verification")
         XCTAssertTrue(presentation?.detail.contains("final filesystem state is unknown") == true)
     }

@@ -1180,7 +1180,7 @@ final class FileOperationServiceTests: XCTestCase {
             wasCancelled: false
         )
 
-        let presentation = MainWindowViewController.operationResultPresentation(result, operationName: "Copy")
+        let presentation = FileOperationCoordinator.resultPresentation(result, operationName: "Copy")
 
         XCTAssertEqual(presentation?.message, "Copy Finished With Issues")
         XCTAssertTrue(presentation?.detail.contains("Cleanup warnings: 1") == true)
