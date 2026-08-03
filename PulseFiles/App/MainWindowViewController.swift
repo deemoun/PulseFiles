@@ -83,17 +83,17 @@ final class MainWindowViewController: NSViewController {
     private let accessPolicy: SandboxFileAccessPolicy
     private let sandboxRootEnsurer: () -> Void
     private let symbolicLinkResolver: SymbolicLinkResolutionService
-    private lazy var descendantSearch = DescendantSearchService(accessPolicy: accessPolicy)
+    private let descendantSearch: any DescendantSearching
     private var descendantSearchTask: Task<Void, Never>?
     private var descendantSearchResultsWindow: NSWindowController?
     private let fileSystemScheduler = FileSystemOperationScheduler.shared
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: fileSystemScheduler)
-    private lazy var fileOperations = FileOperationService(accessPolicy: accessPolicy)
+    private let fileOperations: any FileOperationServicing
     private lazy var volumeChangeMonitor = VolumeChangeMonitor()
-    private lazy var fileSystemProbe: any FileSystemProbing = FileSystemProbeService(scheduler: fileSystemScheduler)
-    private let recentLocations = RecentLocationService()
-    private let bookmarkService = BookmarkService()
-    private let volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService()
+    private let fileSystemProbe: any FileSystemProbing
+    private let recentLocations: any RecentLocationRecording
+    private let bookmarkService: any BookmarkPersisting
+    private let volumeDiscovery: any VolumeDiscovering
     private var recentOperationSummaries: [DiagnosticOperationSummary] = []
 
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
@@ -136,7 +136,11 @@ final class MainWindowViewController: NSViewController {
     } onStopWaiting: { [weak self] in
         self?.detachActiveFileOperation()
     }
-    private let fileClipboard = FileClipboard()
+    private let fileClipboard: any FileClipboardProviding
+    private let applicationOpener: any ApplicationOpening
+    private let paneCommandCoordinator = PaneCommandCoordinator()
+    private lazy var previewCoordinator = PreviewCoordinator(accessPolicy: accessPolicy, probe: fileSystemProbe)
+    private lazy var navigationCoordinator = NavigationCoordinator(probe: fileSystemProbe)
 
     private let rootSplitView = NSSplitView()
     private let contentSplitView = NSSplitView()
@@ -187,6 +191,7 @@ final class MainWindowViewController: NSViewController {
     init(
         settings: SettingsService = SettingsService(),
         accessPolicy: SandboxFileAccessPolicy = .current,
+        dependencies: MainWindowDependencies? = nil,
         symbolicLinkResolver: SymbolicLinkResolutionService = SymbolicLinkResolutionService(),
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
@@ -194,6 +199,15 @@ final class MainWindowViewController: NSViewController {
         self.accessPolicy = accessPolicy
         self.symbolicLinkResolver = symbolicLinkResolver
         self.sandboxRootEnsurer = sandboxRootEnsurer
+        let dependencies = dependencies ?? .production(accessPolicy: accessPolicy)
+        self.fileOperations = dependencies.fileOperations
+        self.fileSystemProbe = dependencies.fileSystemProbe
+        self.descendantSearch = dependencies.descendantSearch
+        self.recentLocations = dependencies.recentLocations
+        self.bookmarkService = dependencies.bookmarks
+        self.volumeDiscovery = dependencies.volumeDiscovery
+        self.fileClipboard = dependencies.clipboard
+        self.applicationOpener = dependencies.applicationOpener
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -223,13 +237,7 @@ final class MainWindowViewController: NSViewController {
             let generation = self.volumeChangeProbeGeneration
             Task { [weak self] in
                 guard let self else { return }
-                let actions = await VolumeChangePaneRefreshRouter.actions(
-                    for: directories,
-                    change: change,
-                    isReachable: { [fileSystemProbe] url in
-                        await fileSystemProbe.exists(url, deadline: .milliseconds(200))
-                    }
-                )
+                let actions = await self.navigationCoordinator.volumeChangeActions(for: directories, change: change)
                 // Ignore a completion that belongs to an older mount event.
                 guard generation == self.volumeChangeProbeGeneration,
                       panes.map(\.currentDirectory) == directories else { return }
@@ -506,12 +514,13 @@ final class MainWindowViewController: NSViewController {
 
     private func performCommand(_ command: MainCommand) {
         DiagnosticLogger.log(.info, category: "MainWindow", "Command execution requested: command=\(command); activePane=\(String(describing: activePaneID))")
-        guard !isFileOperationActive || !command.conflictsWithFileOperation else {
+        let route = paneCommandCoordinator.route(command, state: currentRoutingState())
+        guard route != .disabled(command: command, reason: .fileOperationInProgress) else {
             DiagnosticLogger.log(.warning, category: "MainWindow", "Command rejected during active file operation: command=\(command)")
             showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
-        guard !(isSinglePaneMode && [.copy, .move, .swapPanes, .syncOppositePane, .revealInOppositePane].contains(command)) else {
+        guard route != .disabled(command: command, reason: .noOppositePane) else {
             DiagnosticLogger.log(.warning, category: "MainWindow", "Cross-pane command rejected because single-pane mode is active: command=\(command)")
             showError(message: "Opposite Pane Unavailable".localized, detail: "Use dual-pane mode before copying or moving items between panes.".localized)
             return
@@ -575,7 +584,7 @@ final class MainWindowViewController: NSViewController {
             targetPane().loadDirectory()
         case .reveal:
             if let item = targetPane().focusedItem {
-                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                applicationOpener.reveal([item.url])
             }
         case .toggleHiddenFiles:
             targetPane().toggleHiddenFiles()
@@ -626,7 +635,7 @@ final class MainWindowViewController: NSViewController {
         case .searchDescendants:
             promptForDescendantSearch()
         case .home, .downloads, .applications:
-            targetPane().navigate(to: MainCommandDestinationResolver.destination(for: command))
+            targetPane().navigate(to: navigationCoordinator.standardLocation(for: command))
         case .scratchDirectory:
             performScratchDirectoryCommand(useInactive: NSEvent.modifierFlags.contains(.option))
         case .switchPane:
@@ -940,23 +949,18 @@ final class MainWindowViewController: NSViewController {
             return
         }
 
-        do {
-            try accessPolicy.validateAccess(to: item.url)
-        } catch {
-            showError(message: "Preview Blocked".localized, detail: error.localizedDescription)
-            return
-        }
-
         quickLookProbeGeneration += 1
         let generation = quickLookProbeGeneration
-        let policy = accessPolicy
-        Task { [weak self, fileSystemProbe] in
-            let answer = try? await policy.withValidatedAccess(to: item.url) {
-                await fileSystemProbe.exists(item.url, deadline: .milliseconds(250))
-            }
-            guard let self, generation == self.quickLookProbeGeneration,
+        Task { [weak self] in
+            guard let self else { return }
+            let availability = await self.previewCoordinator.availability(of: item.url)
+            guard generation == self.quickLookProbeGeneration,
                   self.targetPane().focusedItem?.url == item.url else { return }
-            guard case .some(.value(true)) = answer else {
+            if case .blocked(let detail) = availability {
+                self.showError(message: "Preview Blocked".localized, detail: detail)
+                return
+            }
+            guard availability == .available else {
                 self.showError(message: "Preview Unavailable".localized, detail: "The selected item is unavailable or no longer exists.".localized)
                 return
             }
@@ -2374,30 +2378,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     static func operationResultPresentation(_ result: FileOperationResult, operationName: String) -> (message: String, detail: String, style: NSAlert.Style)? {
-        guard !result.succeededCompletely else { return nil }
-        var details = [
-            "Completed: %d".localized(with: result.completedItems.count),
-            "Skipped: %d".localized(with: result.skippedItems.count),
-            "Failed: %d".localized(with: result.failedItems.count),
-            "Cleanup warnings: %d".localized(with: result.cleanupWarnings.count)
-        ]
-        if result.needsVerification {
-            details.append("The operation's final filesystem state is unknown. Refresh and verify the affected items before continuing.".localized)
-        }
-        if result.wasCancelled { details.append("The whole operation was cancelled before all items completed.".localized) }
-        if !result.failedItems.isEmpty {
-            details.append("Partial failure: some selected items were not changed.".localized)
-        }
-        details.append(contentsOf: result.failedItems.map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" })
-        details.append(contentsOf: result.cleanupWarnings.map { "\($0.url.lastPathComponent): \($0.message)" })
-
-        let onlyCancelled = result.wasCancelled && !result.needsVerification && result.failedItems.isEmpty && result.cleanupWarnings.isEmpty
-        let message = result.needsVerification
-            ? "%@ Needs Verification".localized(with: operationName)
-            : onlyCancelled
-            ? "%@ Cancelled".localized(with: operationName)
-            : "%@ Finished With Issues".localized(with: operationName)
-        return (message, details.joined(separator: "\n"), onlyCancelled ? .informational : .warning)
+        FileOperationCoordinator.resultPresentation(result, operationName: operationName)
     }
 
     private func showOperationResult(_ result: FileOperationResult, operationName: String) {

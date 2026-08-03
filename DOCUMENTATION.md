@@ -12,10 +12,12 @@ PulseFilesApplication starts AppKit. AppDelegate builds menus and the app icon,
 creates MainWindowController, and terminates the app after the final window closes.
 MainWindowController owns one MainWindowViewController.
 
-MainWindowViewController is the composition root. It creates left and right
-FilePaneViewControllers, owns toolbar search and active-pane state, coordinates
-cross-pane operations, command routing, Quick Look, progress, undo recovery,
-settings propagation, and the optional sidebar and terminal. Menus, toolbar,
+MainWindowController is the application composition root for injectable filesystem
+and macOS integration dependencies. MainWindowViewController creates the left and
+right FilePaneViewControllers, owns toolbar search and active-pane state, and keeps
+the cross-pane ownership boundary. Focused coordinators hold typed command routing,
+preview availability, volume-loss navigation decisions, operation result/undo state,
+and value-only window layout state. Menus, toolbar,
 command bar, context menus, and global keyboard actions should converge on its
 performCommand path. Keep cross-pane behavior here, not in a pane controller.
 
@@ -155,7 +157,10 @@ Limits that must remain visible in code and UI:
 
 | Type | Responsibility |
 | --- | --- |
-| MainWindowViewController | Main composition, command execution, layout, operation state, Quick Look and validation. |
+| MainWindowViewController | AppKit wiring, active-pane ownership, and cross-pane workflow presentation. |
+| MainWindowDependencies | Injectable filesystem operations/probing/search, recents, bookmarks, volumes, clipboard, and application opening boundaries. |
+| FileOperationCoordinator / PaneCommandCoordinator | Operation result and undo state; typed command routing and cross-pane targets. |
+| PreviewCoordinator / NavigationCoordinator / WindowLayoutController | Preview probing, standard/volume-loss navigation decisions, and value-only split/sidebar/terminal state. |
 | FilePaneViewModel | Per-pane async loading, history, filtering, sorting, hidden files and safe navigation. |
 | FilePaneViewController | Table/breadcrumb/status rendering, selection and drag/drop adaptation. |
 | FileTableView | Converts native table events to delegate requests; owns no operation policy. |

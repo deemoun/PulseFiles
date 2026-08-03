@@ -6,11 +6,13 @@ final class MainWindowController: NSWindowController {
     init(
         settings: SettingsService = SettingsService(),
         accessPolicy: SandboxFileAccessPolicy = .current,
+        dependencies: MainWindowDependencies? = nil,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
         let content = MainWindowViewController(
             settings: settings,
             accessPolicy: accessPolicy,
+            dependencies: dependencies ?? .production(accessPolicy: accessPolicy),
             sandboxRootEnsurer: sandboxRootEnsurer
         )
         let window = NSWindow(contentViewController: content)
