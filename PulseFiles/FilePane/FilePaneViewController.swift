@@ -452,7 +452,10 @@ final class FilePaneViewController: NSViewController {
             return true
         }
         guard modifiers.isEmpty, let input = event.characters, !input.isEmpty,
-              input.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { return false }
+              input.unicodeScalars.allSatisfy({ scalar in
+                  !CharacterSet.controlCharacters.contains(scalar)
+                      && !(0xF700...0xF8FF).contains(scalar.value)
+              }) else { return false }
         updateQuickSearchQuery(viewModel.searchQuery + input)
         return true
     }

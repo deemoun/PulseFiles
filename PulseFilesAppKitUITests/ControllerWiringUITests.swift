@@ -173,11 +173,17 @@ final class ControllerWiringUITests: XCTestCase {
         app.activate(#selector(MainWindowViewController.menuFocusLeftPane(_:)))
         app.activate(#selector(MainWindowViewController.menuFocusRightPane(_:)))
 
-        pane.tableView.keyDown(with: try arrowEvent(keyCode: 125))
+        let downArrow = try arrowEvent(keyCode: 125)
+        XCTAssertFalse(pane.handleQuickSearchKeyDown(downArrow))
+        XCTAssertEqual(pane.viewModel.searchQuery, "")
+        pane.tableView.keyDown(with: downArrow)
         XCTAssertNotEqual(pane.viewModel.focusedURL, first)
         XCTAssertEqual(pane.currentDirectory, directory)
         XCTAssertEqual(pane.selectedItems.map(\.url), marks)
-        pane.tableView.keyDown(with: try arrowEvent(keyCode: 126))
+        let upArrow = try arrowEvent(keyCode: 126)
+        XCTAssertFalse(pane.handleQuickSearchKeyDown(upArrow))
+        XCTAssertEqual(pane.viewModel.searchQuery, "")
+        pane.tableView.keyDown(with: upArrow)
         XCTAssertEqual(pane.viewModel.focusedURL, first)
         XCTAssertEqual(pane.currentDirectory, directory)
         XCTAssertEqual(pane.selectedItems.map(\.url), marks)
@@ -257,9 +263,10 @@ final class ControllerWiringUITests: XCTestCase {
     }
 
     private func arrowEvent(keyCode: UInt16) throws -> NSEvent {
+        let character = keyCode == 125 ? "\u{F701}" : "\u{F700}"
         try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
             timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: app.window.windowNumber,
-            context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false,
+            context: nil, characters: character, charactersIgnoringModifiers: character, isARepeat: false,
             keyCode: keyCode))
     }
 }
