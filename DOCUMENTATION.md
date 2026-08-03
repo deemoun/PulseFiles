@@ -159,7 +159,7 @@ Limits that must remain visible in code and UI:
 | --- | --- |
 | MainWindowViewController | AppKit wiring, active-pane ownership, and cross-pane workflow presentation. |
 | MainWindowDependencies | Injectable filesystem operations/probing/search, recents, bookmarks, volumes, clipboard, and application opening boundaries. |
-| FileOperationCoordinator / PaneCommandCoordinator | Operation result and undo state; typed command routing and cross-pane targets. |
+| FileOperationCoordinator / MainCommandRouter | Operation result and undo state; authoritative command availability and typed cross-pane targets. |
 | PreviewCoordinator / NavigationCoordinator / WindowLayoutController | Preview probing, standard/volume-loss navigation decisions, and value-only split/sidebar/terminal state. |
 | FilePaneViewModel | Per-pane async loading, history, filtering, sorting, hidden files and safe navigation. |
 | FilePaneViewController | Table/breadcrumb/status rendering, selection and drag/drop adaptation. |
