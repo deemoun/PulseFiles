@@ -41,7 +41,7 @@ cd PulseFiles
 open artifacts/PulseFiles.app
 ```
 
-To build and launch in one step, run `./scripts/build_app.sh --run`. The debug bundle is written to `artifacts/PulseFiles.app`. For a local release build, run `./scripts/build_release_app.sh`; its unsigned-by-default bundle is written to `artifacts/release/PulseFiles.app` and can be launched with `open artifacts/release/PulseFiles.app`.
+To build and launch in one step, run `./scripts/build_app.sh --run`. The debug bundle is written to `artifacts/PulseFiles.app`. For a local optimized but unsigned build, run `./scripts/build_release_app.sh --local-unsigned`; its development-only bundle is isolated at `artifacts/development/unsigned-release/PulseFiles.app`. Distributable packaging is a separate, credentialed workflow documented in `RELEASE_CHECKLIST.md`.
 
 ## Keyboard shortcuts
 
@@ -109,8 +109,13 @@ swift test
 # Package a local debug app at artifacts/PulseFiles.app
 ./scripts/build_app.sh
 
-# Package an unsigned local release app at artifacts/release/PulseFiles.app
-./scripts/build_release_app.sh
+# Package an unsigned local optimized app (development only)
+./scripts/build_release_app.sh --local-unsigned
+
+# Sign, notarize, staple, verify, and archive a distributable release
+PULSEFILES_SIGN_IDENTITY='Developer ID Application: …' \
+PULSEFILES_NOTARY_PROFILE='pulsefiles-release' \
+./scripts/build_release_app.sh --distribute
 
 # Run the disposable automation entry point
 ./scripts/run_automation_tests.sh

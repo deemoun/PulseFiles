@@ -11,9 +11,12 @@ Run both command-line verification and manual app-bundle verification before rel
 - [ ] `swift test` passes from the repository root.
 - [ ] `./scripts/test_release_packaging.sh` passes its disposable stale-resource regression check.
 - [ ] `./scripts/build_app.sh --release` creates `artifacts/PulseFiles.app` successfully.
-- [ ] `./scripts/build_release_app.sh` constructs a fresh staged bundle, signs that staged bundle when requested, and replaces the complete `artifacts/release/PulseFiles.app`; release packaging never inherits files from an earlier invocation (`--clean` is a compatibility no-op because clean packaging is mandatory).
-- [ ] A signed release app is produced and launched outside SwiftPM.
-- [ ] `scripts/release_validation.sh --signed-app artifacts/release/PulseFiles.app` runs on macOS, including the signed-app UI harness, or any skipped harness run is documented with an environment reason.
+- [ ] `./scripts/build_release_app.sh --local-unsigned` creates only the development-labelled `artifacts/development/unsigned-release/PulseFiles.app`; it never writes to the distributable directory.
+- [ ] Distribution credentials are installed: `PULSEFILES_SIGN_IDENTITY` names the **Developer ID Application** identity and `PULSEFILES_NOTARY_PROFILE` names the `notarytool` keychain profile created with `xcrun notarytool store-credentials`. The release operator confirms the profile belongs to the project's approved Apple Developer team.
+- [ ] `./scripts/build_release_app.sh --distribute` constructs a fresh staged bundle, signs it with hardened runtime and a secure timestamp, publishes it to `artifacts/release/PulseFiles.app`, verifies the signature, submits it to Apple notarization with the approved profile, staples and validates the ticket, obtains an accepted Gatekeeper assessment, and creates `PulseFiles.zip` plus `PulseFiles.zip.sha256`. Any failed stage blocks release.
+- [ ] The final signed, notarized, stapled app is launched outside SwiftPM. Only `artifacts/release/PulseFiles.zip`—not the unsigned development bundle—is eligible for distribution.
+- [ ] `scripts/release_validation.sh --signed-app artifacts/release/PulseFiles.app --security-evidence PATH --ui-artifacts-dir PATH` runs on macOS. Attach the security evidence and UI harness output; any skipped UI harness run must include an environment reason.
+- [ ] The evidence records every `Authority=` line, `Hardened runtime: enabled`, accepted notarization/Gatekeeper assessment, valid staple verification, and the verified SHA-256 digest matching `artifacts/release/PulseFiles.zip.sha256`.
 
 > **Signed release app required:** Scenarios involving macOS security-scoped folder grants, persisted file access, Finder/Open With behavior, app relaunch persistence, release unrestricted mode, and any behavior affected by code signing, entitlements, quarantine, or TCC must be verified on a signed release `.app`, not only with `swift run`. The external harness in `qa/ui-harness/` is the automated signed-app smoke gate for these flows and requires Accessibility permission for the invoking terminal or CI runner.
 
