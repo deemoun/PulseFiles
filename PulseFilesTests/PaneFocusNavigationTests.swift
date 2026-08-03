@@ -10,7 +10,8 @@ final class PaneFocusNavigationTests: XCTestCase {
         let third = directory.appendingPathComponent("third")
         var state = PaneState(currentDirectory: directory, markedURLs: [first, third], focusedURL: first)
 
-        state.setFocus(PaneFocusNavigation.destination(currentURL: state.focusedURL, visibleURLs: [first, second, third], delta: 1))
+        let destination = PaneFocusNavigation.destination(current: .item(first), displayed: [first, second, third].map { .item($0) }, delta: 1)
+        if case let .item(url) = destination { state.setFocus(url) }
 
         XCTAssertEqual(state.focusedURL, second)
         XCTAssertEqual(state.markedURLs, [first, third], "Keyboard focus must not collapse the drag/file-operation marks.")
@@ -22,7 +23,7 @@ final class PaneFocusNavigationTests: XCTestCase {
         let state = PaneState(currentDirectory: directory, markedURLs: [first], focusedURL: focused)
 
         XCTAssertEqual(state.focusedURL, focused, "Filtering must not replace stable focus with a row-derived value.")
-        XCTAssertEqual(PaneFocusNavigation.destination(currentURL: state.focusedURL, visibleURLs: [first, focused], delta: 1), focused)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: .item(focused), displayed: [first, focused].map { .item($0) }, delta: 1), .item(focused))
         XCTAssertEqual(state.markedURLs, [first])
     }
 
@@ -35,6 +36,24 @@ final class PaneFocusNavigationTests: XCTestCase {
 
         XCTAssertEqual(state.focusedURL, renamed, "Open and inline rename should target focus.")
         XCTAssertEqual(state.markedURLs, [dragged], "Drag/drop and destructive operations should continue to target marks.")
+    }
+
+    func testDisplayedDestinationBoundariesAndMissingFocus() {
+        let first = PaneFocusDestination.item(directory.appendingPathComponent("first"))
+        let last = PaneFocusDestination.item(directory.appendingPathComponent("last"))
+        let displayed: [PaneFocusDestination] = [.parent, first, last]
+
+        XCTAssertEqual(PaneFocusNavigation.destination(current: nil, displayed: displayed, delta: 1), .parent)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: nil, displayed: displayed, delta: -1), last)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: .parent, displayed: displayed, delta: -1), .parent)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: last, displayed: displayed, delta: 1), last)
+    }
+
+    func testParentOnlyAndEntirelyEmptyPanes() {
+        XCTAssertEqual(PaneFocusNavigation.destination(current: nil, displayed: [.parent], delta: 1), .parent)
+        XCTAssertEqual(PaneFocusNavigation.destination(current: nil, displayed: [.parent], delta: -1), .parent)
+        XCTAssertNil(PaneFocusNavigation.destination(current: nil, displayed: [], delta: 1))
+        XCTAssertNil(PaneFocusNavigation.destination(current: nil, displayed: [], delta: -1))
     }
 
     func testLegacySelectedURLsAliasMapsToMarkedSet() {

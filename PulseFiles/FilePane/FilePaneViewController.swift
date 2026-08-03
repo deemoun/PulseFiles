@@ -151,10 +151,29 @@ final class FilePaneViewController: NSViewController {
         viewModel.focusedURL.flatMap(item(for:))
     }
 
+    private var syntheticFocusedDestination: PaneFocusDestination?
+
+    private var focusedDestination: PaneFocusDestination? {
+        if syntheticFocusedDestination == .parent, canShowParentRow { return .parent }
+        return viewModel.focusedURL.map(PaneFocusDestination.item)
+    }
+
+    private var displayedDestinations: [PaneFocusDestination] {
+        (canShowParentRow ? [.parent] : []) + viewModel.visibleItems.map { .item($0.url) }
+    }
+
     private func setFocusedURL(_ url: URL?) {
-        let oldRow = focusedItem.flatMap(row(for:))
-        viewModel.setFocusedURL(url)
-        let newRow = focusedItem.flatMap(row(for:))
+        setFocusedDestination(url.map(PaneFocusDestination.item))
+    }
+
+    private func setFocusedDestination(_ destination: PaneFocusDestination?) {
+        let oldRow = row(for: focusedDestination)
+        syntheticFocusedDestination = destination == .parent ? .parent : nil
+        switch destination {
+        case let .item(url): viewModel.setFocusedURL(url)
+        case .parent, nil: viewModel.setFocusedURL(nil)
+        }
+        let newRow = row(for: focusedDestination)
         let rows = IndexSet([oldRow, newRow].compactMap { $0 })
         guard !rows.isEmpty, tableView.numberOfColumns > 0 else { return }
         tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
@@ -395,7 +414,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func openFocusedItem() {
-        if isParentRow(tableView.selectedRow >= 0 ? tableView.selectedRow : tableView.clickedRow) {
+        if focusedDestination == .parent {
             goParent()
             return
         }
@@ -701,6 +720,14 @@ final class FilePaneViewController: NSViewController {
         canShowParentRow && row == 0
     }
 
+    private func row(for destination: PaneFocusDestination?) -> Int? {
+        switch destination {
+        case .parent: return canShowParentRow ? 0 : nil
+        case let .item(url): return item(for: url).flatMap(row(for:))
+        case nil: return nil
+        }
+    }
+
     private func defaultFocusRow() -> Int? {
         if !viewModel.visibleItems.isEmpty {
             return realRowOffset
@@ -721,7 +748,7 @@ final class FilePaneViewController: NSViewController {
             return
         }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        if let item = item(forRow: row) { setFocusedURL(item.url) }
+        setFocusedDestination(isParentRow(row) ? .parent : item(forRow: row).map { .item($0.url) })
         tableView.scrollRowToVisible(row)
     }
 
@@ -777,6 +804,9 @@ final class FilePaneViewController: NSViewController {
         // silently attach marks to different URLs after sorting or navigation.
         tableView.deselectAll(nil)
         tableView.reloadData()
+        if syntheticFocusedDestination == .parent, !canShowParentRow {
+            syntheticFocusedDestination = nil
+        }
         pruneInvalidSelection()
         restorePreviousSelectionIfPossible()
         previousSelectedRowIndexes = tableView.selectedRowIndexes
@@ -1052,9 +1082,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let rowView = FileTableRowView()
         rowView.drawsActiveSelection = isPaneActive
-        rowView.drawsKeyboardFocus = item(forRow: row).map { item in
-            viewModel.focusedURL.map { isSameFileURL(item.url, $0) } == true
-        } ?? false
+        rowView.drawsKeyboardFocus = self.row(for: focusedDestination) == row
         return rowView
     }
 
@@ -1140,8 +1168,9 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         onSelectionChanged?(selectedItems)
         // Selection changes not initiated by our focus-only arrow handling are
         // standard AppKit mouse, modified-key, or accessibility mark gestures.
-        if !isReloadingData, let item = item(forRow: tableView.selectedRow) {
-            setFocusedURL(item.url)
+        if !isReloadingData, tableView.selectedRow >= 0 {
+            let row = tableView.selectedRow
+            setFocusedDestination(isParentRow(row) ? .parent : item(forRow: row).map { .item($0.url) })
         }
         if !isReloadingData {
             viewModel.setMarkedURLs(Set(selectedItems.map(\.url)))
@@ -1530,7 +1559,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     }
 
     func fileTableView(_ tableView: FileTableView, didFocusRow row: Int) {
-        if let item = item(forRow: row) { setFocusedURL(item.url) }
+        setFocusedDestination(isParentRow(row) ? .parent : item(forRow: row).map { .item($0.url) })
     }
 
     func fileTableView(_ tableView: FileTableView, handleKeyDown event: NSEvent) -> Bool {
@@ -1549,7 +1578,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             // Horizontal navigation only descends into directories. Consume
             // Right Arrow on a regular file so NSTableView cannot reinterpret
             // it as a selection gesture or start an external open operation.
-            if focusedItem?.isDirectory == true || isParentRow(tableView.selectedRow) {
+            if focusedItem?.isDirectory == true || focusedDestination == .parent {
                 openFocusedItem()
             }
             return true
@@ -1575,14 +1604,15 @@ extension FilePaneViewController: FileTableViewActionDelegate {
     }
 
     private func moveFocus(by delta: Int, in tableView: FileTableView) {
-        guard let destinationURL = PaneFocusNavigation.destination(
-            currentURL: viewModel.focusedURL,
-            visibleURLs: viewModel.visibleItems.map(\.url),
+        guard let destination = PaneFocusNavigation.destination(
+            current: focusedDestination,
+            displayed: displayedDestinations,
             delta: delta
-        ), let item = item(for: destinationURL), let destination = row(for: item) else { return }
-        setFocusedURL(destinationURL)
-        tableView.scrollRowToVisible(destination)
+        ), let destinationRow = row(for: destination) else { return }
+        setFocusedDestination(destination)
+        tableView.scrollRowToVisible(destinationRow)
         tableView.setAccessibilityFocused(true)
+        tableView.rowView(atRow: destinationRow, makeIfNecessary: true)?.setAccessibilityFocused(true)
     }
 
     func fileTableView(_ tableView: FileTableView, contextMenuForRow row: Int) -> NSMenu? {

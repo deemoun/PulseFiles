@@ -176,17 +176,30 @@ struct PaneRestorationState: Codable, Equatable {
     }
 }
 
+enum PaneFocusDestination: Equatable {
+    case parent
+    case item(URL)
+}
+
 /// Row-independent focus navigation shared by keyboard and accessibility tests.
 /// A missing/filtered focus is retained in pane state and reappears when its URL
 /// becomes visible again; movement starts at the nearest list boundary.
 enum PaneFocusNavigation {
-    static func destination(currentURL: URL?, visibleURLs: [URL], delta: Int) -> URL? {
-        guard !visibleURLs.isEmpty, delta != 0 else { return currentURL }
-        let currentIndex = currentURL.flatMap { current in
-            visibleURLs.firstIndex { $0.standardizedFileURL == current.standardizedFileURL }
+    static func destination(current: PaneFocusDestination?, displayed: [PaneFocusDestination], delta: Int) -> PaneFocusDestination? {
+        guard !displayed.isEmpty, delta != 0 else { return current }
+        let currentIndex = current.flatMap { current in
+            displayed.firstIndex { destinationsMatch($0, current) }
         }
-        let startingIndex = currentIndex ?? (delta > 0 ? -1 : visibleURLs.count)
-        let destinationIndex = min(max(startingIndex + delta, 0), visibleURLs.count - 1)
-        return visibleURLs[destinationIndex]
+        let startingIndex = currentIndex ?? (delta > 0 ? -1 : displayed.count)
+        let destinationIndex = min(max(startingIndex + delta, 0), displayed.count - 1)
+        return displayed[destinationIndex]
+    }
+
+    private static func destinationsMatch(_ lhs: PaneFocusDestination, _ rhs: PaneFocusDestination) -> Bool {
+        switch (lhs, rhs) {
+        case (.parent, .parent): return true
+        case let (.item(lhsURL), .item(rhsURL)): return lhsURL.standardizedFileURL == rhsURL.standardizedFileURL
+        default: return false
+        }
     }
 }
