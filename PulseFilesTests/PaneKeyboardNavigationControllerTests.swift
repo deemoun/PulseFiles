@@ -12,7 +12,11 @@ final class PaneKeyboardNavigationControllerTests: XCTestCase {
     }
 
     func testModifiedArrowsRemainUnhandledForAppKitAndCommandRouting() {
-        let modifiers: [PaneKeyboardModifiers] = [.shift, .command, .option, .control, [.command, .shift]]
+        let modifiers: [PaneKeyboardModifiers] = [
+            .shift, .command, .option, .control,
+            [.command, .shift], [.command, .option], [.shift, .option],
+            [.command, .shift, .option, .control]
+        ]
         for modifier in modifiers {
             for keyCode: UInt16 in 123...126 {
                 XCTAssertEqual(controller.action(keyCode: keyCode, modifiers: modifier), .unhandled)
@@ -32,6 +36,14 @@ final class PaneKeyboardNavigationControllerTests: XCTestCase {
             ),
             "An active text editor must retain its arrow-key cursor gestures"
         )
+    }
+
+    func testTextInputFocusLeavesArrowsToTheFirstResponder() {
+        let router = MainCommandRouter()
+        for keyCode: UInt16 in 123...126 {
+            XCTAssertNil(router.commandForKeyDown(keyCode: keyCode, isTextInputFocused: true))
+            XCTAssertFalse(router.shouldConsumeUnmappedKeyDown(keyCode: keyCode, isTextInputFocused: true))
+        }
     }
 
     func testUnrelatedKeyIsUnhandled() {

@@ -154,7 +154,86 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertEqual(state.rightDirectory, folder)
     }
 
-    func testPlainArrowsMoveFocusAfterPaneSwitchWithoutNavigatingOrChangingMarks() async throws {
+    func testPlainArrowsUseWindowPathAndAffectOnlyActivePaneWithoutChangingMarks() async throws {
+        let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        for side in ["left", "right"] {
+            let directory = root.appendingPathComponent(side, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            for name in ["a.txt", "b.txt", "c.txt"] {
+                FileManager.default.createFile(atPath: directory.appendingPathComponent(name).path, contents: Data())
+            }
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for (paneID, selector, name) in [(PaneID.left, #selector(MainWindowViewController.menuFocusLeftPane(_:)), "left"),
+                                         (.right, #selector(MainWindowViewController.menuFocusRightPane(_:)), "right")] {
+            let pane = controller.uiHarnessPane(paneID)
+            let directory = root.appendingPathComponent(name, isDirectory: true)
+            controller.uiHarnessNavigate(paneID, to: directory)
+            try await waitUntil { pane.viewModel.visibleItems.count == 3 }
+            let urls = pane.viewModel.visibleItems.map(\.url)
+            pane.preparePendingSelection(urls[0])
+            pane.selectItem(at: urls[0])
+            let marks = pane.selectedItems.map(\.url)
+            let otherFocus = controller.uiHarnessPane(paneID == .left ? .right : .left).viewModel.focusedURL
+            app.activate(selector)
+
+            try app.postKey(keyCode: 125)
+            XCTAssertEqual(pane.viewModel.focusedURL, urls[1], "Down must advance exactly one row")
+            XCTAssertEqual(pane.currentDirectory, directory)
+            XCTAssertEqual(pane.selectedItems.map(\.url), marks)
+            XCTAssertTrue(pane.tableView.accessibilityFocused())
+            let focusedRow = pane.tableView.rowView(atRow: 2, makeIfNecessary: true)
+            XCTAssertTrue(focusedRow?.accessibilityFocused() == true)
+            XCTAssertEqual(controller.uiHarnessPane(paneID == .left ? .right : .left).viewModel.focusedURL, otherFocus)
+
+            try app.postKey(keyCode: 126)
+            XCTAssertEqual(pane.viewModel.focusedURL, urls[0], "Up must retreat exactly one row")
+            XCTAssertEqual(pane.selectedItems.map(\.url), marks)
+        }
+    }
+
+    func testHorizontalArrowsNavigateDirectoriesAndSafelyConsumeUnavailableNavigation() async throws {
+        let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let child = root.appendingPathComponent("a-folder", isDirectory: true)
+        let file = root.appendingPathComponent("b-file.txt")
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: file.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for (paneID, selector) in [(PaneID.left, #selector(MainWindowViewController.menuFocusLeftPane(_:))),
+                                   (.right, #selector(MainWindowViewController.menuFocusRightPane(_:)))] {
+            let pane = controller.uiHarnessPane(paneID)
+            controller.uiHarnessNavigate(paneID, to: root)
+            try await waitUntil { pane.viewModel.visibleItems.count == 2 }
+            app.activate(selector)
+            pane.preparePendingSelection(child)
+            try app.postKey(keyCode: 124)
+            try await waitUntil { pane.currentDirectory == child }
+            try app.postKey(keyCode: 123)
+            try await waitUntil { pane.currentDirectory == root }
+
+            pane.preparePendingSelection(file)
+            let marks = pane.selectedItems.map(\.url)
+            try app.postKey(keyCode: 124)
+            XCTAssertEqual(pane.currentDirectory, root, "Right on a regular file is a consumed no-op")
+            XCTAssertEqual(pane.viewModel.focusedURL, file)
+            XCTAssertEqual(pane.selectedItems.map(\.url), marks)
+        }
+
+        let left = controller.uiHarnessPane(.left)
+        controller.uiHarnessNavigate(.left, to: URL(fileURLWithPath: "/", isDirectory: true))
+        try await waitUntil { left.currentDirectory.path == "/" }
+        app.activate(#selector(MainWindowViewController.menuFocusLeftPane(_:)))
+        try app.postKey(keyCode: 123)
+        XCTAssertEqual(left.currentDirectory.path, "/", "Left at the filesystem root must be safe")
+        try app.postKey(keyCode: 124, modifiers: .command)
+        XCTAssertEqual(left.currentDirectory.path, "/", "Command-Right remains command routing, not pane descent")
+    }
+
+    func testArrowEventsRemainEditingGesturesAndRepeatsMoveOnlyOncePerEvent() async throws {
         let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
         let pane = controller.uiHarnessPane(.right)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -165,28 +244,33 @@ final class ControllerWiringUITests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         controller.uiHarnessNavigate(.right, to: root)
         try await waitUntil { pane.viewModel.visibleItems.count == 3 }
-        let first = try XCTUnwrap(pane.viewModel.visibleItems.first?.url)
-        pane.preparePendingSelection(first)
-        pane.selectItem(at: first)
-        let directory = pane.currentDirectory
-        let marks = pane.selectedItems.map(\.url)
-        app.activate(#selector(MainWindowViewController.menuFocusLeftPane(_:)))
+        let urls = pane.viewModel.visibleItems.map(\.url)
+        pane.preparePendingSelection(urls[0])
         app.activate(#selector(MainWindowViewController.menuFocusRightPane(_:)))
 
-        let downArrow = try arrowEvent(keyCode: 125)
-        XCTAssertFalse(pane.handleQuickSearchKeyDown(downArrow))
-        XCTAssertEqual(pane.viewModel.searchQuery, "")
-        controller.keyDown(with: downArrow)
-        XCTAssertNotEqual(pane.viewModel.focusedURL, first)
-        XCTAssertEqual(pane.currentDirectory, directory)
-        XCTAssertEqual(pane.selectedItems.map(\.url), marks)
-        let upArrow = try arrowEvent(keyCode: 126)
-        XCTAssertFalse(pane.handleQuickSearchKeyDown(upArrow))
-        XCTAssertEqual(pane.viewModel.searchQuery, "")
-        controller.keyDown(with: upArrow)
-        XCTAssertEqual(pane.viewModel.focusedURL, first)
-        XCTAssertEqual(pane.currentDirectory, directory)
-        XCTAssertEqual(pane.selectedItems.map(\.url), marks)
+        let search = try XCTUnwrap(app.element(AccessibilityIdentifiers.Toolbar.searchField) as? NSSearchField)
+        search.stringValue = "abc"
+        app.window.makeFirstResponder(search)
+        try app.postKey(keyCode: 123)
+        try app.postKey(keyCode: 124)
+        XCTAssertEqual(pane.currentDirectory, root)
+        XCTAssertEqual(pane.viewModel.focusedURL, urls[0])
+
+        pane.makeTableFirstResponder()
+        XCTAssertTrue(pane.beginInlineRename())
+        XCTAssertTrue(app.window.firstResponder is NSTextView)
+        try app.postKey(keyCode: 123)
+        try app.postKey(keyCode: 124)
+        XCTAssertEqual(pane.currentDirectory, root)
+        XCTAssertEqual(pane.viewModel.focusedURL, urls[0])
+        app.window.makeFirstResponder(pane.tableView)
+
+        try app.postKey(keyCode: 125, isRepeat: true)
+        XCTAssertEqual(pane.viewModel.focusedURL, urls[1])
+        try app.postKey(keyCode: 125, isRepeat: true)
+        XCTAssertEqual(pane.viewModel.focusedURL, urls[2])
+        for _ in 0..<20 { try app.postKey(keyCode: 125, isRepeat: true) }
+        XCTAssertEqual(pane.viewModel.focusedURL, urls[2], "Rapid repeats clamp at the final row")
     }
 
     func testEmptyFolderParentActionHasAccurateTitleAndAccessibilityLabel() async throws {
@@ -262,11 +346,4 @@ final class ControllerWiringUITests: XCTestCase {
         pane.tableView.mouseDown(with: event)
     }
 
-    private func arrowEvent(keyCode: UInt16) throws -> NSEvent {
-        let character = keyCode == 125 ? "\u{F701}" : "\u{F700}"
-        try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: app.window.windowNumber,
-            context: nil, characters: character, charactersIgnoringModifiers: character, isARepeat: false,
-            keyCode: keyCode))
-    }
 }
