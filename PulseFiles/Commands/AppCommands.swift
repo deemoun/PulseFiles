@@ -23,7 +23,7 @@ enum CommandBarAction: String, CaseIterable {
         case .batchRename: return "Batch Rename".localized
         case .createArchive: return "Create Archive".localized
         case .extractArchive: return "Extract Archive".localized
-        case .view: return "View".localized
+        case .view: return "Viewer".localized
         case .copy: return "Copy".localized
         case .move: return "Move".localized
         case .newFolder: return "New Folder".localized

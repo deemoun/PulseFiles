@@ -178,14 +178,14 @@ final class MainCommandRoutingTests: XCTestCase {
         XCTAssertEqual(router.route(.quickLook, in: state), .activePane(command: .quickLook, pane: .left, urls: [focused]))
     }
 
-    func testF3AndF4OpenFocusedItem() {
+    func testF3ViewsAndF4OpensFocusedItem() {
         let focused = URL(fileURLWithPath: "/sandbox/left/focused.txt")
         let state = makeState(activePaneID: .left, leftFocusedURL: focused)
 
-        for keyCode: UInt16 in [99, 118] {
-            XCTAssertEqual(router.commandForKeyDown(keyCode: keyCode), .open)
-            XCTAssertEqual(router.route(.open, in: state), .activePane(command: .open, pane: .left, urls: [focused]))
-        }
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 99), .viewer)
+        XCTAssertEqual(router.route(.viewer, in: state), .activePane(command: .viewer, pane: .left, urls: [focused]))
+        XCTAssertEqual(router.commandForKeyDown(keyCode: 118), .open)
+        XCTAssertEqual(router.route(.open, in: state), .activePane(command: .open, pane: .left, urls: [focused]))
     }
 
     func testReturnOpensFocusedItemInsteadOfStartingRename() {
@@ -201,7 +201,7 @@ final class MainCommandRoutingTests: XCTestCase {
         let shortcuts: [(keyCode: UInt16, shift: Bool, command: MainCommand)] = [
             (122, false, .quickLocations), // F1
             (120, false, .rename), // F2
-            (99, false, .open), // F3
+            (99, false, .viewer), // F3
             (118, false, .open), // F4
             (96, false, .copy), // F5
             (97, false, .move), // F6
@@ -211,10 +211,25 @@ final class MainCommandRoutingTests: XCTestCase {
         ]
 
         for shortcut in shortcuts {
+            let flags: NSEvent.ModifierFlags = shortcut.shift ? [.shift] : []
+            let registrations = MainCommandShortcutRegistry.shortcuts.filter {
+                $0.keyCode == shortcut.keyCode && $0.modifierFlags == flags
+            }
+            XCTAssertEqual(
+                registrations.map(\.command),
+                [shortcut.command],
+                "Each documented function key must have exactly one expected command."
+            )
             XCTAssertEqual(
                 router.commandForKeyDown(keyCode: shortcut.keyCode, shift: shortcut.shift),
                 shortcut.command
             )
+        }
+    }
+
+    func testOpenViewerAndQuickLookShortcutsDoNotInterceptTextInput() {
+        for keyCode: UInt16 in [99, 118, 36, 49] {
+            XCTAssertNil(router.commandForKeyDown(keyCode: keyCode, isTextInputFocused: true))
         }
     }
 
@@ -245,7 +260,7 @@ final class MainCommandRoutingTests: XCTestCase {
     }
 
     func testUnsupportedFunctionKeyCodesDoNotResolveToCommands() {
-        for keyCode: UInt16 in [122, 101, 109, 103, 111] { // F1, F9, F10, F11, F12
+        for keyCode: UInt16 in [101, 109, 103, 111] { // F9, F10, F11, F12
             XCTAssertNil(router.commandForKeyDown(keyCode: keyCode))
         }
     }
