@@ -432,6 +432,74 @@ final class ScratchDirectoryCommandRoutingTests: XCTestCase {
 }
 
 final class MainMenuConstructionTests: XCTestCase {
+    func testCompleteMainMenuHasNoShortcutConflictsAndMatchesRegistry() throws {
+        let suiteName = "MainMenuConstructionTests.shortcutAudit"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let menu = AppDelegate(
+            launchArguments: ["PulseFiles", AppDelegate.editSettingsJSONDebugLaunchArgument],
+            userDefaults: defaults
+        ).buildMainMenu()
+        let menuItems = menu.flattenedItems.filter { !$0.keyEquivalent.isEmpty }
+
+        struct Chord: Hashable {
+            let key: String
+            let modifiers: UInt
+        }
+        let relevantModifiers: NSEvent.ModifierFlags = [.command, .shift, .option, .control]
+        var owners: [Chord: Set<String>] = [:]
+        for item in menuItems {
+            let chord = Chord(
+                key: item.keyEquivalent.lowercased(),
+                modifiers: item.keyEquivalentModifierMask.intersection(relevantModifiers).rawValue
+            )
+            let command = MainCommand.allCases.first {
+                item.identifier?.rawValue == AccessibilityIdentifiers.Command.menuItem($0)
+            }
+            let owner = command.map { "MainCommand.\($0)" }
+                ?? item.action.map { "standard.\(NSStringFromSelector($0))" }
+                ?? "menu.\(item.title)"
+            owners[chord, default: []].insert(owner)
+
+            if let command {
+                let registrations = MainCommandShortcutRegistry.shortcuts.filter {
+                    $0.command == command
+                        && $0.keyEquivalent.lowercased() == chord.key
+                        && $0.modifierFlags.intersection(relevantModifiers).rawValue == chord.modifiers
+                }
+                XCTAssertFalse(registrations.isEmpty, "Menu shortcut for \(command) is absent from the registry.")
+            }
+        }
+
+        for (chord, chordOwners) in owners {
+            XCTAssertEqual(chordOwners.count, 1, "Menu chord \(chord) maps to different commands: \(chordOwners)")
+        }
+
+        let minimize = try XCTUnwrap(menu.flattenedItems.first { $0.action == #selector(NSWindow.performMiniaturize(_:)) })
+        XCTAssertEqual(minimize.keyEquivalent, "m")
+        XCTAssertEqual(minimize.keyEquivalentModifierMask.intersection(relevantModifiers), [.command])
+        XCTAssertFalse(MainCommandShortcutRegistry.shortcuts.contains {
+            $0.command == .move && $0.keyEquivalent.lowercased() == "m" && $0.modifierFlags.contains(.command)
+        })
+    }
+
+    func testOrthodoxMoveShortcutLabelsStaySynchronized() throws {
+        XCTAssertEqual(MainCommandShortcutRegistry.shortcut(for: .move).displayLabel, "F6")
+        XCTAssertEqual(CommandBarAction.move.shortcut, "F6")
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let expectedFragments: [(String, String)] = [
+            ("README.md", "| F5 / F6 | Copy / move the selection to the opposite pane |"),
+            ("PulseFiles/Resources/en.lproj/Localizable.strings", "F5 or F6 — Copy or move the selection to the opposite pane"),
+            ("PulseFiles/Resources/ru.lproj/Localizable.strings", "F5 или F6 — копировать или переместить выбранное в другую панель")
+        ]
+        for (relativePath, fragment) in expectedFragments {
+            let contents = try String(contentsOf: repositoryRoot.appendingPathComponent(relativePath), encoding: .utf8)
+            XCTAssertTrue(contents.contains(fragment), "\(relativePath) must document the F6 Move shortcut.")
+        }
+    }
+
     func testScratchFolderCommandIsAvailableFromGoMenu() {
         let defaults = UserDefaults(suiteName: "MainMenuConstructionTests.scratchFolder")!
         defaults.removePersistentDomain(forName: "MainMenuConstructionTests.scratchFolder")
@@ -504,6 +572,10 @@ final class MainMenuConstructionTests: XCTestCase {
 }
 
 private extension NSMenu {
+    var flattenedItems: [NSMenuItem] {
+        items.flatMap { item in [item] + (item.submenu?.flattenedItems ?? []) }
+    }
+
     func containsItem(titled title: String) -> Bool {
         items.contains { item in
             item.title == title || item.submenu?.containsItem(titled: title) == true

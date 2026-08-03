@@ -51,6 +51,9 @@ To build and launch in one step, run `./scripts/build_app.sh --run`. The debug b
 | Return | Open the selected item, or confirm an edit |
 | F3 | Open the selected file in the read-only text/hex viewer |
 | F4 | Open the selected item normally |
+| F5 / F6 | Copy / move the selection to the opposite pane |
+| F7 / Shift-F7 | Create a folder / file |
+| F8 / Shift-Delete | Move the selection to Trash |
 | Space | Preview the selected item with Quick Look |
 | Backspace / Command-Up | Navigate to the parent folder |
 | Command-[ / Command-] | Navigate back / forward |
