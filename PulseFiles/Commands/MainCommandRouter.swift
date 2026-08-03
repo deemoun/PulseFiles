@@ -1,5 +1,13 @@
 import AppKit
 
+enum MainCommandEntrySurface: CaseIterable {
+    case menu
+    case keyboard
+    case commandBar
+    case contextMenu
+    case paneCallback
+}
+
 struct MainCommandRoutingPane: Equatable {
     var id: PaneID
     var currentDirectory: URL
@@ -79,6 +87,12 @@ enum MainCommandRoute: Equatable {
 }
 
 struct MainCommandRouter {
+    /// Entry surfaces intentionally share this path so none can acquire its own
+    /// availability or target-selection rules.
+    func route(_ command: MainCommand, from _: MainCommandEntrySurface, in state: MainCommandRoutingState) -> MainCommandRoute {
+        route(command, in: state)
+    }
+
     func route(_ command: MainCommand, in state: MainCommandRoutingState) -> MainCommandRoute {
         if state.isFileOperationActive, command.conflictsWithFileOperation {
             return .disabled(command: command, reason: .fileOperationInProgress)

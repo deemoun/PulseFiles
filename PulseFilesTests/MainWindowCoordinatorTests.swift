@@ -2,19 +2,19 @@ import XCTest
 @testable import PulseFiles
 
 final class MainWindowCoordinatorTests: XCTestCase {
-    func testPaneCommandCoordinatorReturnsTypedCrossPaneTarget() {
+    func testMainCommandRouterReturnsTypedCrossPaneTarget() {
         let state = MainCommandRoutingState(
             leftPane: .init(id: .left, currentDirectory: URL(fileURLWithPath: "/left"), selectedURLs: [URL(fileURLWithPath: "/left/a")]),
             rightPane: .init(id: .right, currentDirectory: URL(fileURLWithPath: "/right"))
         )
 
         XCTAssertEqual(
-            PaneCommandCoordinator().route(.copy, state: state),
+            MainCommandRouter().route(.copy, in: state),
             .crossPane(command: .copy, sourcePane: .left, destinationPane: .right, sourceURLs: [URL(fileURLWithPath: "/left/a")], destinationDirectory: URL(fileURLWithPath: "/right"))
         )
     }
 
-    func testPaneCommandCoordinatorRejectsCrossPaneCommandInSinglePaneMode() {
+    func testMainCommandRouterRejectsCrossPaneCommandInSinglePaneMode() {
         let state = MainCommandRoutingState(
             leftPane: .init(id: .left, currentDirectory: URL(fileURLWithPath: "/left"), selectedURLs: [URL(fileURLWithPath: "/left/a")]),
             rightPane: .init(id: .right, currentDirectory: URL(fileURLWithPath: "/right")),
@@ -22,7 +22,7 @@ final class MainWindowCoordinatorTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            PaneCommandCoordinator().route(.move, state: state),
+            MainCommandRouter().route(.move, in: state),
             .disabled(command: .move, reason: .noOppositePane)
         )
     }

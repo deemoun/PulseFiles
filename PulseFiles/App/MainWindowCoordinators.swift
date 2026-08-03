@@ -88,16 +88,6 @@ struct MainWindowDependencies {
 
 // MARK: - Workflow coordinators
 
-struct PaneCommandCoordinator {
-    private let router: MainCommandRouter
-
-    init(router: MainCommandRouter = MainCommandRouter()) { self.router = router }
-
-    func route(_ command: MainCommand, state: MainCommandRoutingState) -> MainCommandRoute {
-        router.route(command, in: state)
-    }
-}
-
 struct PreviewCoordinator {
     enum Availability: Equatable { case available, blocked(String), missing }
 

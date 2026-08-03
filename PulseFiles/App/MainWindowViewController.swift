@@ -138,7 +138,8 @@ final class MainWindowViewController: NSViewController {
     }
     private let fileClipboard: any FileClipboardProviding
     private let applicationOpener: any ApplicationOpening
-    private let paneCommandCoordinator = PaneCommandCoordinator()
+    /// The sole authority for command availability and target resolution.
+    private let commandRouter = MainCommandRouter()
     private lazy var previewCoordinator = PreviewCoordinator(accessPolicy: accessPolicy, probe: fileSystemProbe)
     private lazy var navigationCoordinator = NavigationCoordinator(probe: fileSystemProbe)
 
@@ -175,7 +176,7 @@ final class MainWindowViewController: NSViewController {
     private var dropProbeGeneration = 0
     private var volumeChangeProbeGeneration = 0
     private var isFileOperationActive = false {
-        didSet { setConflictingFileActionsEnabled(!isFileOperationActive) }
+        didSet { refreshCommandAvailability() }
     }
     private var clipboardFeedbackTimer: Timer?
     private var clipboardChangeMonitor: Timer?
@@ -394,45 +395,37 @@ final class MainWindowViewController: NSViewController {
         }
         leftPane.onActivate = { [weak self] in self?.activePaneID = .left }
         rightPane.onActivate = { [weak self] in self?.activePaneID = .right }
-        leftPane.onSwitchPane = { [weak self] in self?.activePaneID = .right }
-        rightPane.onSwitchPane = { [weak self] in self?.activePaneID = .left }
-        leftPane.onToggleTerminal = { [weak self] in self?.toggleTerminal() }
-        rightPane.onToggleTerminal = { [weak self] in self?.toggleTerminal() }
-        leftPane.onNewFolder = { [weak self] in self?.promptForNewFolder() }
-        rightPane.onNewFolder = { [weak self] in self?.promptForNewFolder() }
-        leftPane.onNewFile = { [weak self] in self?.promptForNewFile() }
-        rightPane.onNewFile = { [weak self] in self?.promptForNewFile() }
+        leftPane.onSwitchPane = { [weak self] in self?.performCommand(.switchPane, from: .left, entrySurface: .paneCallback) }
+        rightPane.onSwitchPane = { [weak self] in self?.performCommand(.switchPane, from: .right, entrySurface: .paneCallback) }
+        leftPane.onToggleTerminal = { [weak self] in self?.performCommand(.toggleTerminal, from: .left, entrySurface: .paneCallback) }
+        rightPane.onToggleTerminal = { [weak self] in self?.performCommand(.toggleTerminal, from: .right, entrySurface: .paneCallback) }
+        leftPane.onNewFolder = { [weak self] in self?.performCommand(.newFolder, from: .left, entrySurface: .paneCallback) }
+        rightPane.onNewFolder = { [weak self] in self?.performCommand(.newFolder, from: .right, entrySurface: .paneCallback) }
+        leftPane.onNewFile = { [weak self] in self?.performCommand(.newFile, from: .left, entrySurface: .paneCallback) }
+        rightPane.onNewFile = { [weak self] in self?.performCommand(.newFile, from: .right, entrySurface: .paneCallback) }
         leftPane.onRenameItem = { [weak self] item, name in
-            self?.activePaneID = .left
-            self?.rename(item: item, to: name)
+            self?.performRoutedPaneCallback(.rename, from: .left) { self?.rename(item: item, to: name) }
         }
         rightPane.onRenameItem = { [weak self] item, name in
-            self?.activePaneID = .right
-            self?.rename(item: item, to: name)
+            self?.performRoutedPaneCallback(.rename, from: .right) { self?.rename(item: item, to: name) }
         }
         leftPane.onOpenURL = { [weak self] fileURL in
-            self?.activePaneID = .left
-            self?.openFile(fileURL, with: nil)
+            self?.performRoutedPaneCallback(.open, from: .left) { self?.openFile(fileURL, with: nil) }
         }
         rightPane.onOpenURL = { [weak self] fileURL in
-            self?.activePaneID = .right
-            self?.openFile(fileURL, with: nil)
+            self?.performRoutedPaneCallback(.open, from: .right) { self?.openFile(fileURL, with: nil) }
         }
         leftPane.onOpenWithApplication = { [weak self] fileURL, applicationURL in
-            self?.activePaneID = .left
-            self?.openFile(fileURL, with: applicationURL)
+            self?.performRoutedPaneCallback(.openWith, from: .left) { self?.openFile(fileURL, with: applicationURL) }
         }
         rightPane.onOpenWithApplication = { [weak self] fileURL, applicationURL in
-            self?.activePaneID = .right
-            self?.openFile(fileURL, with: applicationURL)
+            self?.performRoutedPaneCallback(.openWith, from: .right) { self?.openFile(fileURL, with: applicationURL) }
         }
         leftPane.onCommand = { [weak self] command in
-            self?.activePaneID = .left
-            self?.performCommand(command)
+            self?.performCommand(command, from: .left, entrySurface: .contextMenu)
         }
         rightPane.onCommand = { [weak self] command in
-            self?.activePaneID = .right
-            self?.performCommand(command)
+            self?.performCommand(command, from: .right, entrySurface: .contextMenu)
         }
         leftPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .left) }
         rightPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .right) }
@@ -462,6 +455,7 @@ final class MainWindowViewController: NSViewController {
             pane.onTabsChanged = { [weak self, weak pane] state in
                 guard let self, let pane else { return }
                 self.settings.setPaneTabRestoration(PaneRestorationState(paneState: state), for: pane.paneID)
+                self.refreshCommandAvailability()
             }
             pane.onSearchQueryChanged = { [weak self, weak pane] query in
                 guard let self, pane?.paneID == self.activePaneID else { return }
@@ -472,15 +466,16 @@ final class MainWindowViewController: NSViewController {
                 if let paneID = pane?.paneID { self?.settings.setSortDescriptor(sort, for: paneID) }
             }
             pane.onSelectionChanged = { [weak self, weak pane] items in
-                guard let self, pane?.paneID == self.activePaneID else { return }
-                self.sidebar.showSelection(items)
+                guard let self else { return }
+                if pane?.paneID == self.activePaneID { self.sidebar.showSelection(items) }
+                self.refreshCommandAvailability()
             }
         }
         sidebar.onOpenLocation = { [weak self] url, useInactive in
             self?.targetPane(useInactive: useInactive).navigate(to: url)
         }
         commandBar.onAction = { [weak self] action in
-            self?.performCommand(MainCommand(commandBarAction: action))
+            self?.performCommand(MainCommand(commandBarAction: action), entrySurface: .commandBar)
         }
     }
 
@@ -507,25 +502,51 @@ final class MainWindowViewController: NSViewController {
         terminal.suggestedWorkingDirectory = targetPane().currentDirectory
         toolbarSearchField?.stringValue = targetPane().viewModel.searchQuery
         sidebar.showSelection(targetPane().selectedItems)
+        refreshCommandAvailability()
         if view.window?.firstResponder !== toolbarSearchField {
             targetPane().makeTableFirstResponder()
         }
     }
 
-    private func performCommand(_ command: MainCommand) {
+    private func performCommand(_ command: MainCommand, from pane: PaneID? = nil, entrySurface: MainCommandEntrySurface = .menu) {
+        if let pane { activePaneID = pane }
         DiagnosticLogger.log(.info, category: "MainWindow", "Command execution requested: command=\(command); activePane=\(String(describing: activePaneID))")
-        let route = paneCommandCoordinator.route(command, state: currentRoutingState())
-        guard route != .disabled(command: command, reason: .fileOperationInProgress) else {
-            DiagnosticLogger.log(.warning, category: "MainWindow", "Command rejected during active file operation: command=\(command)")
-            showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
-            return
-        }
-        guard route != .disabled(command: command, reason: .noOppositePane) else {
-            DiagnosticLogger.log(.warning, category: "MainWindow", "Cross-pane command rejected because single-pane mode is active: command=\(command)")
-            showError(message: "Opposite Pane Unavailable".localized, detail: "Use dual-pane mode before copying or moving items between panes.".localized)
-            return
-        }
+        execute(commandRouter.route(command, from: entrySurface, in: currentRoutingState()))
+    }
 
+    private func performRoutedPaneCallback(_ command: MainCommand, from pane: PaneID, action: () -> Void) {
+        activePaneID = pane
+        let route = commandRouter.route(command, from: .paneCallback, in: currentRoutingState())
+        if case let .disabled(disabledCommand, reason) = route {
+            presentDisabledCommandFeedback(command: disabledCommand, reason: reason)
+        } else {
+            action()
+        }
+    }
+
+    private func execute(_ route: MainCommandRoute) {
+        switch route {
+        case let .disabled(command, reason):
+            presentDisabledCommandFeedback(command: command, reason: reason)
+            return
+        case let .activePane(command, pane, _), let .focusedItem(command, pane, _), let .symbolicLink(command, pane, _):
+            activePaneID = pane
+            executeEnabledCommand(command)
+        case let .crossPane(command, sourcePane, _, _, _):
+            activePaneID = sourcePane
+            executeEnabledCommand(command)
+        case let .switchPane(pane):
+            activePaneID = pane
+            if isSinglePaneMode { rebuildPaneArrangement(); updateActivePane() }
+        case let .dualPane(command, activePane, _):
+            activePaneID = activePane
+            executeEnabledCommand(command)
+        case let .enabled(command):
+            executeEnabledCommand(command)
+        }
+    }
+
+    private func executeEnabledCommand(_ command: MainCommand) {
         switch command {
         case .open:
             targetPane().openFocusedItem()
@@ -639,11 +660,7 @@ final class MainWindowViewController: NSViewController {
         case .scratchDirectory:
             performScratchDirectoryCommand(useInactive: NSEvent.modifierFlags.contains(.option))
         case .switchPane:
-            activePaneID = activePaneID.opposite
-            if isSinglePaneMode {
-                rebuildPaneArrangement()
-                updateActivePane()
-            }
+            assertionFailure("Switch-pane commands must execute a typed switchPane route")
         case .swapPanes:
             swapPaneLogicalStates()
         case .syncOppositePane:
@@ -659,6 +676,32 @@ final class MainWindowViewController: NSViewController {
         case .exportDiagnostics:
             exportDiagnostics()
         }
+    }
+
+    private func presentDisabledCommandFeedback(command: MainCommand, reason: MainCommandRoutingDisabledReason) {
+        DiagnosticLogger.log(.warning, category: "MainWindow", "Command rejected: command=\(command); reason=\(reason)")
+        let feedback: (String, String)
+        switch reason {
+        case .fileOperationInProgress:
+            feedback = ("Operation in Progress", "Wait for the current file operation to finish before starting another file-changing action.")
+        case .noOppositePane:
+            feedback = ("Opposite Pane Unavailable", "Use dual-pane mode before using this command.")
+        case .noSelection:
+            feedback = ("Nothing Selected", "Select one or more items before using this command.")
+        case .noFocusedItem, .noRealFocusedItem:
+            feedback = ("Nothing Focused", "Focus an item before using this command.")
+        case .sandboxRejectedSelection:
+            feedback = ("Access Denied", "The selected item is outside the locations PulseFiles is allowed to access.")
+        case .noActiveFileOperation:
+            feedback = ("No Operation in Progress", "There is no active file operation to cancel.")
+        case .noUndoRecovery:
+            feedback = ("Undo Unavailable", "The last operation cannot be safely undone.")
+        case .focusedItemIsNotSymbolicLink:
+            feedback = ("Not a Symbolic Link", "Focus a symbolic link before using this command.")
+        case .lastTab:
+            feedback = ("Last Tab", "Each pane must keep at least one tab open.")
+        }
+        showError(message: feedback.0.localized, detail: feedback.1.localized)
     }
 
     private func promptForArchiveCreation() {
@@ -920,19 +963,18 @@ final class MainWindowViewController: NSViewController {
     private func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
         if event.keyCode == 53 {
             if isFileOperationActive {
-                cancelActiveFileOperation()
+                performCommand(.cancelOperation, entrySurface: .keyboard)
             } else {
                 view.window?.makeFirstResponder(targetPane().tableView)
             }
             return true
         }
-        let router = MainCommandRouter()
         let isTextInputFocused = isTextInputFirstResponder
-        if let routedCommand = router.commandForKeyDown(event, isTextInputFocused: isTextInputFocused) {
-            performCommand(routedCommand)
+        if let routedCommand = commandRouter.commandForKeyDown(event, isTextInputFocused: isTextInputFocused) {
+            performCommand(routedCommand, entrySurface: .keyboard)
             return true
         }
-        if router.shouldConsumeUnmappedKeyDown(keyCode: event.keyCode, isTextInputFocused: isTextInputFocused) {
+        if commandRouter.shouldConsumeUnmappedKeyDown(keyCode: event.keyCode, isTextInputFocused: isTextInputFocused) {
             return true
         }
         return false
@@ -2386,11 +2428,17 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         showAlert(message: presentation.message, detail: presentation.detail, style: presentation.style)
     }
 
-    private func setConflictingFileActionsEnabled(_ isEnabled: Bool) {
+    private func refreshCommandAvailability() {
+        let state = currentRoutingState()
         commandBar.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSControl }.forEach { control in
             guard let rawValue = control.identifier?.rawValue, let action = CommandBarAction(rawValue: rawValue) else { return }
-            control.isEnabled = !MainCommand(commandBarAction: action).conflictsWithFileOperation || isEnabled
+            if case .disabled = commandRouter.route(MainCommand(commandBarAction: action), in: state) {
+                control.isEnabled = false
+            } else {
+                control.isEnabled = true
+            }
         }
+        NSApp.mainMenu?.update()
     }
 
     @MainActor
@@ -2674,25 +2722,31 @@ extension MainWindowViewController: NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let routedCommand = MainCommand(menuAction: menuItem.action)
+        let routeAllowsCommand: Bool = {
+            guard let routedCommand else { return true }
+            if case .disabled = commandRouter.route(routedCommand, from: .menu, in: currentRoutingState()) { return false }
+            return true
+        }()
         if menuItem.action == #selector(menuUndo(_:)) {
             menuItem.title = undoRecovery?.undoTitle.localized ?? "Undo".localized
         }
         if menuItem.action == #selector(menuToggleSidebar(_:)) {
             menuItem.state = isSidebarInstalled ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuToggleTerminal(_:)) {
             menuItem.state = isTerminalInstalled ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuTogglePaneLayout(_:)) {
             menuItem.title = isSinglePaneMode ? "Use Dual Pane".localized : "Use Single Pane".localized
             menuItem.state = isSinglePaneMode ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuToggleHiddenFiles(_:)) {
             menuItem.state = targetPane().showsHiddenFiles ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuMoveToTrash(_:)) {
             menuItem.title = settings.permanentlyDeleteInsteadOfTrash ? "Permanently Delete".localized : "Move to Trash".localized
@@ -2700,41 +2754,37 @@ extension MainWindowViewController: NSMenuItemValidation {
         let sort = targetPane().sortDescriptor
         if menuItem.action == #selector(menuSortByName(_:)) {
             menuItem.state = sort.key == .name ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuSortByExtension(_:)) {
             menuItem.state = sort.key == .extension ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuSortByKind(_:)) {
             menuItem.state = sort.key == .kind ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuSortBySize(_:)) {
             menuItem.state = sort.key == .size ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuSortByModified(_:)) {
             menuItem.state = sort.key == .modified ? .on : .off
-            return true
+            return routeAllowsCommand
         }
-        if menuItem.action == #selector(menuSortByCreated(_:)) { menuItem.state = sort.key == .created ? .on : .off; return true }
-        if menuItem.action == #selector(menuSortByAdded(_:)) { menuItem.state = sort.key == .added ? .on : .off; return true }
-        if menuItem.action == #selector(menuSortByAccessed(_:)) { menuItem.state = sort.key == .accessed ? .on : .off; return true }
+        if menuItem.action == #selector(menuSortByCreated(_:)) { menuItem.state = sort.key == .created ? .on : .off; return routeAllowsCommand }
+        if menuItem.action == #selector(menuSortByAdded(_:)) { menuItem.state = sort.key == .added ? .on : .off; return routeAllowsCommand }
+        if menuItem.action == #selector(menuSortByAccessed(_:)) { menuItem.state = sort.key == .accessed ? .on : .off; return routeAllowsCommand }
         if menuItem.action == #selector(menuSortAscending(_:)) {
             menuItem.state = sort.ascending ? .on : .off
-            return true
+            return routeAllowsCommand
         }
         if menuItem.action == #selector(menuSortDescending(_:)) {
             menuItem.state = sort.ascending ? .off : .on
-            return true
+            return routeAllowsCommand
         }
         menuItem.state = .off
-        guard let command = MainCommand(menuAction: menuItem.action) else { return true }
-        if case .disabled = MainCommandRouter().route(command, in: currentRoutingState()) {
-            return false
-        }
-        return true
+        return routeAllowsCommand
     }
 
     private func currentRoutingState() -> MainCommandRoutingState {
@@ -2770,6 +2820,12 @@ extension MainWindowViewController: NSMenuItemValidation {
             sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs,
             hasUndoRecovery: undoRecovery?.eligibility() == .eligible
         )
+    }
+
+    /// Exposes the exact route used by UI validation to the in-process AppKit
+    /// harness without exposing mutable pane state.
+    func commandRouteForValidation(_ command: MainCommand) -> MainCommandRoute {
+        commandRouter.route(command, from: .menu, in: currentRoutingState())
     }
 }
 

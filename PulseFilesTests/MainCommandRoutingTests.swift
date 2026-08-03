@@ -326,7 +326,9 @@ final class MainCommandRoutingTests: XCTestCase {
         isSinglePaneMode: Bool = false,
         isFileOperationActive: Bool = false,
         sandboxAllowsSelectedURLs: Bool = true,
-        hasUndoRecovery: Bool = false
+        hasUndoRecovery: Bool = false,
+        leftTabCount: Int = 1,
+        leftFocusedItemIsSymbolicLink: Bool = false
     ) -> MainCommandRoutingState {
         MainCommandRoutingState(
             activePaneID: activePaneID,
@@ -334,7 +336,9 @@ final class MainCommandRoutingTests: XCTestCase {
                 id: .left,
                 currentDirectory: URL(fileURLWithPath: "/sandbox/left", isDirectory: true),
                 selectedURLs: leftSelection,
-                focusedURL: leftFocusedURL ?? leftSelection.first
+                focusedURL: leftFocusedURL ?? leftSelection.first,
+                focusedItemIsSymbolicLink: leftFocusedItemIsSymbolicLink,
+                tabCount: leftTabCount
             ),
             rightPane: MainCommandRoutingPane(
                 id: .right,
@@ -581,6 +585,49 @@ private extension NSMenu {
 }
 
 extension MainCommandRoutingTests {
+    func testEveryMainCommandHasAnExplicitTypedRoute() {
+        let selected = URL(fileURLWithPath: "/sandbox/left/item.txt")
+        for command in MainCommand.allCases {
+            let state = makeState(
+                activePaneID: .left,
+                leftSelection: [selected],
+                isFileOperationActive: command == .cancelOperation,
+                hasUndoRecovery: true,
+                leftTabCount: 2,
+                leftFocusedItemIsSymbolicLink: true
+            )
+            let route = router.route(command, in: state)
+            if case let .disabled(routedCommand, reason) = route {
+                XCTFail("\(routedCommand) unexpectedly disabled: \(reason)")
+            }
+            XCTAssertEqual(route.command, command, "Typed route must retain the command being executed.")
+        }
+    }
+
+    func testEveryEntrySurfaceUsesIdenticalAvailabilityAndTargetResolution() {
+        let selected = URL(fileURLWithPath: "/sandbox/right/item.txt")
+        let state = makeState(activePaneID: .right, rightSelection: [selected])
+        for command in MainCommand.allCases {
+            let expected = router.route(command, in: state)
+            for surface in MainCommandEntrySurface.allCases {
+                XCTAssertEqual(router.route(command, from: surface, in: state), expected, "\(surface) diverged for \(command)")
+            }
+        }
+    }
+
+    func testActiveOperationDisablesExactlyTheConflictingCommands() {
+        let selected = URL(fileURLWithPath: "/sandbox/left/item.txt")
+        let state = makeState(activePaneID: .left, leftSelection: [selected], isFileOperationActive: true, hasUndoRecovery: true)
+        for command in MainCommand.allCases where command != .cancelOperation {
+            let route = router.route(command, in: state)
+            if command.conflictsWithFileOperation {
+                XCTAssertEqual(route, .disabled(command: command, reason: .fileOperationInProgress))
+            } else if case .disabled(_, .fileOperationInProgress) = route {
+                XCTFail("Non-conflicting command \(command) was rejected as an operation conflict.")
+            }
+        }
+    }
+
     func testRegistryContainsExactlyOneDescriptorForEveryMainCommand() {
         XCTAssertEqual(MainCommandShortcutRegistry.descriptors.count, MainCommand.allCases.count)
         XCTAssertEqual(Set(MainCommandShortcutRegistry.descriptors.map(\.command)), Set(MainCommand.allCases))
@@ -631,6 +678,19 @@ extension MainCommandRoutingTests {
             let descriptor = MainCommandShortcutRegistry.descriptor(for: MainCommand(commandBarAction: action))
             XCTAssertFalse(action.shortcut.isEmpty, "\(action) needs a displayed shortcut.")
             XCTAssertFalse(descriptor.bindings.isEmpty, "\(action) displays \(action.shortcut), but has no keyboard handler.")
+        }
+    }
+}
+
+private extension MainCommandRoute {
+    var command: MainCommand {
+        switch self {
+        case let .activePane(command, _, _), let .crossPane(command, _, _, _, _),
+             let .dualPane(command, _, _), let .focusedItem(command, _, _),
+             let .symbolicLink(command, _, _), let .enabled(command), let .disabled(command, _):
+            return command
+        case .switchPane:
+            return .switchPane
         }
     }
 }
