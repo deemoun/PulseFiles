@@ -32,4 +32,173 @@ final class FileOperationPreflightValidator {
         _ = accessPolicy
         _ = pathSafetyStateProvider
     }
+
+    enum SourceItemKind { case file, directory, symbolicLink(destination: String), finderAlias }
+
+    func sourceItemKind(at url: URL) throws -> SourceItemKind {
+        if pathSafetyStateProvider(url).isFinderAlias { return .finderAlias }
+        let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        if values.isSymbolicLink == true { return .symbolicLink(destination: try fileManager.destinationOfSymbolicLink(atPath: url.path)) }
+        return values.isDirectory == true ? .directory : .file
+    }
+
+    func preflightCreation(rawName: String, in directory: URL, isDirectory: Bool) throws -> URL {
+        try validateExistingDirectory(directory)
+        try validateWritableMutationTarget(directory)
+        try accessPolicy.validateAccess(to: directory)
+        let name = try FileNameValidator.validate(rawName, in: directory)
+        let destination = directory.appendingPathComponent(name, isDirectory: isDirectory)
+        try accessPolicy.validateDestinationAccess(to: destination)
+        guard !fileManager.fileExists(atPath: destination.path) else {
+            throw FileOperationError.destinationExists(destination)
+        }
+        return destination
+    }
+
+    func preflightTransferRequest(_ request: FileOperationRequest, isMove: Bool = false) throws {
+        try validateExistingDirectory(request.destinationDirectory)
+        try validateWritableMutationTarget(request.destinationDirectory)
+        try accessPolicy.validateAccess(to: request.destinationDirectory)
+
+        try preflightMultiSourceSelection(request.sources)
+        if isMove {
+            for source in request.sources {
+                try validateWritableMutationTarget(source.deletingLastPathComponent())
+            }
+        }
+
+        var normalizedDestinations = Set<String>()
+        for source in request.sources {
+            let destination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
+            try accessPolicy.validateDestinationAccess(to: destination)
+            try validateDestination(destination, for: source)
+            let normalizedDestination = FilePathComparison.normalizedPath(destination)
+            guard normalizedDestinations.insert(normalizedDestination).inserted else {
+                throw FileOperationError.duplicateDestination(destination)
+            }
+        }
+    }
+
+    func preflightRename(source: URL, destination: URL) throws {
+        try validateExistingSource(source)
+        try validateAvailableSource(source)
+        try validateSourceAccess(source)
+        try accessPolicy.validateDestinationAccess(to: destination)
+        try validateExistingDirectory(source.deletingLastPathComponent())
+        try validateWritableMutationTarget(source.deletingLastPathComponent())
+        try validateDestination(destination, for: source)
+        if fileManager.fileExists(atPath: destination.path), FilePathComparison.normalizedPath(source) != FilePathComparison.normalizedPath(destination) {
+            throw FileOperationError.destinationExists(destination)
+        }
+    }
+
+    func preflightDelete(_ urls: [URL]) throws {
+        try preflightMultiSourceSelection(urls)
+        for url in urls {
+            try validateWritableMutationTarget(url.deletingLastPathComponent())
+        }
+    }
+
+    func preflightMultiSourceSelection(_ urls: [URL]) throws {
+        try validateSelection(urls)
+
+        var normalizedSources = Set<String>()
+        for url in urls {
+            try validateExistingSource(url)
+            try validateAvailableSource(url)
+            try validateSourceAccess(url)
+            guard normalizedSources.insert(FilePathComparison.normalizedPath(url)).inserted else {
+                throw FileOperationError.duplicateSource(url)
+            }
+        }
+
+        for (ancestorIndex, ancestor) in urls.enumerated() {
+            for descendant in urls.dropFirst(ancestorIndex + 1) {
+                if FilePathComparison.isSameOrDescendant(descendant, ofDirectory: ancestor) {
+                    throw FileOperationError.overlappingSources(ancestor: ancestor, descendant: descendant)
+                }
+                if FilePathComparison.isSameOrDescendant(ancestor, ofDirectory: descendant) {
+                    throw FileOperationError.overlappingSources(ancestor: descendant, descendant: ancestor)
+                }
+            }
+        }
+    }
+
+    func validateExistingSource(_ url: URL) throws {
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw FileOperationError.sourceMissing(url)
+        }
+    }
+
+    func validateAvailableSource(_ url: URL, allowingPlaceholder: Bool = false) throws {
+        let state = pathSafetyStateProvider(url)
+        guard state.isAvailable else { throw FileOperationError.volumeUnavailable(url) }
+        guard allowingPlaceholder || !state.isICloudPlaceholder else { throw FileOperationError.iCloudItemNotDownloaded(url) }
+    }
+
+    func validateWritableMutationTarget(_ url: URL) throws {
+        let state = pathSafetyStateProvider(url)
+        guard state.isAvailable else { throw FileOperationError.volumeUnavailable(url) }
+        guard !state.isReadOnlyVolume else { throw FileOperationError.readOnlyVolume(url) }
+    }
+
+    func validateSourceAccess(_ source: URL) throws {
+        if case .symbolicLink = try sourceItemKind(at: source) {
+            // Access to the link is governed by its containing directory. Do
+            // not resolve its target: the copy policy above never traverses it.
+            try accessPolicy.validateAccess(to: source.deletingLastPathComponent())
+        } else if case .finderAlias = try sourceItemKind(at: source) {
+            // An alias target may be outside the selected tree; access applies
+            // to the opaque alias object in its containing directory.
+            try accessPolicy.validateAccess(to: source.deletingLastPathComponent())
+        } else {
+            try accessPolicy.validateAccess(to: source)
+        }
+    }
+
+    func validateExistingDirectory(_ url: URL) throws {
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw FileOperationError.destinationDirectoryMissing(url)
+        }
+        guard case .directory? = try? sourceItemKind(at: url) else {
+            throw FileOperationError.destinationNotDirectory(url)
+        }
+    }
+
+    func validateDestination(_ destination: URL, for source: URL) throws {
+        if FilePathComparison.isSameOrDescendant(destination, ofDirectory: source) {
+            throw FileOperationError.destinationInsideSource(source: source, destination: destination)
+        }
+    }
+
+
+    static func defaultDestinationCapacity(for url: URL) -> Int64? {
+        guard let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]) else { return nil }
+        return values.volumeAvailableCapacityForImportantUsage ?? values.volumeAvailableCapacity.map(Int64.init)
+    }
+
+    static func defaultVolumeIdentifier(for url: URL) -> String? {
+        guard let values = try? url.resourceValues(forKeys: [.volumeIdentifierKey]), let identifier = values.volumeIdentifier else { return nil }
+        if let identifier = identifier as? UUID {
+            return identifier.uuidString
+        }
+        return String(describing: identifier)
+    }
+
+    static func defaultPathSafetyState(for url: URL) -> FileOperationPathSafetyState {
+        guard let values = try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .ubiquitousItemDownloadingStatusKey, .isUbiquitousItemKey, .isAliasFileKey]) else {
+            return FileOperationPathSafetyState(isAvailable: false)
+        }
+        return FileOperationPathSafetyState(
+            isAvailable: true,
+            isReadOnlyVolume: values.volumeIsReadOnly == true,
+            isICloudPlaceholder: values.isUbiquitousItem == true && values.ubiquitousItemDownloadingStatus != .current,
+            isFinderAlias: values.isAliasFile == true
+        )
+    }
+
+    func itemIdentity(at url: URL) -> String? {
+        guard let identifier = try? url.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else { return nil }
+        return String(describing: identifier)
+    }
 }
