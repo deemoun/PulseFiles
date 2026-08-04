@@ -9,23 +9,9 @@ final class FilePaneViewController: NSViewController {
     let keyboardNavigationController = PaneKeyboardNavigationController()
     let contextMenuProvider: FilePaneContextMenuProvider
 
-    var onActivate: (() -> Void)?
-    var onSwitchPane: (() -> Void)?
-    var onToggleTerminal: (() -> Void)?
-    var onNewFolder: (() -> Void)?
-    var onNewFile: (() -> Void)?
-    var onCommand: ((MainCommand) -> Void)?
-    var onOpenURL: ((URL) -> Void)?
-    var onOpenWithApplication: ((URL, URL?) -> Void)?
-    var onDropFiles: (([URL], URL, Bool) -> Void)?
-    var onRenameItem: ((FileItem, String) -> Void)?
-    var onDirectoryChanged: ((URL) -> Void)?
-    var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
-    var onSelectionChanged: (([FileItem]) -> Void)?
-    var onDirectoryAccessGranted: ((URL) -> Void)?
-    var onSearchQueryChanged: ((String) -> Void)?
-    var onTabsChanged: ((PaneState) -> Void)?
-    var onPresentationModeChanged: ((PanePresentationMode) -> Void)?
+    weak var navigationDelegate: FilePaneNavigationDelegate?
+    weak var commandDelegate: FilePaneCommandDelegate?
+    weak var presentationDelegate: FilePanePresentationDelegate?
 
     let header = NSVisualEffectView()
     let breadcrumb = BreadcrumbView()
@@ -42,9 +28,8 @@ final class FilePaneViewController: NSViewController {
     var dimmedFileURLs = Set<String>()
     var previousSelectedRowIndexes = IndexSet()
     /// URLs survive sorting, filtering, and monitor-driven reloads; row indexes do not.
-    var previousSelectionURLs: [URL] = []
-    var pendingSelectionURL: URL?
-    var quickSearchFocusedURL: URL?
+    var selectionRestoration = FilePaneSelectionRestoration()
+    var quickSearchState = QuickSearchState()
     var inlineRenameRow: Int?
     /// The item snapshot remains valid while a refresh is deferred, even when
     /// filtering, sorting, or navigation has already changed the view model.
@@ -65,7 +50,7 @@ final class FilePaneViewController: NSViewController {
     private let authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
     let thumbnailLoader = ThumbnailLoadingService()
-    var thumbnailTasks: [URL: Task<Void, Never>] = [:]
+    let thumbnailRequests = ThumbnailRequestCoordinator()
     private(set) var presentationMode: PanePresentationMode
 
     init(
@@ -142,7 +127,7 @@ final class FilePaneViewController: NSViewController {
 
     override func loadView() {
         let paneView = PaneContainerView()
-        paneView.onMouseDown = { [weak self] in self?.onActivate?() }
+        paneView.onMouseDown = { [weak self] in self.map { $0.navigationDelegate?.filePane($0, didEmit: .activate) } }
         view = paneView
         view.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.container(for: paneID))
         LiquidGlassStyle.applyPanelChrome(to: view)
@@ -151,8 +136,8 @@ final class FilePaneViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         volumeStatusCache.onChange = { [weak self] in self?.configureStatusView() }
-        contextMenuProvider.onCommand = { [weak self] command in self?.onCommand?(command) }
-        contextMenuProvider.onOpenWithApplication = { [weak self] file, app in self?.onOpenWithApplication?(file, app) }
+        contextMenuProvider.onCommand = { [weak self] command in self.map { $0.commandDelegate?.filePane($0, didEmit: .command(command)) } }
+        contextMenuProvider.onOpenWithApplication = { [weak self] file, app in self.map { $0.commandDelegate?.filePane($0, didEmit: .openWith(file, app)) } }
         inlineRenameCoordinator.onCommit = { [weak self] url, generation, name, cancelled in
             self?.commitInlineRename(itemURL: url, sessionGeneration: generation, proposedName: name, isCancelled: cancelled)
         }
@@ -171,7 +156,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func loadDirectory(selecting url: URL? = nil, onLoaded: (() -> Void)? = nil) {
-        pendingSelectionURL = url
+        selectionRestoration.prepare(url)
         viewModel.loadCurrentDirectory { [weak self] in
             self?.selectPendingItemIfAvailable()
             onLoaded?()
@@ -179,7 +164,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func selectItem(at url: URL) {
-        pendingSelectionURL = url
+        selectionRestoration.prepare(url)
         if !viewModel.isLoading {
             selectPendingItemIfAvailable()
         }
@@ -206,7 +191,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func preparePendingSelection(_ url: URL?) {
-        pendingSelectionURL = url
+        selectionRestoration.prepare(url)
         if let url { setFocusedURL(url) }
     }
 
@@ -268,8 +253,7 @@ final class FilePaneViewController: NSViewController {
         guard presentationMode != mode else { return }
         presentationMode = mode
         presentationSelector.selectedSegment = PanePresentationMode.allCases.firstIndex(of: mode) ?? 0
-        thumbnailTasks.values.forEach { $0.cancel() }
-        thumbnailTasks.removeAll()
+        thumbnailRequests.cancelAll()
         tableView.rowHeight = mode == .gallery ? 72 : (mode == .brief ? 26 : 34)
         tableView.headerView = mode == .brief ? nil : NSTableHeaderView()
         for column in tableView.tableColumns where column.identifier.rawValue != FilePaneTableAdapter.ColumnID.name {
@@ -277,7 +261,7 @@ final class FilePaneViewController: NSViewController {
         }
         tableAdapter.applyLayout(hasOppositePane: hasOppositePane, force: true)
         requestTableReload()
-        if notify { onPresentationModeChanged?(mode) }
+        if notify { presentationDelegate?.filePane(self, didEmit: .mode(mode)) }
     }
 
     func navigate(to url: URL) {
@@ -294,11 +278,11 @@ final class FilePaneViewController: NSViewController {
     @discardableResult
     func fallBackIfCurrentDirectoryIsUnavailable() -> Bool {
         guard viewModel.fallBackIfCurrentDirectoryIsUnavailable() else { return false }
-        pendingSelectionURL = nil
+        selectionRestoration.prepare(nil)
         previousSelectedRowIndexes = []
-        previousSelectionURLs = []
+        selectionRestoration.record([])
         tableView.deselectAll(nil)
-        onSelectionChanged?([])
+        presentationDelegate?.filePane(self, didEmit: .selection([]))
         return true
     }
 
@@ -319,7 +303,7 @@ final class FilePaneViewController: NSViewController {
 
     func goParent() {
         guard canNavigateToParent else { return }
-        pendingSelectionURL = viewModel.currentDirectory
+        selectionRestoration.prepare(viewModel.currentDirectory)
         viewModel.goParent()
     }
 
@@ -374,7 +358,7 @@ final class FilePaneViewController: NSViewController {
         if item.isDirectory {
             navigate(to: item.url)
         } else {
-            onOpenURL?(item.url)
+            navigationDelegate?.filePane(self, didEmit: .open(item.url))
         }
     }
 
@@ -399,11 +383,8 @@ final class FilePaneViewController: NSViewController {
     }
 
     func setSearchQuery(_ query: String) {
-        if viewModel.searchQuery.isEmpty, !query.isEmpty {
-            quickSearchFocusedURL = focusedItem?.url
-        }
+        quickSearchState.transition(from: viewModel.searchQuery, to: query, focusedURL: focusedItem?.url)
         viewModel.setSearchQuery(query)
-        if query.isEmpty { quickSearchFocusedURL = nil }
     }
 
     /// Handles only table-owned quick-search gestures. Returning false leaves
@@ -434,7 +415,7 @@ final class FilePaneViewController: NSViewController {
 
     func updateQuickSearchQuery(_ query: String) {
         setSearchQuery(query)
-        onSearchQueryChanged?(query)
+        presentationDelegate?.filePane(self, didEmit: .searchQuery(query))
     }
 
     func setDimmedFileURLs(_ urls: [URL]) {
@@ -575,14 +556,14 @@ final class FilePaneViewController: NSViewController {
 
     func bindViewModel() {
         viewModel.onChange = { [weak self] in self?.reloadData() }
-        viewModel.onDirectoryChanged = { [weak self] url in self?.onDirectoryChanged?(url) }
+        viewModel.onDirectoryChanged = { [weak self] url in self.map { $0.navigationDelegate?.filePane($0, didEmit: .directoryChanged(url)) } }
         viewModel.onDisplayPreferencesChanged = { [weak self] showsHiddenFiles, sort in
-            self?.onDisplayPreferencesChanged?(showsHiddenFiles, sort)
+            self.map { $0.presentationDelegate?.filePane($0, didEmit: .displayPreferences(showsHiddenFiles, sort)) }
         }
         viewModel.onTabsChanged = { [weak self] in
             self?.refreshTabSelector()
-            self?.onSearchQueryChanged?(self?.viewModel.searchQuery ?? "")
-            if let snapshot = self?.viewModel.logicalStateSnapshot() { self?.onTabsChanged?(snapshot) }
+            self.map { $0.presentationDelegate?.filePane($0, didEmit: .searchQuery($0.viewModel.searchQuery)) }
+            if let snapshot = self?.viewModel.logicalStateSnapshot() { self.map { $0.presentationDelegate?.filePane($0, didEmit: .tabs(snapshot)) } }
         }
         reloadData()
     }
@@ -676,8 +657,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func performTableReload() {
-        thumbnailTasks.values.forEach { $0.cancel() }
-        thumbnailTasks.removeAll()
+        thumbnailRequests.cancelAll()
         isReloadingData = true
         defer { isReloadingData = false }
         breadcrumb.configure(url: viewModel.currentDirectory)
@@ -696,23 +676,21 @@ final class FilePaneViewController: NSViewController {
            viewModel.searchQuery.isEmpty, tableView.numberOfRows > 0 {
             selectDefaultRow()
         }
-        previousSelectionURLs = selectedItems.map(\.url)
+        selectionRestoration.record(selectedItems.map(\.url))
         configureStatusView()
         configureContentOverlay()
-        onSelectionChanged?(selectedItems)
+        presentationDelegate?.filePane(self, didEmit: .selection(selectedItems))
         let hiddenSymbol = viewModel.showsHiddenFiles ? "eye" : "eye.slash"
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files".localized)
     }
 
     func loadThumbnail(for item: FileItem, into imageView: GalleryImageView) {
-        thumbnailTasks[item.url]?.cancel()
         let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        thumbnailTasks[item.url] = Task { [weak self, weak imageView] in
+        thumbnailRequests.request(for: item.url) { [weak self, weak imageView] in
             guard let self else { return }
             let image = await thumbnailLoader.thumbnail(for: item.url, size: CGSize(width: 58, height: 58), scale: scale)
             guard !Task.isCancelled, imageView?.representedURL == item.url else { return }
             imageView?.image = image ?? FileIconProvider.shared.image(for: item.iconKey)
-            thumbnailTasks[item.url] = nil
         }
     }
 
@@ -737,7 +715,7 @@ final class FilePaneViewController: NSViewController {
 
     @discardableResult
     func selectPendingItemIfAvailable() -> Bool {
-        guard !viewModel.isLoading, let pendingSelectionURL else { return false }
+        guard !viewModel.isLoading, let pendingSelectionURL = selectionRestoration.pendingURL else { return false }
         let selectedURL = pendingSelectionURL
         guard let itemIndex = viewModel.visibleItems.firstIndex(where: {
             isSameFileURL($0.url, pendingSelectionURL)
@@ -747,9 +725,9 @@ final class FilePaneViewController: NSViewController {
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         setFocusedURL(selectedURL)
         tableView.scrollRowToVisible(row)
-        self.pendingSelectionURL = nil
+        self.selectionRestoration.prepare(nil)
         previousSelectedRowIndexes = tableView.selectedRowIndexes
-        previousSelectionURLs = [selectedURL]
+        selectionRestoration.record([selectedURL])
         return true
     }
 
@@ -761,7 +739,7 @@ final class FilePaneViewController: NSViewController {
     /// selected in its parent, including when that folder has no children.
     func selectCurrentDirectoryWhenReturningToParent(_ destination: URL?) {
         guard let destination, isSameFileURL(destination, parentURL) else { return }
-        pendingSelectionURL = viewModel.currentDirectory
+        selectionRestoration.prepare(viewModel.currentDirectory)
     }
 
     func selectFilenameStem(for item: FileItem) {
@@ -782,13 +760,9 @@ final class FilePaneViewController: NSViewController {
     }
 
     func restorePreviousSelectionIfPossible() {
-        guard pendingSelectionURL == nil, !previousSelectionURLs.isEmpty else { return }
+        guard selectionRestoration.pendingURL == nil, !selectionRestoration.previousURLs.isEmpty else { return }
 
-        let rows = previousSelectionURLs.reduce(into: IndexSet()) { partialResult, url in
-            if let index = viewModel.visibleItems.firstIndex(where: { isSameFileURL($0.url, url) }) {
-                partialResult.insert(index + realRowOffset)
-            }
-        }
+        let rows = selectionRestoration.rows(in: viewModel.visibleItems.map(\.url), offset: realRowOffset, normalize: normalizedPath)
         guard !rows.isEmpty else { return }
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
     }
@@ -904,7 +878,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func openGrantedRecoveryDirectory(_ url: URL) {
-        onDirectoryAccessGranted?(url)
+        navigationDelegate?.filePane(self, didEmit: .directoryAccessGranted(url))
         navigate(to: url)
     }
 
@@ -933,7 +907,7 @@ private extension PanePresentationMode {
 
 extension FilePaneViewController: FileTableViewActionDelegate {
     func fileTableViewDidActivate(_ tableView: FileTableView) {
-        onActivate?()
+        navigationDelegate?.filePane(self, didEmit: .activate)
     }
 
     func fileTableView(_ tableView: FileTableView, didFocusRow row: Int) {

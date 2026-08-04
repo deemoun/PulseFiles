@@ -17,7 +17,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
             localizedType: "PDF Document"
         )
 
-        let presentation = try XCTUnwrap(SidebarViewController.SelectionInspectorPresentation.make(for: [item]))
+        let presentation = try XCTUnwrap(SelectionInspectorPresentation.make(for: [item]))
         let rows = Dictionary(uniqueKeysWithValues: presentation.rows.map { ($0.title, $0.value) })
 
         XCTAssertEqual(presentation.title, "report.pdf")
@@ -37,7 +37,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         let second = fileItem("two.txt", size: 2_048)
         let folder = fileItem("Folder", type: .folder, isDirectory: true, size: 0, localizedType: "Folder")
 
-        let presentation = try XCTUnwrap(SidebarViewController.SelectionInspectorPresentation.make(for: [first, second, folder]))
+        let presentation = try XCTUnwrap(SelectionInspectorPresentation.make(for: [first, second, folder]))
         let rows = Dictionary(uniqueKeysWithValues: presentation.rows.map { ($0.title, $0.value) })
 
         XCTAssertEqual(presentation.title, "3 items selected")
@@ -50,7 +50,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
     }
 
     func testEmptySelectionHasNoInspectorPresentation() {
-        XCTAssertNil(SidebarViewController.SelectionInspectorPresentation.make(for: []))
+        XCTAssertNil(SelectionInspectorPresentation.make(for: []))
     }
 
     func testTotalSizeReturnsFallbackWhenAccessPolicyDeniesDirectory() async throws {
