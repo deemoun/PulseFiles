@@ -68,6 +68,7 @@
 "Could Not Create Folder" = "Не удалось создать папку";
 "Could Not Go to Folder" = "Не удалось перейти к папке";
 "Could Not Open File" = "Не удалось открыть файл";
+"%@ is not an application." = "%@ не является приложением.";
 "Could not safely replace the existing item." = "Не удалось безопасно заменить существующий объект.";
 "Create" = "Создать";
 "Create a file in %@" = "Создать файл в %@";

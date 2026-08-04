@@ -142,6 +142,18 @@ final class MainWindowViewController: NSViewController {
     }
     private lazy var clipboardSession = ClipboardSessionCoordinator(transfer: workflows.fileTransfer)
     private let applicationOpener: any ApplicationOpening
+    private lazy var openFileCoordinator = OpenFileCoordinator(accessPolicy: accessPolicy) { [weak self] fileURL, applicationURL in
+        if let applicationURL {
+            let configuration = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.open([fileURL], withApplicationAt: applicationURL, configuration: configuration) { [weak self] _, error in
+                if let error {
+                    self?.showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
+                }
+            }
+        } else {
+            _ = self?.applicationOpener.open(fileURL)
+        }
+    }
     private let fileSizeService: any FileSizeResolving
     private let readOnlyViewerService: any ViewerContentLoading
     private let diagnosticsExporter: any DiagnosticsExporting
@@ -1449,26 +1461,7 @@ extension MainWindowViewController {
 
     private func openFile(_ fileURL: URL, with applicationURL: URL?) {
         do {
-            let fileExists = try accessPolicy.withValidatedAccess(to: fileURL) {
-                FileManager.default.fileExists(atPath: fileURL.path)
-            }
-            guard fileExists else {
-                throw FileOperationError.sourceMissing(fileURL)
-            }
-
-            if let applicationURL {
-                guard FileManager.default.fileExists(atPath: applicationURL.path) else {
-                    throw FileOperationError.sourceMissing(applicationURL)
-                }
-                let configuration = NSWorkspace.OpenConfiguration()
-                NSWorkspace.shared.open([fileURL], withApplicationAt: applicationURL, configuration: configuration) { [weak self] _, error in
-                    if let error {
-                        self?.showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
-                    }
-                }
-            } else {
-                NSWorkspace.shared.open(fileURL)
-            }
+            try openFileCoordinator.open(fileURL, with: applicationURL)
         } catch {
             showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
         }
