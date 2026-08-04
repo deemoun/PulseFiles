@@ -440,6 +440,108 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.visibleItems.map(\.displayName), ["New.txt"])
     }
 
+    func testSuccessfulBackAndForwardCommitHistoryWithLoadedDirectory() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let second = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Second")
+        let fileSystem = TestFileSystem()
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+        await load(viewModel)
+        viewModel.navigate(to: second)
+        await waitUntilLoaded(viewModel)
+
+        viewModel.goBack()
+        await waitUntilLoaded(viewModel)
+        XCTAssertEqual(viewModel.currentDirectory, sandbox.allowedDirectory)
+        XCTAssertEqual(viewModel.navigationHistory.current, sandbox.allowedDirectory)
+
+        viewModel.goForward()
+        await waitUntilLoaded(viewModel)
+        XCTAssertEqual(viewModel.currentDirectory, second)
+        XCTAssertEqual(viewModel.navigationHistory.current, second)
+    }
+
+    func testDeniedHistoryDestinationRetainsCompleteHistoryAndCurrentDirectory() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let second = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Second")
+        var readable = true
+        let probe = SandboxFileAccessPolicy.AccessProbe(fileExists: { _ in readable }, isReadableFile: { _ in readable }, isWritableFile: { _ in true })
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: sandbox.root, accessProbe: probe)
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: TestFileSystem(), accessPolicy: policy)
+        await load(viewModel)
+        viewModel.navigate(to: second)
+        await waitUntilLoaded(viewModel)
+        let history = viewModel.navigationHistory
+        readable = false
+
+        viewModel.goBack()
+
+        XCTAssertEqual(viewModel.currentDirectory, second)
+        XCTAssertEqual(viewModel.navigationHistory, history)
+        XCTAssertEqual(viewModel.loadFailure?.directory, sandbox.allowedDirectory)
+    }
+
+    func testFailedHistoryReadRetainsCompleteHistory() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let second = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Second")
+        let fileSystem = TestFileSystem()
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+        await load(viewModel)
+        viewModel.navigate(to: second)
+        await waitUntilLoaded(viewModel)
+        let history = viewModel.navigationHistory
+        fileSystem.setError(NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError), for: sandbox.allowedDirectory)
+
+        viewModel.goBack()
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.currentDirectory, second)
+        XCTAssertEqual(viewModel.navigationHistory, history)
+    }
+
+    func testTimedOutHistoryReadRetainsCompleteHistory() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let second = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Second")
+        let fileSystem = NeverCompletingFileSystem()
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy, directoryLoadTimeout: 0.01)
+        await load(viewModel)
+        viewModel.navigate(to: second)
+        await waitUntilLoaded(viewModel)
+        let history = viewModel.navigationHistory
+        fileSystem.neverCompletes = true
+
+        viewModel.goBack()
+        await waitUntilLoaded(viewModel)
+
+        XCTAssertEqual(viewModel.currentDirectory, second)
+        XCTAssertEqual(viewModel.navigationHistory, history)
+        XCTAssertTrue(viewModel.loadFailure?.isTimedOut == true)
+    }
+
+    func testSupersededHistoryLoadCannotCommitAfterNewerNavigation() async throws {
+        let sandbox = try SandboxFixture(testCase: self)
+        let second = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Second")
+        let newest = try sandbox.temporaryDirectory.folder("AllowedSandbox/Allowed/Newest")
+        let fileSystem = SuspendedFileSystem()
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, fileSystem: fileSystem, accessPolicy: sandbox.policy)
+        viewModel.navigate(to: second)
+        await fileSystem.waitForRead()
+        fileSystem.resume(items: [])
+        await waitUntilLoaded(viewModel)
+
+        viewModel.goBack()
+        await fileSystem.waitForRead()
+        viewModel.navigate(to: newest)
+        await fileSystem.waitForRead()
+        fileSystem.resumeNewest(items: [])
+        await waitUntilLoaded(viewModel)
+        fileSystem.resume(items: [])
+        await Task.yield()
+
+        XCTAssertEqual(viewModel.currentDirectory, newest)
+        XCTAssertEqual(viewModel.navigationHistory.current, newest)
+        XCTAssertEqual(viewModel.backDestination, second)
+    }
+
     private func load(_ viewModel: FilePaneViewModel) async {
         await withCheckedContinuation { continuation in
             viewModel.loadCurrentDirectory {
