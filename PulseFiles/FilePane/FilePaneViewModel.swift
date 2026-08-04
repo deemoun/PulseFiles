@@ -2,6 +2,10 @@ import Foundation
 
 @MainActor
 final class FilePaneViewModel {
+    private struct PendingHistoryTransition {
+        let prior: NavigationHistory
+        let destination: NavigationHistory
+    }
     private let fileSystem: FileSystemServicing
     private let accessPolicy: SandboxFileAccessPolicy
     private let snapshotCache = DirectorySnapshotCache()
@@ -326,13 +330,31 @@ final class FilePaneViewModel {
     }
 
     func goBack() {
-        guard let url = state.history.goBack() else { return }
-        load(directory: url, addToHistory: false)
+        var destinationHistory = state.history
+        guard let url = destinationHistory.goBack() else { return }
+        loadHistoryDestination(url, destinationHistory: destinationHistory)
     }
 
     func goForward() {
-        guard let url = state.history.goForward() else { return }
-        load(directory: url, addToHistory: false)
+        var destinationHistory = state.history
+        guard let url = destinationHistory.goForward() else { return }
+        loadHistoryDestination(url, destinationHistory: destinationHistory)
+    }
+
+    private func loadHistoryDestination(_ directory: URL, destinationHistory: NavigationHistory) {
+        let transition = PendingHistoryTransition(prior: state.history, destination: destinationHistory)
+        do {
+            // History may outlive a removable volume or security-scoped grant, so
+            // revalidate it before starting (and again inside the scoped read).
+            try accessPolicy.validateAccess(to: directory)
+        } catch {
+            state.history = transition.prior
+            loadFailure = DirectoryLoadFailure(directory: directory, error: error)
+            errorMessage = error.localizedDescription
+            onChange?()
+            return
+        }
+        load(directory: directory, addToHistory: false, historyTransition: transition)
     }
 
     func toggleHiddenFiles() {
@@ -409,6 +431,7 @@ final class FilePaneViewModel {
     private func load(
         directory: URL,
         addToHistory: Bool,
+        historyTransition: PendingHistoryTransition? = nil,
         forceRefresh: Bool = false,
         changeGeneration: Int? = nil,
         onLoaded: (() -> Void)? = nil
@@ -463,6 +486,7 @@ final class FilePaneViewModel {
                     directory: directory,
                     previousDirectory: previousDirectory,
                     previousItems: previousItems,
+                    historyTransition: historyTransition,
                     changeGeneration: loadChangeGeneration
                 )
             }
@@ -481,7 +505,7 @@ final class FilePaneViewModel {
                 )
                 guard !Task.isCancelled else {
                     await MainActor.run { [weak self] in
-                        self?.finishCancelledLoad(loadID: loadID, changeGeneration: loadChangeGeneration)
+                        self?.finishCancelledLoad(loadID: loadID, historyTransition: historyTransition, changeGeneration: loadChangeGeneration)
                     }
                     return
                 }
@@ -494,6 +518,7 @@ final class FilePaneViewModel {
                         previousItems: previousItems,
                         previousListingWasComplete: previousListingWasComplete,
                         addToHistory: addToHistory,
+                        historyTransition: historyTransition,
                         changeGeneration: loadChangeGeneration,
                         onLoaded: onLoaded
                     )
@@ -501,7 +526,7 @@ final class FilePaneViewModel {
             } catch {
                 await MainActor.run { [weak self] in
                     if error is CancellationError || Task.isCancelled {
-                        self?.finishCancelledLoad(loadID: loadID, changeGeneration: loadChangeGeneration)
+                        self?.finishCancelledLoad(loadID: loadID, historyTransition: historyTransition, changeGeneration: loadChangeGeneration)
                     } else {
                         self?.finishFailedLoad(
                             loadID: loadID,
@@ -509,6 +534,7 @@ final class FilePaneViewModel {
                             error: error,
                             previousDirectory: previousDirectory,
                             previousItems: previousItems,
+                            historyTransition: historyTransition,
                             changeGeneration: loadChangeGeneration
                         )
                     }
@@ -556,6 +582,7 @@ final class FilePaneViewModel {
         previousItems: [FileItem],
         previousListingWasComplete: Bool,
         addToHistory: Bool,
+        historyTransition: PendingHistoryTransition?,
         changeGeneration: Int,
         onLoaded: (() -> Void)?
     ) {
@@ -575,7 +602,11 @@ final class FilePaneViewModel {
             partialRefreshFailure = partialFailure
         }
         state.currentDirectory = directory
-        if addToHistory && directory != previousDirectory { state.history.visit(directory) }
+        if let historyTransition {
+            state.history = historyTransition.destination
+        } else if addToHistory && directory != previousDirectory {
+            state.history.visit(directory)
+        }
         onDirectoryChanged?(directory)
         onTabsChanged?()
         directoryMonitor.startMonitoring(directory)
@@ -586,11 +617,12 @@ final class FilePaneViewModel {
         resolvePendingRefresh(afterLoadGeneration: changeGeneration)
     }
 
-    private func finishFailedLoad(loadID: Int, directory: URL, error: Error, previousDirectory: URL, previousItems: [FileItem], changeGeneration: Int) {
+    private func finishFailedLoad(loadID: Int, directory: URL, error: Error, previousDirectory: URL, previousItems: [FileItem], historyTransition: PendingHistoryTransition?, changeGeneration: Int) {
         guard isCurrentLoad(loadID) else { return }
         completeLoadTasks(for: loadID)
         DiagnosticLogger.log(.error, category: "FilePane", "Directory load failed: path=\(DiagnosticLogger.sanitizedPath(directory)); reason=\(error.localizedDescription)")
         state.currentDirectory = previousDirectory
+        if let historyTransition { state.history = historyTransition.prior }
         items = previousItems
         loadFailure = DirectoryLoadFailure(directory: directory, error: error)
         errorMessage = error.localizedDescription
@@ -650,6 +682,7 @@ final class FilePaneViewModel {
         directory: URL,
         previousDirectory: URL,
         previousItems: [FileItem],
+        historyTransition: PendingHistoryTransition?,
         changeGeneration: Int
     ) {
         guard isCurrentLoad(loadID) else { return }
@@ -662,6 +695,7 @@ final class FilePaneViewModel {
         loadTask = nil
         loadWatchdogTask = nil
         state.currentDirectory = previousDirectory
+        if let historyTransition { state.history = historyTransition.prior }
         items = previousItems
         let timeoutError = DirectoryLoadTimeoutError(timeout: directoryLoadTimeout)
         loadFailure = DirectoryLoadFailure(directory: directory, error: timeoutError)
@@ -682,9 +716,10 @@ final class FilePaneViewModel {
         }
     }
 
-    private func finishCancelledLoad(loadID: Int, changeGeneration: Int) {
+    private func finishCancelledLoad(loadID: Int, historyTransition: PendingHistoryTransition?, changeGeneration: Int) {
         guard isCurrentLoad(loadID) else { return }
         completeLoadTasks(for: loadID)
+        if let historyTransition { state.history = historyTransition.prior }
         isLoading = false
         onChange?()
         resolvePendingRefresh(afterLoadGeneration: changeGeneration)
