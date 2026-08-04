@@ -1,66 +1,13 @@
 import AppKit
 
-struct DropTransferPolicy {
-    enum Operation {
-        case copy
-        case move
-    }
-
-    typealias VolumeIdentifierProvider = (URL) -> String?
-
-    var volumeIdentifierProvider: VolumeIdentifierProvider = { (url: URL) -> String? in
-        let values = try? url.resourceValues(forKeys: [.volumeURLKey])
-        return (values?.allValues[.volumeURLKey] as? URL)
-            .map { $0.standardizedFileURL.path }
-    }
-
-    func resolvedOperation(for sources: [URL], destinationDirectory: URL, isInternalAppDrag: Bool, optionForcesCopy: Bool) -> Operation {
-        guard !optionForcesCopy, isInternalAppDrag, !sources.isEmpty else { return .copy }
-        guard sourcesShareVolume(with: destinationDirectory, sources: sources) else { return .copy }
-        return .move
-    }
-
-    func sourcesShareVolume(with destinationDirectory: URL, sources: [URL]) -> Bool {
-        guard let destinationVolume = volumeIdentifierProvider(destinationDirectory) else { return false }
-        return sources.allSatisfy { source in
-            volumeIdentifierProvider(source) == destinationVolume
-        }
-    }
-}
-
 final class FilePaneViewController: NSViewController {
-    private enum ColumnID {
-        static let name = "name"
-        static let fileExtension = "extension"
-        static let kind = "kind"
-        static let size = "size"
-        static let modified = "modified"
-        static let created = "created"
-        static let added = "added"
-        static let accessed = "accessed"
-    }
-
-    private struct ColumnMetrics {
-        let compactWidth: CGFloat
-        let singlePaneMinimumWidth: CGFloat
-        let singlePaneWeight: CGFloat
-    }
-
-    private static let columnMetrics: [String: ColumnMetrics] = [
-        ColumnID.name: ColumnMetrics(compactWidth: 300, singlePaneMinimumWidth: 210, singlePaneWeight: 0.30),
-        ColumnID.fileExtension: ColumnMetrics(compactWidth: 90, singlePaneMinimumWidth: 70, singlePaneWeight: 0.08),
-        ColumnID.kind: ColumnMetrics(compactWidth: 130, singlePaneMinimumWidth: 110, singlePaneWeight: 0.12),
-        ColumnID.size: ColumnMetrics(compactWidth: 90, singlePaneMinimumWidth: 90, singlePaneWeight: 0.08),
-        ColumnID.modified: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105),
-        ColumnID.created: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105),
-        ColumnID.added: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105),
-        ColumnID.accessed: ColumnMetrics(compactWidth: 155, singlePaneMinimumWidth: 140, singlePaneWeight: 0.105)
-    ]
+    let tableAdapter = FilePaneTableAdapter()
 
     let paneID: PaneID
     let viewModel: FilePaneViewModel
     let tableView = FileTableView()
-    private let keyboardNavigationController = PaneKeyboardNavigationController()
+    let keyboardNavigationController = PaneKeyboardNavigationController()
+    let contextMenuProvider: FilePaneContextMenuProvider
 
     var onActivate: (() -> Void)?
     var onSwitchPane: (() -> Void)?
@@ -70,7 +17,7 @@ final class FilePaneViewController: NSViewController {
     var onCommand: ((MainCommand) -> Void)?
     var onOpenURL: ((URL) -> Void)?
     var onOpenWithApplication: ((URL, URL?) -> Void)?
-    var onDropURLs: (([URL], URL, Bool) -> Void)?
+    var onDropFiles: (([URL], URL, Bool) -> Void)?
     var onRenameItem: ((FileItem, String) -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
     var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
@@ -80,47 +27,45 @@ final class FilePaneViewController: NSViewController {
     var onTabsChanged: ((PaneState) -> Void)?
     var onPresentationModeChanged: ((PanePresentationMode) -> Void)?
 
-    private let header = NSVisualEffectView()
-    private let breadcrumb = BreadcrumbView()
-    private let directoryIcon = NSImageView()
-    private let hiddenButton = NSButton()
-    private let presentationSelector = NSSegmentedControl()
-    private let tabSelector = NSSegmentedControl()
-    private let scrollView = NSScrollView()
-    private let contentOverlay = PaneContentOverlayView()
-    private let statusView = PaneStatusView()
-    private let activeStripe = NSView()
-    private var isReloadingData = false
-    private var isPaneActive = false
-    private var dimmedFileURLs = Set<String>()
-    private var previousSelectedRowIndexes = IndexSet()
+    let header = NSVisualEffectView()
+    let breadcrumb = BreadcrumbView()
+    let directoryIcon = NSImageView()
+    let hiddenButton = NSButton()
+    let presentationSelector = NSSegmentedControl()
+    let tabSelector = NSSegmentedControl()
+    let scrollView = NSScrollView()
+    let contentOverlay = PaneContentOverlayView()
+    let statusView = PaneStatusView()
+    let activeStripe = NSView()
+    var isReloadingData = false
+    var isPaneActive = false
+    var dimmedFileURLs = Set<String>()
+    var previousSelectedRowIndexes = IndexSet()
     /// URLs survive sorting, filtering, and monitor-driven reloads; row indexes do not.
-    private var previousSelectionURLs: [URL] = []
-    private var pendingSelectionURL: URL?
-    private var quickSearchFocusedURL: URL?
-    private var inlineRenameRow: Int?
+    var previousSelectionURLs: [URL] = []
+    var pendingSelectionURL: URL?
+    var quickSearchFocusedURL: URL?
+    var inlineRenameRow: Int?
     /// The item snapshot remains valid while a refresh is deferred, even when
     /// filtering, sorting, or navigation has already changed the view model.
-    private var inlineRenameItem: FileItem?
-    private var inlineRenameSession = InlineRenameCommitSession()
-    private var hasDeferredTableReload = false
-    private var hasOppositePane = true
+    var inlineRenameItem: FileItem?
+    var inlineRenameSession = InlineRenameCommitSession()
+    let inlineRenameCoordinator = InlineRenameCoordinator()
+    var hasDeferredTableReload = false
+    var hasOppositePane = true
     /// Single-pane tables have room to breathe, so keep metadata away from column dividers.
     /// Compact dual-pane tables retain their tighter spacing to preserve useful width.
-    private var metadataColumnContentInset: CGFloat { hasOppositePane ? 6 : 14 }
-    private var lastAppliedColumnLayoutWidth: CGFloat = 0
-    private var dualPaneGridStyleMask = NSTableView.GridLineStyle()
-    private lazy var dropProbeCache = FileSystemProbeCache()
-    private lazy var dropTransferPolicy = DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
+    var metadataColumnContentInset: CGFloat { hasOppositePane ? 6 : 14 }
+    lazy var dropProbeCache = FileSystemProbeCache()
+    lazy var dropCoordinator = FilePaneDropCoordinator(transferPolicy: DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
         guard let self else { return nil }
         self.dropProbeCache.requestVolumeIdentifier(url)
         return self.dropProbeCache.volumeIdentifier(for: url)
-    })
-    private let accessGrantService = FolderAccessGrantService.shared
-    private let openWithApplicationResolver: OpenWithMenuApplicationResolver
-    private lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
-    private let thumbnailLoader = ThumbnailLoadingService()
-    private var thumbnailTasks: [URL: Task<Void, Never>] = [:]
+    }))
+    let accessGrantService = FolderAccessGrantService.shared
+    lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
+    let thumbnailLoader = ThumbnailLoadingService()
+    var thumbnailTasks: [URL: Task<Void, Never>] = [:]
     private(set) var presentationMode: PanePresentationMode
 
     init(
@@ -132,7 +77,7 @@ final class FilePaneViewController: NSViewController {
         self.paneID = paneID
         self.viewModel = viewModel
         self.presentationMode = presentationMode
-        self.openWithApplicationResolver = openWithApplicationResolver ?? OpenWithMenuApplicationResolver()
+        self.contextMenuProvider = FilePaneContextMenuProvider(openWithApplicationResolver: openWithApplicationResolver ?? OpenWithMenuApplicationResolver())
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -151,22 +96,22 @@ final class FilePaneViewController: NSViewController {
         viewModel.focusedURL.flatMap(item(for:))
     }
 
-    private var syntheticFocusedDestination: PaneFocusDestination?
+    var syntheticFocusedDestination: PaneFocusDestination?
 
-    private var focusedDestination: PaneFocusDestination? {
+    var focusedDestination: PaneFocusDestination? {
         if syntheticFocusedDestination == .parent, canShowParentRow { return .parent }
         return viewModel.focusedURL.map(PaneFocusDestination.item)
     }
 
-    private var displayedDestinations: [PaneFocusDestination] {
+    var displayedDestinations: [PaneFocusDestination] {
         (canShowParentRow ? [.parent] : []) + viewModel.visibleItems.map { .item($0.url) }
     }
 
-    private func setFocusedURL(_ url: URL?) {
+    func setFocusedURL(_ url: URL?) {
         setFocusedDestination(url.map(PaneFocusDestination.item))
     }
 
-    private func setFocusedDestination(_ destination: PaneFocusDestination?) {
+    func setFocusedDestination(_ destination: PaneFocusDestination?) {
         let oldRow = row(for: focusedDestination)
         syntheticFocusedDestination = destination == .parent ? .parent : nil
         switch destination {
@@ -179,19 +124,19 @@ final class FilePaneViewController: NSViewController {
         tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
     }
 
-    private var parentURL: URL {
+    var parentURL: URL {
         viewModel.currentDirectory.deletingLastPathComponent()
     }
 
-    private var canNavigateToParent: Bool {
+    var canNavigateToParent: Bool {
         parentURL != viewModel.currentDirectory && viewModel.canNavigate(to: parentURL)
     }
 
-    private var canShowParentRow: Bool {
+    var canShowParentRow: Bool {
         viewModel.searchQuery.isEmpty && canNavigateToParent
     }
 
-    private var realRowOffset: Int { canShowParentRow ? 1 : 0 }
+    var realRowOffset: Int { canShowParentRow ? 1 : 0 }
 
     override func loadView() {
         let paneView = PaneContainerView()
@@ -204,6 +149,11 @@ final class FilePaneViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         volumeStatusCache.onChange = { [weak self] in self?.configureStatusView() }
+        contextMenuProvider.onCommand = { [weak self] command in self?.onCommand?(command) }
+        contextMenuProvider.onOpenWithApplication = { [weak self] file, app in self?.onOpenWithApplication?(file, app) }
+        inlineRenameCoordinator.onCommit = { [weak self] url, generation, name, cancelled in
+            self?.commitInlineRename(itemURL: url, sessionGeneration: generation, proposedName: name, isCancelled: cancelled)
+        }
         buildHeader()
         buildTable()
         buildLayout()
@@ -215,7 +165,7 @@ final class FilePaneViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        applyColumnLayout()
+        tableAdapter.applyLayout(hasOppositePane: hasOppositePane)
     }
 
     func loadDirectory(selecting url: URL? = nil, onLoaded: (() -> Void)? = nil) {
@@ -320,10 +270,10 @@ final class FilePaneViewController: NSViewController {
         thumbnailTasks.removeAll()
         tableView.rowHeight = mode == .gallery ? 72 : (mode == .brief ? 26 : 34)
         tableView.headerView = mode == .brief ? nil : NSTableHeaderView()
-        for column in tableView.tableColumns where column.identifier.rawValue != ColumnID.name {
+        for column in tableView.tableColumns where column.identifier.rawValue != FilePaneTableAdapter.ColumnID.name {
             column.isHidden = mode != .list
         }
-        applyColumnLayout(force: true)
+        tableAdapter.applyLayout(hasOppositePane: hasOppositePane, force: true)
         requestTableReload()
         if notify { onPresentationModeChanged?(mode) }
     }
@@ -391,11 +341,11 @@ final class FilePaneViewController: NSViewController {
     func setHasOppositePane(_ hasOppositePane: Bool) {
         guard self.hasOppositePane != hasOppositePane else { return }
         self.hasOppositePane = hasOppositePane
-        applyColumnLayout(force: true)
+        tableAdapter.applyLayout(hasOppositePane: hasOppositePane, force: true)
         requestTableReload()
     }
 
-    private func updatePaneChrome() {
+    func updatePaneChrome() {
         activeStripe.layer?.backgroundColor = isPaneActive ? NSColor.systemBlue.cgColor : NSColor.clear.cgColor
         view.layer?.borderWidth = 1
         view.layer?.borderColor = isPaneActive ? LiquidGlassStyle.activeStroke.cgColor : LiquidGlassStyle.panelStroke.cgColor
@@ -480,7 +430,7 @@ final class FilePaneViewController: NSViewController {
         return true
     }
 
-    private func updateQuickSearchQuery(_ query: String) {
+    func updateQuickSearchQuery(_ query: String) {
         setSearchQuery(query)
         onSearchQueryChanged?(query)
     }
@@ -490,7 +440,7 @@ final class FilePaneViewController: NSViewController {
         requestTableReload()
     }
 
-    private func buildHeader() {
+    func buildHeader() {
         header.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         header.blendingMode = .withinWindow
         header.state = .active
@@ -536,7 +486,7 @@ final class FilePaneViewController: NSViewController {
         viewModel.selectTab(id: viewModel.tabs[tabSelector.selectedSegment].id)
     }
 
-    private func refreshTabSelector() {
+    func refreshTabSelector() {
         tabSelector.segmentCount = viewModel.tabs.count
         for (index, tab) in viewModel.tabs.enumerated() {
             let title = tab.currentDirectory.lastPathComponent.isEmpty ? "/" : tab.currentDirectory.lastPathComponent
@@ -546,7 +496,7 @@ final class FilePaneViewController: NSViewController {
         tabSelector.selectedSegment = viewModel.state.activeTabIndex
     }
 
-    private func buildTable() {
+    func buildTable() {
         tableView.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.table(for: paneID))
         tableView.delegate = self
         tableView.dataSource = self
@@ -562,16 +512,8 @@ final class FilePaneViewController: NSViewController {
         tableView.target = self
         tableView.headerView = NSTableHeaderView()
         tableView.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
-        dualPaneGridStyleMask = tableView.gridStyleMask
 
-        addColumn(identifier: ColumnID.name, title: "Name", width: Self.columnMetrics[ColumnID.name]?.compactWidth ?? 360)
-        addColumn(identifier: ColumnID.fileExtension, title: "Extension", width: 90)
-        addColumn(identifier: ColumnID.kind, title: "Kind", width: Self.columnMetrics[ColumnID.kind]?.compactWidth ?? 140)
-        addColumn(identifier: ColumnID.size, title: "Size", width: Self.columnMetrics[ColumnID.size]?.compactWidth ?? 90)
-        addColumn(identifier: ColumnID.modified, title: "Modified", width: Self.columnMetrics[ColumnID.modified]?.compactWidth ?? 170)
-        addColumn(identifier: ColumnID.created, title: "Created", width: 155)
-        addColumn(identifier: ColumnID.added, title: "Added", width: 155)
-        addColumn(identifier: ColumnID.accessed, title: "Accessed", width: 155)
+        tableAdapter.configure(tableView: tableView, scrollView: scrollView)
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -580,69 +522,7 @@ final class FilePaneViewController: NSViewController {
         scrollView.drawsBackground = false
     }
 
-    private func addColumn(identifier: String, title: String, width: CGFloat) {
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(identifier))
-        column.title = title
-        column.width = width
-        column.minWidth = identifier == ColumnID.name ? 180 : 70
-        column.sortDescriptorPrototype = NSSortDescriptor(key: identifier, ascending: true)
-        tableView.addTableColumn(column)
-    }
-
-    private func applyColumnLayout(force: Bool = false) {
-        guard tableView.tableColumns.count == Self.columnMetrics.count else { return }
-        let availableWidth = scrollView.contentView.bounds.width - 1
-        guard availableWidth > 0 else { return }
-        guard force || abs(availableWidth - lastAppliedColumnLayoutWidth) > 8 else { return }
-        lastAppliedColumnLayoutWidth = availableWidth
-
-        if hasOppositePane {
-            scrollView.hasHorizontalScroller = true
-            tableView.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
-            tableView.gridStyleMask = dualPaneGridStyleMask
-            setColumnWidths(Self.columnMetrics.mapValues(\.compactWidth))
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollView.contentView.bounds.origin.y))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-            return
-        }
-
-        scrollView.hasHorizontalScroller = false
-        tableView.columnAutoresizingStyle = .noColumnAutoresizing
-        tableView.gridStyleMask = []
-        let targetWidth = max(availableWidth - 2, 0)
-        let minimumWidths = Self.columnMetrics.mapValues(\.singlePaneMinimumWidth)
-        let minimumTotal = minimumWidths.values.reduce(CGFloat(0), +)
-        guard targetWidth > minimumTotal else {
-            setColumnWidths(fittedMinimumWidths(minimumWidths, targetWidth: targetWidth))
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollView.contentView.bounds.origin.y))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-            return
-        }
-
-        setColumnWidths(Self.columnMetrics.mapValues { metrics in
-            max(metrics.singlePaneMinimumWidth, floor(targetWidth * metrics.singlePaneWeight))
-        })
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollView.contentView.bounds.origin.y))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-    }
-
-    private func fittedMinimumWidths(_ widths: [String: CGFloat], targetWidth: CGFloat) -> [String: CGFloat] {
-        let minimumTotal = widths.values.reduce(CGFloat(0), +)
-        guard minimumTotal > targetWidth, targetWidth > 0 else { return widths }
-        let scale = targetWidth / minimumTotal
-        return widths.mapValues { max(70, floor($0 * scale)) }
-    }
-
-    private func setColumnWidths(_ widths: [String: CGFloat]) {
-        for column in tableView.tableColumns {
-            guard let width = widths[column.identifier.rawValue] else { continue }
-            if abs(column.width - width) > 1 {
-                column.width = width
-            }
-        }
-    }
-
-    private func buildLayout() {
+    func buildLayout() {
         [header, scrollView, contentOverlay, statusView, activeStripe].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview($0)
@@ -691,7 +571,7 @@ final class FilePaneViewController: NSViewController {
         ])
     }
 
-    private func bindViewModel() {
+    func bindViewModel() {
         viewModel.onChange = { [weak self] in self?.reloadData() }
         viewModel.onDirectoryChanged = { [weak self] url in self?.onDirectoryChanged?(url) }
         viewModel.onDisplayPreferencesChanged = { [weak self] showsHiddenFiles, sort in
@@ -705,22 +585,22 @@ final class FilePaneViewController: NSViewController {
         reloadData()
     }
 
-    private func item(forRow row: Int) -> FileItem? {
+    func item(forRow row: Int) -> FileItem? {
         let index = row - realRowOffset
         guard viewModel.visibleItems.indices.contains(index) else { return nil }
         return viewModel.visibleItems[index]
     }
 
-    private func row(for item: FileItem) -> Int? {
+    func row(for item: FileItem) -> Int? {
         guard let index = viewModel.visibleItems.firstIndex(where: { isSameFileURL($0.url, item.url) }) else { return nil }
         return index + realRowOffset
     }
 
-    private func isParentRow(_ row: Int) -> Bool {
+    func isParentRow(_ row: Int) -> Bool {
         canShowParentRow && row == 0
     }
 
-    private func row(for destination: PaneFocusDestination?) -> Int? {
+    func row(for destination: PaneFocusDestination?) -> Int? {
         switch destination {
         case .parent: return canShowParentRow ? 0 : nil
         case let .item(url): return item(for: url).flatMap(row(for:))
@@ -728,7 +608,7 @@ final class FilePaneViewController: NSViewController {
         }
     }
 
-    private func defaultFocusRow() -> Int? {
+    func defaultFocusRow() -> Int? {
         if !viewModel.visibleItems.isEmpty {
             return realRowOffset
         }
@@ -738,7 +618,7 @@ final class FilePaneViewController: NSViewController {
         return nil
     }
 
-    private func selectDefaultRow() {
+    func selectDefaultRow() {
         if let focusedURL = viewModel.focusedURL,
            let item = item(for: focusedURL), let row = row(for: item) {
             tableView.scrollRowToVisible(row)
@@ -760,14 +640,14 @@ final class FilePaneViewController: NSViewController {
         requestTableReload()
     }
 
-    private func reloadData() {
+    func reloadData() {
         requestTableReload()
     }
 
     /// Keeps AppKit's field editor alive while the table's backing listing is
     /// changing. This is deliberately a defer/coalesce policy: the current
     /// rename is completed or cancelled before the table is rebuilt.
-    private func requestTableReload() {
+    func requestTableReload() {
         guard let editedItem = inlineRenameItem,
               inlineRenameSession.isEditing else {
             performTableReload()
@@ -793,7 +673,7 @@ final class FilePaneViewController: NSViewController {
         }
     }
 
-    private func performTableReload() {
+    func performTableReload() {
         thumbnailTasks.values.forEach { $0.cancel() }
         thumbnailTasks.removeAll()
         isReloadingData = true
@@ -822,7 +702,7 @@ final class FilePaneViewController: NSViewController {
         hiddenButton.image = NSImage(systemSymbolName: hiddenSymbol, accessibilityDescription: "Toggle Hidden Files".localized)
     }
 
-    private func loadThumbnail(for item: FileItem, into imageView: GalleryImageView) {
+    func loadThumbnail(for item: FileItem, into imageView: GalleryImageView) {
         thumbnailTasks[item.url]?.cancel()
         let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         thumbnailTasks[item.url] = Task { [weak self, weak imageView] in
@@ -834,13 +714,13 @@ final class FilePaneViewController: NSViewController {
         }
     }
 
-    private func flushDeferredTableReloadIfNeeded() {
+    func flushDeferredTableReloadIfNeeded() {
         guard hasDeferredTableReload else { return }
         hasDeferredTableReload = false
         performTableReload()
     }
 
-    private func showInlineRenameItemRemovedAlert() {
+    func showInlineRenameItemRemovedAlert() {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Rename Cancelled".localized
@@ -854,7 +734,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     @discardableResult
-    private func selectPendingItemIfAvailable() -> Bool {
+    func selectPendingItemIfAvailable() -> Bool {
         guard !viewModel.isLoading, let pendingSelectionURL else { return false }
         let selectedURL = pendingSelectionURL
         guard let itemIndex = viewModel.visibleItems.firstIndex(where: {
@@ -871,18 +751,18 @@ final class FilePaneViewController: NSViewController {
         return true
     }
 
-    private func isSameFileURL(_ lhs: URL, _ rhs: URL) -> Bool {
+    func isSameFileURL(_ lhs: URL, _ rhs: URL) -> Bool {
         normalizedPath(lhs) == normalizedPath(rhs)
     }
 
     /// Finder-style upward navigation should leave the folder we just left
     /// selected in its parent, including when that folder has no children.
-    private func selectCurrentDirectoryWhenReturningToParent(_ destination: URL?) {
+    func selectCurrentDirectoryWhenReturningToParent(_ destination: URL?) {
         guard let destination, isSameFileURL(destination, parentURL) else { return }
         pendingSelectionURL = viewModel.currentDirectory
     }
 
-    private func selectFilenameStem(for item: FileItem) {
+    func selectFilenameStem(for item: FileItem) {
         guard !item.isDirectory,
               !item.url.pathExtension.isEmpty,
               let editor = view.window?.fieldEditor(false, for: tableView) else { return }
@@ -891,15 +771,15 @@ final class FilePaneViewController: NSViewController {
         editor.selectedRange = NSRange(location: 0, length: stem.count)
     }
 
-    private func normalizedPath(_ url: URL) -> String {
+    func normalizedPath(_ url: URL) -> String {
         url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
-    private func isDimmed(_ item: FileItem) -> Bool {
+    func isDimmed(_ item: FileItem) -> Bool {
         dimmedFileURLs.contains(normalizedPath(item.url))
     }
 
-    private func restorePreviousSelectionIfPossible() {
+    func restorePreviousSelectionIfPossible() {
         guard pendingSelectionURL == nil, !previousSelectionURLs.isEmpty else { return }
 
         let rows = previousSelectionURLs.reduce(into: IndexSet()) { partialResult, url in
@@ -911,7 +791,7 @@ final class FilePaneViewController: NSViewController {
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
     }
 
-    private func configureStatusView() {
+    func configureStatusView() {
         volumeStatusCache.resolveIfNeeded(
             for: viewModel.currentDirectory,
             loadGeneration: viewModel.loadGeneration
@@ -929,7 +809,7 @@ final class FilePaneViewController: NSViewController {
         )
     }
 
-    private func configureContentOverlay() {
+    func configureContentOverlay() {
         contentOverlay.configure(
             paneID: paneID,
             isLoading: viewModel.isLoading,
@@ -943,7 +823,7 @@ final class FilePaneViewController: NSViewController {
     /// parent navigation directly in the overlay when it is safe to do so.
     /// Going through `goParent()` preserves the pending-selection behavior and
     /// the sandbox access check used by the regular parent-row interaction.
-    private func contentOverlayActions() -> [PaneStatusView.Action] {
+    func contentOverlayActions() -> [PaneStatusView.Action] {
         var actions = recoveryActions()
         guard viewModel.visibleItems.isEmpty,
               !viewModel.isLoading,
@@ -963,7 +843,7 @@ final class FilePaneViewController: NSViewController {
         return actions
     }
 
-    private func recoveryActions() -> [PaneStatusView.Action] {
+    func recoveryActions() -> [PaneStatusView.Action] {
         guard let loadFailure = viewModel.loadFailure, !viewModel.isLoading else { return [] }
         if loadFailure.isOutsideSandbox {
             return [
@@ -1005,7 +885,7 @@ final class FilePaneViewController: NSViewController {
         return []
     }
 
-    private func chooseRecoveryDirectory() {
+    func chooseRecoveryDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -1022,7 +902,7 @@ final class FilePaneViewController: NSViewController {
         }
     }
 
-    private func openGrantedRecoveryDirectory(_ url: URL) {
+    func openGrantedRecoveryDirectory(_ url: URL) {
         do {
             let accessibleURL = try grantedDirectoryURL(for: url)
             onDirectoryAccessGranted?(accessibleURL)
@@ -1032,7 +912,7 @@ final class FilePaneViewController: NSViewController {
         }
     }
 
-    private func grantedDirectoryURL(for url: URL) throws -> URL {
+    func grantedDirectoryURL(for url: URL) throws -> URL {
         if accessGrantService.hasGrant(containing: url) {
             try viewModel.validateAccess(to: url)
             return url
@@ -1048,7 +928,7 @@ final class FilePaneViewController: NSViewController {
         return grant.url
     }
 
-    private func showDirectoryAccessDeniedAlert() {
+    func showDirectoryAccessDeniedAlert() {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Folder Access Needed".localized
@@ -1074,386 +954,6 @@ final class FilePaneViewController: NSViewController {
     }
 }
 
-extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        viewModel.visibleItems.count + realRowOffset
-    }
-
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        let rowView = FileTableRowView()
-        rowView.drawsActiveSelection = isPaneActive
-        rowView.drawsKeyboardFocus = self.row(for: focusedDestination) == row
-        return rowView
-    }
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let identifier = tableColumn?.identifier.rawValue else { return nil }
-        if isParentRow(row) {
-            return parentCell(for: identifier)
-        }
-        guard let item = item(forRow: row) else { return nil }
-        let cell = NSTableCellView()
-        cell.alphaValue = isDimmed(item) ? 0.45 : 1
-        let text: NSTextField
-        if identifier == "name" {
-            let renameTextField = InlineRenameTextField(string: item.filename)
-            renameTextField.itemURL = item.url
-            renameTextField.sessionGeneration = inlineRenameSession.generation(for: item.url)
-            renameTextField.delegate = self
-            renameTextField.target = self
-            renameTextField.action = #selector(commitInlineRenameFromAction(_:))
-            text = renameTextField
-        } else {
-            text = NSTextField(labelWithString: string(for: item, column: identifier))
-        }
-        text.isEditable = identifier == "name"
-        text.isBordered = false
-        text.drawsBackground = false
-        text.lineBreakMode = .byTruncatingMiddle
-        if identifier == "name" {
-            if viewModel.quickSearchPresentation == .showAllAndHighlightMatches,
-               let match = viewModel.match(for: item), !match.ranges.isEmpty {
-                let attributed = NSMutableAttributedString(string: item.filename)
-                for range in match.ranges {
-                    attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.45), range: NSRange(range, in: item.filename))
-                }
-                text.attributedStringValue = attributed
-            }
-            text.textColor = FileTypeColorPalette.textColor(
-                for: item,
-                isSelected: tableView.isRowSelected(row),
-                isActivePane: isPaneActive,
-                appearance: view.effectiveAppearance
-            )
-        } else {
-            text.textColor = LiquidGlassStyle.label
-        }
-        text.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(text)
-
-        if identifier == "name" {
-            let imageView = GalleryImageView(image: FileIconProvider.shared.image(for: item.iconKey))
-            imageView.representedURL = item.url
-            imageView.imageScaling = .scaleProportionallyDown
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(imageView)
-            NSLayoutConstraint.activate([
-                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: presentationMode == .gallery ? 58 : 20),
-                imageView.heightAnchor.constraint(equalToConstant: presentationMode == .gallery ? 58 : 20),
-                text.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-            cell.imageView = imageView
-            if presentationMode == .gallery { loadThumbnail(for: item, into: imageView) }
-        } else {
-            text.alignment = identifier == "size" ? .right : .left
-            let inset = metadataColumnContentInset
-            NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: inset),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -inset),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-        }
-        cell.textField = text
-        return cell
-    }
-
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        reloadRowsForSelectionColorChange()
-        configureStatusView()
-        configureContentOverlay()
-        onSelectionChanged?(selectedItems)
-        // Selection changes not initiated by our focus-only arrow handling are
-        // standard AppKit mouse, modified-key, or accessibility mark gestures.
-        if !isReloadingData, tableView.selectedRow >= 0 {
-            let row = tableView.selectedRow
-            setFocusedDestination(isParentRow(row) ? .parent : item(forRow: row).map { .item($0.url) })
-        }
-        if !isReloadingData {
-            viewModel.setMarkedURLs(Set(selectedItems.map(\.url)))
-            previousSelectionURLs = selectedItems.map(\.url)
-        }
-        if !isReloadingData {
-            onActivate?()
-        }
-    }
-
-    func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
-        switch tableColumn.identifier.rawValue {
-        case "extension":
-            setSort(.extension)
-        case "kind":
-            setSort(.kind)
-        case "size":
-            setSort(.size)
-        case "modified":
-            setSort(.modified)
-        case "created":
-            setSort(.created)
-        case "added":
-            setSort(.added)
-        case "accessed":
-            setSort(.accessed)
-        default:
-            setSort(.name)
-        }
-    }
-
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        if !isReloadingData {
-            onActivate?()
-        }
-        return true
-    }
-
-    func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
-        tableColumn?.identifier.rawValue == "name"
-            && inlineRenameRow == row
-            && item(forRow: row) != nil
-    }
-
-    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
-        guard tableColumn?.identifier.rawValue == "name",
-              let item = item(forRow: row),
-              let proposedName = object as? String,
-              let generation = inlineRenameSession.generation(for: item.url) else { return }
-        commitInlineRename(itemURL: item.url, sessionGeneration: generation, proposedName: proposedName, isCancelled: false)
-    }
-
-    @objc private func commitInlineRenameFromAction(_ sender: NSTextField) {
-        guard let sender = sender as? InlineRenameTextField else { return }
-        commitInlineRename(
-            itemURL: sender.itemURL,
-            sessionGeneration: sender.sessionGeneration,
-            proposedName: sender.stringValue,
-            isCancelled: false
-        )
-    }
-
-    /// The sole submission path for an inline rename session. AppKit can send
-    /// an action, end-editing notification, and object value for one edit.
-    private func commitInlineRename(itemURL: URL?, sessionGeneration: UInt?, proposedName: String, isCancelled: Bool) {
-        guard let itemURL,
-              let sessionGeneration,
-              inlineRenameSession.matches(itemURL: itemURL, generation: sessionGeneration) else { return }
-
-        let item = inlineRenameItem
-        guard isCancelled || (item.map { FileManager.default.fileExists(atPath: $0.url.path) } ?? false) else {
-            inlineRenameSession.cancel()
-            clearInlineRenameState()
-            showInlineRenameItemRemovedAlert()
-            flushDeferredTableReloadIfNeeded()
-            return
-        }
-        let result = inlineRenameSession.commit(
-            itemURL: itemURL,
-            generation: sessionGeneration,
-            proposedName: proposedName,
-            originalName: item?.filename,
-            isCancelled: isCancelled
-        )
-        clearInlineRenameState()
-        if case let .rename(_, name) = result, let item {
-            onRenameItem?(item, name)
-        }
-        flushDeferredTableReloadIfNeeded()
-    }
-
-    private func item(for url: URL) -> FileItem? {
-        viewModel.visibleItems.first { isSameFileURL($0.url, url) }
-    }
-
-    private func updateInlineRenameField(at row: Int, for itemURL: URL) {
-        guard let column = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }),
-              let cell = tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? NSTableCellView,
-              let textField = cell.textField as? InlineRenameTextField else { return }
-        textField.itemURL = itemURL
-        textField.sessionGeneration = inlineRenameSession.generation(for: itemURL)
-    }
-
-    private func clearInlineRenameState() {
-        inlineRenameRow = nil
-        inlineRenameItem = nil
-    }
-
-    private func reloadRowsForSelectionColorChange() {
-        let currentSelectedRowIndexes = tableView.selectedRowIndexes
-        let changedRows = IndexSet(
-            previousSelectedRowIndexes.filter { !currentSelectedRowIndexes.contains($0) }
-                + currentSelectedRowIndexes.filter { !previousSelectedRowIndexes.contains($0) }
-        )
-        previousSelectedRowIndexes = currentSelectedRowIndexes
-        guard !changedRows.isEmpty else { return }
-        guard !inlineRenameSession.isEditing else {
-            hasDeferredTableReload = true
-            return
-        }
-        tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
-    }
-
-    private func pruneInvalidSelection() {
-        guard tableView.numberOfRows > 0 else {
-            tableView.deselectAll(nil)
-            return
-        }
-        let validRows = IndexSet(tableView.selectedRowIndexes.filter { row in
-            row >= 0 && row < tableView.numberOfRows
-        })
-        if validRows != tableView.selectedRowIndexes {
-            tableView.selectRowIndexes(validRows, byExtendingSelection: false)
-        }
-    }
-
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        guard let item = item(forRow: row) else { return nil }
-        let pasteboardItem = NSPasteboardItem()
-        pasteboardItem.setString(item.url.absoluteString, forType: .fileURL)
-        pasteboardItem.setString("PulseFiles", forType: .pulseFilesInternalDrag)
-        return pasteboardItem
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        [.copy, .move]
-    }
-
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return [] }
-        let urls = draggedFileURLs(from: info.draggingPasteboard)
-        guard !urls.isEmpty else { return [] }
-        let operation = resolvedDropOperation(for: urls, destination: destination, pasteboard: info.draggingPasteboard)
-        guard canDrop(urls, into: destination, operation: operation) else { return [] }
-        return operation == .copy ? .copy : .move
-    }
-
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-        guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return false }
-        let urls = draggedFileURLs(from: info.draggingPasteboard)
-        guard !urls.isEmpty else { return false }
-        let operation = resolvedDropOperation(for: urls, destination: destination, pasteboard: info.draggingPasteboard)
-        guard canDrop(urls, into: destination, operation: operation) else { return false }
-        onDropURLs?(urls, destination, operation == .copy)
-        return true
-    }
-
-    private func draggedFileURLs(from pasteboard: NSPasteboard) -> [URL] {
-        pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
-            .compactMap { object -> URL? in
-                if let url = object as? URL { return url }
-                return (object as? NSURL)?.absoluteURL
-            } ?? []
-    }
-
-    private func resolvedDropOperation(for urls: [URL], destination: URL, pasteboard: NSPasteboard) -> DropTransferPolicy.Operation {
-        dropTransferPolicy.resolvedOperation(
-            for: urls,
-            destinationDirectory: destination,
-            isInternalAppDrag: pasteboard.string(forType: .pulseFilesInternalDrag) != nil,
-            optionForcesCopy: NSApp.currentEvent?.modifierFlags.contains(.option) == true
-        )
-    }
-
-    private func canDrop(_ urls: [URL], into destination: URL, operation: DropTransferPolicy.Operation) -> Bool {
-        // NSTableView asks this synchronously on the main thread. Start probes,
-        // then wait for a later validation callback rather than blocking on a
-        // slow or disappearing volume.
-        dropProbeCache.requestDirectory(destination)
-        urls.forEach { dropProbeCache.requestDirectory($0) }
-        guard dropProbeCache.directoryValue(for: destination) == true else { return false }
-        guard urls.allSatisfy({ dropProbeCache.directoryValue(for: $0) != nil }) else { return false }
-        guard !isDroppingInsideDraggedDirectory(urls, destination: destination) else { return false }
-        guard operation == .copy || !isSameDirectoryMove(urls, destination: destination) else { return false }
-        return true
-    }
-
-    private func isSameDirectoryMove(_ urls: [URL], destination: URL) -> Bool {
-        urls.allSatisfy {
-            FilePathComparison.isSamePath($0.deletingLastPathComponent(), destination)
-        }
-    }
-
-    private func isDroppingInsideDraggedDirectory(_ urls: [URL], destination: URL) -> Bool {
-        urls.contains { source in
-            guard isDirectory(source) else { return false }
-            return FilePathComparison.isSameOrDescendant(destination, ofDirectory: source)
-        }
-    }
-
-    private func isDirectory(_ url: URL) -> Bool {
-        dropProbeCache.requestDirectory(url)
-        return dropProbeCache.directoryValue(for: url) == true
-    }
-
-    private func dropDestination(forRow row: Int, operation: NSTableView.DropOperation) -> URL? {
-        guard !isParentRow(row) else { return nil }
-        if operation == .on, let item = item(forRow: row), item.isDirectory {
-            return item.url
-        }
-        return currentDirectory
-    }
-
-    private func parentCell(for identifier: String) -> NSView {
-        let cell = NSTableCellView()
-        let text = NSTextField(labelWithString: identifier == "name" ? ".." : "--")
-        text.textColor = LiquidGlassStyle.secondaryLabel
-        text.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(text)
-        if identifier == "name" {
-            let imageView = NSImageView(image: NSImage(systemSymbolName: "arrow.up.folder", accessibilityDescription: "Parent Folder".localized) ?? NSImage())
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(imageView)
-            NSLayoutConstraint.activate([
-                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 20),
-                imageView.heightAnchor.constraint(equalToConstant: 20),
-                text.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-        } else {
-            let inset = metadataColumnContentInset
-            NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: inset),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -inset),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-        }
-        cell.textField = text
-        return cell
-    }
-
-
-    static func sizeDisplayString(for item: FileItem) -> String {
-        item.isDirectory && !item.isSymbolicLink ? "--" : FileSizeFormatter.string(fromByteCount: item.size)
-    }
-
-    private func string(for item: FileItem, column: String) -> String {
-        switch column {
-        case "name":
-            return item.displayName
-        case "size":
-            return Self.sizeDisplayString(for: item)
-        case "extension":
-            return item.fileExtension
-        case "kind":
-            return item.typeDescription
-        case "modified":
-            return item.modificationDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
-        case "created":
-            return item.creationDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
-        case "added":
-            return item.addedDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
-        case "accessed":
-            return item.accessDate.map(DateFormatter.pulseFilesTableDate.string(from:)) ?? "--"
-        default:
-            return ""
-        }
-    }
-}
-
 private extension PanePresentationMode {
     var symbolName: String {
         switch self {
@@ -1461,95 +961,6 @@ private extension PanePresentationMode {
         case .brief: return "list.dash"
         case .gallery: return "square.grid.2x2"
         }
-    }
-}
-
-private final class GalleryImageView: NSImageView {
-    var representedURL: URL?
-}
-
-extension FilePaneViewController: NSTextFieldDelegate {
-    func controlTextDidEndEditing(_ notification: Notification) {
-        guard let textField = notification.object as? InlineRenameTextField else { return }
-        let movement = (notification.userInfo?["NSTextMovement"] as? NSNumber)?.intValue
-        commitInlineRename(
-            itemURL: textField.itemURL,
-            sessionGeneration: textField.sessionGeneration,
-            proposedName: textField.stringValue,
-            isCancelled: movement == NSCancelTextMovement
-        )
-    }
-}
-
-private final class InlineRenameTextField: NSTextField {
-    var itemURL: URL?
-    var sessionGeneration: UInt?
-}
-
-/// Defines the safe table-refresh behavior while AppKit owns an inline editor.
-enum InlineRenameReloadPolicy {
-    enum Decision: Equatable {
-        case reloadNow
-        case deferReload
-        case cancelRenameAndReload
-    }
-
-    static func decision(isEditing: Bool, itemExists: Bool) -> Decision {
-        guard isEditing else { return .reloadNow }
-        return itemExists ? .deferReload : .cancelRenameAndReload
-    }
-}
-
-/// Tracks one edit independently from the table's lifecycle callbacks.
-/// A successful, unchanged, or cancelled decision consumes the session; stale
-/// callbacks therefore cannot submit a rename for a newer edit.
-struct InlineRenameCommitSession {
-    enum Result: Equatable {
-        case rename(URL, String)
-        case noChange
-        case cancelled
-        case ignored
-    }
-
-    private(set) var itemURL: URL?
-    /// Identity is a normalized path, rather than the table row which can
-    /// change under sorting, filtering, or a directory monitor notification.
-    private(set) var normalizedItemPath: String?
-    private(set) var generation: UInt = 0
-
-    var isEditing: Bool { itemURL != nil }
-
-    mutating func begin(for itemURL: URL) {
-        generation &+= 1
-        self.itemURL = itemURL
-        normalizedItemPath = normalizedPath(for: itemURL)
-    }
-
-    func generation(for itemURL: URL) -> UInt? {
-        matches(itemURL: itemURL, generation: generation) ? generation : nil
-    }
-
-    func matches(itemURL: URL, generation: UInt) -> Bool {
-        guard normalizedItemPath != nil else { return false }
-        return self.generation == generation && self.normalizedItemPath == normalizedPath(for: itemURL)
-    }
-
-    mutating func commit(itemURL: URL, generation: UInt, proposedName: String, originalName: String?, isCancelled: Bool) -> Result {
-        guard matches(itemURL: itemURL, generation: generation) else { return .ignored }
-        defer { cancel() }
-        guard !isCancelled else { return .cancelled }
-        guard let originalName else { return .cancelled }
-        guard proposedName != originalName else { return .noChange }
-        return .rename(itemURL, proposedName)
-    }
-
-    mutating func cancel() {
-        itemURL = nil
-        normalizedItemPath = nil
-    }
-
-    private func normalizedPath(for url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 }
 
@@ -1603,7 +1014,7 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         return handleQuickSearchKeyDown(event)
     }
 
-    private func moveFocus(by delta: Int, in tableView: FileTableView) {
+    func moveFocus(by delta: Int, in tableView: FileTableView) {
         guard let destination = PaneFocusNavigation.destination(
             current: focusedDestination,
             displayed: displayedDestinations,
@@ -1620,152 +1031,11 @@ extension FilePaneViewController: FileTableViewActionDelegate {
         if row >= 0, !tableView.selectedRowIndexes.contains(row) {
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
-
-        let menu = NSMenu(title: "File")
-        if isParentRow(row) {
-            menu.addItem(contextMenuItem("Open Parent Folder".localized, action: #selector(contextOpenParent)))
-            return menu
+        if isParentRow(row) { return contextMenuProvider.menu(for: .parent) }
+        if let item = item(forRow: row) {
+            return contextMenuProvider.menu(for: .item(item, hasOppositePane: hasOppositePane))
         }
-
-        if let rowItem = item(forRow: row) {
-            menu.addItem(contextMenuItem("Open", action: #selector(contextOpen)))
-            if !rowItem.isDirectory {
-                menu.addItem(contextMenuItem("Open With…".localized, action: #selector(contextOpenWith)))
-                menu.addItem(openWithMenu(for: rowItem.url))
-            }
-            menu.addItem(contextMenuItem("Rename", action: #selector(contextRename)))
-            menu.addItem(contextMenuItem("Duplicate", action: #selector(contextDuplicate)))
-            menu.addItem(contextMenuItem("Get Info", action: #selector(contextGetInfo)))
-            menu.addItem(.separator())
-            menu.addItem(contextMenuItem("Select Same Extension".localized, action: #selector(contextSelectSameExtension), command: .selectSameExtension))
-            menu.addItem(contextMenuItem("Deselect Same Extension".localized, action: #selector(contextDeselectSameExtension), command: .deselectSameExtension))
-            if hasOppositePane {
-                menu.addItem(.separator())
-                menu.addItem(contextMenuItem("Copy to Opposite Pane", action: #selector(contextCopy)))
-                menu.addItem(contextMenuItem("Move to Opposite Pane", action: #selector(contextMove)))
-                menu.addItem(contextMenuItem("Reveal in Opposite Pane".localized, action: #selector(contextRevealOpposite)))
-            }
-            if rowItem.isSymbolicLink {
-                menu.addItem(contextMenuItem("Follow Symbolic Link".localized, action: #selector(contextFollowSymbolicLink)))
-            }
-            menu.addItem(.separator())
-            menu.addItem(contextMenuItem("Copy Path", action: #selector(contextCopyPath)))
-            menu.addItem(contextMenuItem("Reveal in Finder", action: #selector(contextReveal)))
-            menu.addItem(contextMenuItem("Delete", action: #selector(contextTrash)))
-        } else {
-            menu.addItem(contextMenuItem("New File", action: #selector(contextNewFile)))
-            menu.addItem(contextMenuItem("New Folder", action: #selector(contextNewFolder)))
-            menu.addItem(.separator())
-            menu.addItem(contextMenuItem("Refresh", action: #selector(contextRefresh)))
-            menu.addItem(contextMenuItem("Select All", action: #selector(contextSelectAll)))
-            menu.addItem(contextMenuItem("Deselect All".localized, action: #selector(contextDeselectAll), command: .deselectAll))
-            menu.addItem(contextMenuItem("Select by Pattern…".localized, action: #selector(contextSelectByPattern), command: .selectByPattern))
-            menu.addItem(contextMenuItem("Deselect by Pattern…".localized, action: #selector(contextDeselectByPattern), command: .deselectByPattern))
-            menu.addItem(contextMenuItem("Invert Selection", action: #selector(contextInvertSelection)))
-            menu.addItem(contextMenuItem(viewModel.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", action: #selector(contextToggleHidden)))
-        }
-        return menu
+        return contextMenuProvider.menu(for: .background(showsHiddenFiles: viewModel.showsHiddenFiles))
     }
 
-    private func contextMenuItem(_ title: String, action: Selector, command: MainCommand? = nil) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.target = self
-        item.setAccessibilityLabel(title)
-        if let command {
-            item.identifier = NSUserInterfaceItemIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
-            item.setAccessibilityIdentifier(AccessibilityIdentifiers.Command.menuItem(command))
-        }
-        return item
-    }
-
-    private func openWithMenu(for url: URL) -> NSMenuItem {
-        let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: "Open With")
-
-        let defaultItem = NSMenuItem(title: "Default Application", action: #selector(contextOpenWithDefault(_:)), keyEquivalent: "")
-        defaultItem.target = self
-        defaultItem.representedObject = url
-        submenu.addItem(defaultItem)
-
-        let loadingItem = NSMenuItem(title: "Loading Applications…", action: nil, keyEquivalent: "")
-        loadingItem.isEnabled = false
-        submenu.addItem(loadingItem)
-
-        item.submenu = submenu
-        openWithApplicationResolver.resolveApplications(
-            for: url,
-            menuItem: item,
-            submenu: submenu,
-            loadingItem: loadingItem
-        ) { [weak self] applicationURL in
-            let applicationItem = NSMenuItem(title: applicationURL.deletingPathExtension().lastPathComponent, action: #selector(Self.contextOpenWithApplication(_:)), keyEquivalent: "")
-            applicationItem.target = self
-            applicationItem.representedObject = OpenWithRequest(fileURL: url, applicationURL: applicationURL)
-            return applicationItem
-        }
-        return item
-    }
-
-    @objc private func contextOpenParent() { onCommand?(.parent) }
-    @objc private func contextOpen() { onCommand?(.open) }
-    @objc private func contextOpenWith() { onCommand?(.openWith) }
-    @objc private func contextRename() { onCommand?(.rename) }
-    @objc private func contextDuplicate() { onCommand?(.duplicate) }
-    @objc private func contextGetInfo() { onCommand?(.getInfo) }
-    @objc private func contextCopy() { onCommand?(.copy) }
-    @objc private func contextMove() { onCommand?(.move) }
-    @objc private func contextRevealOpposite() { onCommand?(.revealInOppositePane) }
-    @objc private func contextFollowSymbolicLink() { onCommand?(.followSymbolicLink) }
-    @objc private func contextTrash() { onCommand?(.trash) }
-    @objc private func contextNewFile() { onCommand?(.newFile) }
-    @objc private func contextNewFolder() { onCommand?(.newFolder) }
-    @objc private func contextRefresh() { onCommand?(.refresh) }
-    @objc private func contextSelectAll() { onCommand?(.selectAll) }
-    @objc private func contextDeselectAll() { onCommand?(.deselectAll) }
-    @objc private func contextSelectByPattern() { onCommand?(.selectByPattern) }
-    @objc private func contextDeselectByPattern() { onCommand?(.deselectByPattern) }
-    @objc private func contextSelectSameExtension() { onCommand?(.selectSameExtension) }
-    @objc private func contextDeselectSameExtension() { onCommand?(.deselectSameExtension) }
-    @objc private func contextInvertSelection() { onCommand?(.invertSelection) }
-    @objc private func contextReveal() { onCommand?(.reveal) }
-    @objc private func contextToggleHidden() { onCommand?(.toggleHiddenFiles) }
-    @objc private func contextOpenWithDefault(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        onOpenWithApplication?(url, nil)
-    }
-
-    @objc private func contextOpenWithApplication(_ sender: NSMenuItem) {
-        guard let request = sender.representedObject as? OpenWithRequest else { return }
-        onOpenWithApplication?(request.fileURL, request.applicationURL)
-    }
-
-    @objc private func contextCopyPath() {
-        let paths = selectedItems.map(\.url.path)
-        guard !paths.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
-    }
-}
-
-private final class OpenWithRequest {
-    let fileURL: URL
-    let applicationURL: URL
-
-    init(fileURL: URL, applicationURL: URL) {
-        self.fileURL = fileURL
-        self.applicationURL = applicationURL
-    }
-}
-
-private final class PaneContainerView: NSView {
-    var onMouseDown: (() -> Void)?
-
-    override func mouseDown(with event: NSEvent) {
-        onMouseDown?()
-        super.mouseDown(with: event)
-    }
-}
-
-extension NSPasteboard.PasteboardType {
-    static let pulseFilesInternalDrag = NSPasteboard.PasteboardType("com.pulsefiles.internal-drag")
 }
