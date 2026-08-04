@@ -2,12 +2,12 @@ import AppKit
 
 final class FileViewerViewController: NSViewController {
     private let url: URL
-    private let service: ReadOnlyViewerService
+    private let service: any ViewerContentLoading
     private let textView = NSTextView()
     private let statusLabel = NSTextField(labelWithString: "")
     private var loadTask: Task<Void, Never>?
 
-    init(url: URL, service: ReadOnlyViewerService = ReadOnlyViewerService()) {
+    init(url: URL, service: any ViewerContentLoading) {
         self.url = url
         self.service = service
         super.init(nibName: nil, bundle: nil)

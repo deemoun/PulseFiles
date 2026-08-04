@@ -30,6 +30,20 @@ protocol FileClipboardProviding: AnyObject {
     func read() -> FileClipboard.Payload?
 }
 
+protocol FileSizeResolving { func size(of url: URL) throws -> Int64 }
+protocol ViewerContentLoading: AnyObject { func snapshots(for url: URL) -> AsyncThrowingStream<ViewerSnapshot, Error> }
+protocol DiagnosticsExporting { func export(to parentDirectory: URL, entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) throws -> URL }
+protocol TerminalStateProviding: AnyObject {
+    var shellPath: String { get }
+    var defaultEnvironment: [String: String] { get }
+    func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy) -> TerminalWarningState
+    func acknowledgeFirstUseWarning(settings: SettingsService)
+    func shouldAcknowledgeFirstUseWarning(response: Int, acknowledgementResponse: Int) -> Bool
+    func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy) -> URL
+}
+protocol StandardFolderAccessProviding: AnyObject { func requestAccess(for folder: StandardFolder) -> StandardFolderAccessState }
+protocol ThumbnailLoading: AnyObject { func thumbnail(for url: URL, size: CGSize, scale: CGFloat) async -> NSImage? }
+
 @MainActor
 protocol ApplicationOpening: AnyObject {
     func open(_ url: URL) -> Bool
@@ -41,6 +55,12 @@ extension DescendantSearchService: DescendantSearching {}
 extension RecentLocationService: RecentLocationRecording {}
 extension BookmarkService: BookmarkPersisting {}
 extension FileClipboard: FileClipboardProviding {}
+extension SystemFileSizeService: FileSizeResolving {}
+extension ReadOnlyViewerService: ViewerContentLoading {}
+extension DiagnosticsExportService: DiagnosticsExporting {}
+extension TerminalService: TerminalStateProviding {}
+extension StandardFolderAccessService: StandardFolderAccessProviding {}
+extension ThumbnailLoadingService: ThumbnailLoading {}
 
 @MainActor
 final class WorkspaceApplicationOpener: ApplicationOpening {
@@ -69,9 +89,13 @@ struct MainWindowDependencies {
     let volumeDiscovery: any VolumeDiscovering
     let clipboard: any FileClipboardProviding
     let applicationOpener: any ApplicationOpening
-    let fileSize: SystemFileSizeService
-    let readOnlyViewer: ReadOnlyViewerService
-    let diagnosticsExporter: DiagnosticsExportService
+    let fileSize: any FileSizeResolving
+    let readOnlyViewer: any ViewerContentLoading
+    let diagnosticsExporter: any DiagnosticsExporting
+    let terminalState: any TerminalStateProviding
+    let thumbnailLoader: any ThumbnailLoading
+    let standardFolderAccess: any StandardFolderAccessProviding
+    let symbolicLinkResolver: SymbolicLinkResolutionService
     let stagingCleanup: (@escaping () -> [URL]) -> StagingCleanupService
     let scratchCleanup: (@escaping () -> [URL]) -> ScratchFolderCleanupService
 
@@ -91,6 +115,10 @@ struct MainWindowDependencies {
             fileSize: SystemFileSizeService(),
             readOnlyViewer: ReadOnlyViewerService(accessPolicy: accessPolicy),
             diagnosticsExporter: DiagnosticsExportService(),
+            terminalState: TerminalService(),
+            thumbnailLoader: ThumbnailLoadingService(),
+            standardFolderAccess: StandardFolderAccessService(accessPolicy: accessPolicy),
+            symbolicLinkResolver: SymbolicLinkResolutionService(),
             stagingCleanup: { activeRoots in StagingCleanupService(legacyReviewDirectories: activeRoots) },
             scratchCleanup: { activeRoots in
                 ScratchFolderCleanupService(accessPolicy: accessPolicy, fileOperations: fileOperations, activePaneRoots: activeRoots)
@@ -253,8 +281,8 @@ final class ClipboardSessionCoordinator {
 final class TerminalPresentationCoordinator {
     enum ToggleResult: Equatable { case show, hide, disabled }
     private(set) var isVisible = false
-    private let service: TerminalService
-    init(service: TerminalService = TerminalService()) { self.service = service }
+    private let service: any TerminalStateProviding
+    init(service: any TerminalStateProviding) { self.service = service }
     func toggle(isEnabled: Bool) -> ToggleResult {
         if isVisible { isVisible = false; return .hide }
         guard isEnabled else { return .disabled }

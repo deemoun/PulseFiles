@@ -93,6 +93,8 @@ final class MainWindowViewController: NSViewController {
     private let recentLocations: any RecentLocationRecording
     private let bookmarkService: any BookmarkPersisting
     private let volumeDiscovery: any VolumeDiscovering
+    private let thumbnailLoader: any ThumbnailLoading
+    private let standardFolderAccess: any StandardFolderAccessProviding
     private var recentOperationSummaries: [DiagnosticOperationSummary] = []
 
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
@@ -111,6 +113,7 @@ final class MainWindowViewController: NSViewController {
             quickSearchPresentation: settings.quickSearchPresentation
         ),
         presentationMode: settings.presentationMode(for: .left),
+        thumbnailLoader: thumbnailLoader,
         authorizedFolderSelection: authorizedFolderSelection
     )
     private lazy var rightPane = FilePaneViewController(
@@ -126,10 +129,11 @@ final class MainWindowViewController: NSViewController {
             quickSearchPresentation: settings.quickSearchPresentation
         ),
         presentationMode: settings.presentationMode(for: .right),
+        thumbnailLoader: thumbnailLoader,
         authorizedFolderSelection: authorizedFolderSelection
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy)
-    private let terminal = TerminalViewController()
+    private let terminal: TerminalViewController
     private let commandBar = CommandBarView()
     private lazy var fileOperationProgressWindowController = FileOperationProgressWindowController { [weak self] in
         self?.cancelActiveFileOperation()
@@ -138,9 +142,9 @@ final class MainWindowViewController: NSViewController {
     }
     private lazy var clipboardSession = ClipboardSessionCoordinator(transfer: workflows.fileTransfer)
     private let applicationOpener: any ApplicationOpening
-    private let fileSizeService: SystemFileSizeService
-    private let readOnlyViewerService: ReadOnlyViewerService
-    private let diagnosticsExporter: DiagnosticsExportService
+    private let fileSizeService: any FileSizeResolving
+    private let readOnlyViewerService: any ViewerContentLoading
+    private let diagnosticsExporter: any DiagnosticsExporting
     private let stagingCleanupFactory: (@escaping () -> [URL]) -> StagingCleanupService
     private let scratchCleanupFactory: (@escaping () -> [URL]) -> ScratchFolderCleanupService
     /// The sole authority for command availability and target resolution.
@@ -163,7 +167,7 @@ final class MainWindowViewController: NSViewController {
     private var sidebarMaxWidthConstraint: NSLayoutConstraint?
     private let sidebarLayoutCoordinator = SidebarLayoutCoordinator()
     private let terminalLayoutCoordinator = TerminalLayoutCoordinator()
-    private let terminalPresentationCoordinator = TerminalPresentationCoordinator()
+    private let terminalPresentationCoordinator: TerminalPresentationCoordinator
     private var terminalHeightConstraint: NSLayoutConstraint?
     private var isSidebarInstalled: Bool { sidebarLayoutCoordinator.isInstalled }
     private var isTerminalInstalled: Bool { terminalLayoutCoordinator.isInstalled }
@@ -186,28 +190,30 @@ final class MainWindowViewController: NSViewController {
     }
 
     init(
-        settings: SettingsService = SettingsService(),
-        accessPolicy: SandboxFileAccessPolicy = .current,
-        dependencies: MainWindowDependencies? = nil,
-        workflowDependencies: MainWindowWorkflowDependencies? = nil,
-        symbolicLinkResolver: SymbolicLinkResolutionService = SymbolicLinkResolutionService(),
+        settings: SettingsService,
+        accessPolicy: SandboxFileAccessPolicy,
+        dependencies: MainWindowDependencies,
+        workflowDependencies: MainWindowWorkflowDependencies,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
         self.settings = settings
         self.accessPolicy = accessPolicy
-        self.symbolicLinkResolver = symbolicLinkResolver
+        self.symbolicLinkResolver = dependencies.symbolicLinkResolver
         self.sandboxRootEnsurer = sandboxRootEnsurer
-        let dependencies = dependencies ?? .production(accessPolicy: accessPolicy)
-        self.workflows = workflowDependencies ?? .production(from: dependencies, accessPolicy: accessPolicy)
+        self.workflows = workflowDependencies
         self.fileOperations = dependencies.fileOperations
         self.fileSystemProbe = dependencies.fileSystemProbe
         self.recentLocations = dependencies.recentLocations
         self.bookmarkService = dependencies.bookmarks
         self.volumeDiscovery = dependencies.volumeDiscovery
+        self.thumbnailLoader = dependencies.thumbnailLoader
+        self.standardFolderAccess = dependencies.standardFolderAccess
         self.applicationOpener = dependencies.applicationOpener
         self.fileSizeService = dependencies.fileSize
         self.readOnlyViewerService = dependencies.readOnlyViewer
         self.diagnosticsExporter = dependencies.diagnosticsExporter
+        self.terminal = TerminalViewController(terminalService: dependencies.terminalState, accessPolicy: accessPolicy)
+        self.terminalPresentationCoordinator = TerminalPresentationCoordinator(service: dependencies.terminalState)
         self.stagingCleanupFactory = dependencies.stagingCleanup
         self.scratchCleanupFactory = dependencies.scratchCleanup
         super.init(nibName: nil, bundle: nil)
@@ -1051,7 +1057,7 @@ extension MainWindowViewController {
                 guard let self else { return [] }
                 return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
             }
-        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService)
+        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService, accessPolicy: accessPolicy, accessGrantService: .shared, standardFolderAccess: standardFolderAccess)
         controller.onOpenScratchDirectory = { [weak self] url in
             self?.targetPane().navigate(to: url)
         }

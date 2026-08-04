@@ -6,6 +6,22 @@ PulseFiles is a macOS 13+ AppKit file manager built as a Swift Package Manager
 executable. It is intentionally a native, keyboard-first, dual-pane application;
 do not introduce a SwiftUI rewrite without an explicit product decision.
 
+## Dependency policy
+
+Concrete services are created only at application composition roots. In production,
+`AppDelegate` and `MainWindowController` assemble the object graph; controllers and
+workflow coordinators receive only the narrow capabilities they use through
+`MainWindowDependencies`, `MainWindowWorkflowDependencies`, and their initializers.
+Controllers must not hide fallback production-service construction in stored
+properties or default arguments. This makes resource ownership explicit and allows
+asynchronous behavior to be tested without filesystem or operating-system access.
+
+Add a small protocol only where substitutability provides concrete testing or
+ownership value. Examples include thumbnail loading, terminal enablement/state,
+file-size resolution, diagnostics export, standard-folder access, and viewer
+content loading. Keep passive value models concrete; data without behavior or an
+independently owned resource does not need a protocol.
+
 ## Runtime architecture
 
 PulseFilesApplication starts AppKit. AppDelegate builds menus and the app icon,

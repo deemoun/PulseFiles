@@ -50,7 +50,7 @@ final class ControllerWiringUITests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         LocalizationConfiguration.configure(language: .english)
-        let controller = SettingsViewController(settings: SettingsService(defaults: defaults))
+        let controller = SettingsViewController(settings: SettingsService(defaults: defaults), stagingCleanupService: StagingCleanupService(), scratchCleanupService: ScratchFolderCleanupService(), accessPolicy: .current, accessGrantService: .shared, standardFolderAccess: StandardFolderAccessService())
         controller.loadViewIfNeeded()
         let selector = controller.appLanguageSelectorForTesting
 
@@ -62,7 +62,7 @@ final class ControllerWiringUITests: XCTestCase {
     }
 
     func testSettingsCategoriesSwitchStableRegisteredPages() throws {
-        let controller = SettingsViewController()
+        let controller = SettingsViewController(settings: SettingsService(), stagingCleanupService: StagingCleanupService(), scratchCleanupService: ScratchFolderCleanupService(), accessPolicy: .current, accessGrantService: .shared, standardFolderAccess: StandardFolderAccessService())
         controller.loadViewIfNeeded()
         let categories = controller.categoryControlForTesting
 
@@ -75,7 +75,7 @@ final class ControllerWiringUITests: XCTestCase {
     }
 
     func testSettingsImportantControlsHaveStableAccessibilityIdentifiers() throws {
-        let controller = SettingsViewController()
+        let controller = SettingsViewController(settings: SettingsService(), stagingCleanupService: StagingCleanupService(), scratchCleanupService: ScratchFolderCleanupService(), accessPolicy: .current, accessGrantService: .shared, standardFolderAccess: StandardFolderAccessService())
         controller.loadViewIfNeeded()
         XCTAssertEqual(controller.categoryControlForTesting.accessibilityIdentifier(), AccessibilityIdentifiers.Settings.categoryControl)
         XCTAssertEqual(controller.appLanguageSelectorForTesting.accessibilityIdentifier(), AccessibilityIdentifiers.Settings.languageSelector)

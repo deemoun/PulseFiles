@@ -24,11 +24,11 @@ final class SettingsViewController: NSViewController {
     private let navigationPage: NavigationSettingsPageController
     private let pages: [Category: SettingsPageController]
 
-    init(settings: SettingsService = SettingsService(), stagingCleanupService: StagingCleanupService = StagingCleanupService(), scratchCleanupService: ScratchFolderCleanupService = ScratchFolderCleanupService(), accessPolicy: SandboxFileAccessPolicy = .current, accessGrantService: FolderAccessGrantService = .shared) {
+    init(settings: SettingsService, stagingCleanupService: StagingCleanupService, scratchCleanupService: ScratchFolderCleanupService, accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, standardFolderAccess: any StandardFolderAccessProviding) {
         let general = GeneralSettingsPageController(settings: settings, stagingCleanupService: stagingCleanupService)
         let appearance = AppearanceSettingsPageController(settings: settings)
         let navigation = NavigationSettingsPageController(settings: settings, accessPolicy: accessPolicy, accessGrantService: accessGrantService, scratchCleanupService: scratchCleanupService)
-        let access = AccessSettingsPageController(accessPolicy: accessPolicy, accessGrantService: accessGrantService)
+        let access = AccessSettingsPageController(accessPolicy: accessPolicy, accessGrantService: accessGrantService, standardAccess: standardFolderAccess)
         let experimental = ExperimentalSettingsPageController(settings: settings)
         self.generalPage = general; self.navigationPage = navigation
         self.pages = [.general: general, .appearance: appearance, .navigation: navigation, .access: access, .experimental: experimental]

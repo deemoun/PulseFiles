@@ -54,7 +54,7 @@ final class MainWindowCoordinatorTests: XCTestCase {
 
     @MainActor
     func testTerminalPresentationCoordinatorRejectsDisabledFirstUseAndTracksVisibility() {
-        let coordinator = TerminalPresentationCoordinator()
+        let coordinator = TerminalPresentationCoordinator(service: TerminalService())
         XCTAssertEqual(coordinator.toggle(isEnabled: false), .disabled)
         XCTAssertFalse(coordinator.isVisible)
         XCTAssertEqual(coordinator.toggle(isEnabled: true), .show)
