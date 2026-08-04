@@ -130,15 +130,19 @@ final class MainWindowViewController: NSViewController {
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
-    private let terminalService = TerminalService()
     private let commandBar = CommandBarView()
     private lazy var fileOperationProgressWindowController = FileOperationProgressWindowController { [weak self] in
         self?.cancelActiveFileOperation()
     } onStopWaiting: { [weak self] in
         self?.detachActiveFileOperation()
     }
-    private let fileClipboard: any FileClipboardProviding
+    private lazy var clipboardSession = ClipboardSessionCoordinator(transfer: workflows.fileTransfer)
     private let applicationOpener: any ApplicationOpening
+    private let fileSizeService: SystemFileSizeService
+    private let readOnlyViewerService: ReadOnlyViewerService
+    private let diagnosticsExporter: DiagnosticsExportService
+    private let stagingCleanupFactory: (@escaping () -> [URL]) -> StagingCleanupService
+    private let scratchCleanupFactory: (@escaping () -> [URL]) -> ScratchFolderCleanupService
     /// The sole authority for command availability and target resolution.
     private let commandRouter = MainCommandRouter()
     private lazy var previewCoordinator = PreviewCoordinator(accessPolicy: accessPolicy, probe: fileSystemProbe)
@@ -159,29 +163,20 @@ final class MainWindowViewController: NSViewController {
     private var sidebarMaxWidthConstraint: NSLayoutConstraint?
     private let sidebarLayoutCoordinator = SidebarLayoutCoordinator()
     private let terminalLayoutCoordinator = TerminalLayoutCoordinator()
+    private let terminalPresentationCoordinator = TerminalPresentationCoordinator()
     private var terminalHeightConstraint: NSLayoutConstraint?
     private var isSidebarInstalled: Bool { sidebarLayoutCoordinator.isInstalled }
     private var isTerminalInstalled: Bool { terminalLayoutCoordinator.isInstalled }
     private var isSinglePaneMode = false
-    private var activeOperationTask: Task<Void, Never>?
-    /// A detached worker may still be inside an uninterruptible filesystem call.
-    /// Keep its task alive even after the progress UI has been released.
-    private var retainedOperationTasks: [Int: Task<Void, Never>] = [:]
-    private var fileOperationGeneration = 0
-    private var currentFileOperationGeneration: Int?
-    private var undoRecovery: FileOperationRecovery?
+    private let fileOperationCoordinator = FileOperationCoordinator()
     var quickLookPreviewURL: NSURL?
     private var quickLookProbeGeneration = 0
     private var viewerWindowControllers: [NSWindowController] = []
     private var navigationProbeGeneration = 0
     private var dropProbeGeneration = 0
     private var volumeChangeProbeGeneration = 0
-    private var isFileOperationActive = false {
-        didSet { refreshCommandAvailability() }
-    }
-    private var clipboardFeedbackTimer: Timer?
-    private var clipboardChangeMonitor: Timer?
-    private var trackedClipboardChangeCount: Int?
+    private var isFileOperationActive: Bool { fileOperationCoordinator.isActive }
+    private var undoRecovery: FileOperationRecovery? { fileOperationCoordinator.undoRecovery }
 
     private var activePaneID: PaneID = .left {
         didSet {
@@ -209,8 +204,12 @@ final class MainWindowViewController: NSViewController {
         self.recentLocations = dependencies.recentLocations
         self.bookmarkService = dependencies.bookmarks
         self.volumeDiscovery = dependencies.volumeDiscovery
-        self.fileClipboard = dependencies.clipboard
         self.applicationOpener = dependencies.applicationOpener
+        self.fileSizeService = dependencies.fileSize
+        self.readOnlyViewerService = dependencies.readOnlyViewer
+        self.diagnosticsExporter = dependencies.diagnosticsExporter
+        self.stagingCleanupFactory = dependencies.stagingCleanup
+        self.scratchCleanupFactory = dependencies.scratchCleanup
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -272,8 +271,7 @@ final class MainWindowViewController: NSViewController {
         if let flagsChangedEventMonitor {
             NSEvent.removeMonitor(flagsChangedEventMonitor)
         }
-        clipboardFeedbackTimer?.invalidate()
-        clipboardChangeMonitor?.invalidate()
+        clipboardSession.clear()
     }
 
     private func buildLayout() {
@@ -386,7 +384,7 @@ final class MainWindowViewController: NSViewController {
         }
         terminal.workingDirectoryProvider = { [weak self] in
             guard let self else { return ExperimentalFlags.appSandboxRoot }
-            return self.terminalService.resolvedWorkingDirectory(
+            return self.terminalPresentationCoordinator.workingDirectory(
                 activePaneURL: self.targetPane().currentDirectory,
                 accessPolicy: self.accessPolicy
             )
@@ -922,13 +920,10 @@ final class MainWindowViewController: NSViewController {
             }
             let selection: ScratchFolderSelection
             do {
-                selection = try ScratchFolderCleanupService(
-                    accessPolicy: self.accessPolicy,
-                    activePaneRoots: { [weak self] in
+                selection = try self.scratchCleanupFactory { [weak self] in
                         guard let self else { return [] }
                         return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
-                    }
-                ).captureSelection(for: directory)
+                    }.captureSelection(for: directory)
             } catch {
                 self.showError(message: "Could Not Configure Scratch Folder".localized, detail: error.localizedDescription)
                 return
@@ -1044,7 +1039,7 @@ final class MainWindowViewController: NSViewController {
             showError(message: "Nothing Selected".localized, detail: "Select a file to view.".localized)
             return
         }
-        let viewer = FileViewerViewController(url: item.url, service: ReadOnlyViewerService(accessPolicy: accessPolicy))
+        let viewer = FileViewerViewController(url: item.url, service: readOnlyViewerService)
         let window = NSWindow(contentViewController: viewer)
         window.title = item.filename
         window.setContentSize(NSSize(width: 820, height: 620))
@@ -1145,18 +1140,14 @@ extension MainWindowViewController {
 
     private func presentSettings(_ sender: Any?) {
         reloadSettingsFromJSONIfChanged()
-        let cleanupService = StagingCleanupService(legacyReviewDirectories: { [weak self] in
+        let cleanupService = stagingCleanupFactory { [weak self] in
             guard let self else { return [] }
             return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
-        })
-        let scratchCleanupService = ScratchFolderCleanupService(
-            accessPolicy: accessPolicy,
-            fileOperations: fileOperations,
-            activePaneRoots: { [weak self] in
+        }
+        let scratchCleanupService = scratchCleanupFactory { [weak self] in
                 guard let self else { return [] }
                 return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
             }
-        )
         let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService)
         controller.onOpenScratchDirectory = { [weak self] url in
             self?.targetPane().navigate(to: url)
@@ -1291,19 +1282,19 @@ extension MainWindowViewController {
 
     private func toggleTerminal() {
         DiagnosticLogger.log(.info, category: "Terminal", "Terminal toggle requested: currentlyVisible=\(isTerminalInstalled); experimentEnabled=\(settings.experimentalTerminalEnabled)")
-        if isTerminalInstalled {
+        terminalPresentationCoordinator.synchronize(installed: isTerminalInstalled)
+        switch terminalPresentationCoordinator.toggle(isEnabled: settings.experimentalTerminalEnabled) {
+        case .hide:
             removeTerminalPanel()
             settings.isTerminalVisible = false
             view.window?.makeFirstResponder(targetPane().tableView)
-        } else {
-            guard settings.experimentalTerminalEnabled else {
-                DiagnosticLogger.log(.warning, category: "Terminal", "Terminal toggle denied because experimental terminal is disabled")
-                showTerminalDisabledAlert()
-                return
-            }
+        case .disabled:
+            DiagnosticLogger.log(.warning, category: "Terminal", "Terminal toggle denied because experimental terminal is disabled")
+            showTerminalDisabledAlert()
+        case .show:
             installTerminalPanel(showWarning: true)
             settings.isTerminalVisible = true
-            terminal.suggestedWorkingDirectory = terminalService.resolvedWorkingDirectory(
+            terminal.suggestedWorkingDirectory = terminalPresentationCoordinator.workingDirectory(
                 activePaneURL: targetPane().currentDirectory,
                 accessPolicy: accessPolicy
             )
@@ -1336,7 +1327,7 @@ extension MainWindowViewController {
     }
 
     private func showFirstUseTerminalWarningIfNeeded() {
-        let warningState = terminalService.warningState(settings: settings, accessPolicy: accessPolicy)
+        let warningState = terminalPresentationCoordinator.warningState(settings: settings, accessPolicy: accessPolicy)
         guard !warningState.isAcknowledged else { return }
 
         let alert = NSAlert()
@@ -1345,24 +1336,15 @@ extension MainWindowViewController {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "I Understand".localized)
         let acknowledgementResponse = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        let terminalService = terminalService
+        let presentation = terminalPresentationCoordinator
         let settings = settings
         if let window = view.window {
             alert.beginSheetModal(for: window) { response in
-                guard terminalService.shouldAcknowledgeFirstUseWarning(
-                    response: response.rawValue,
-                    acknowledgementResponse: acknowledgementResponse
-                ) else { return }
-                terminalService.acknowledgeFirstUseWarning(settings: settings)
+                presentation.acknowledgeWarningIfNeeded(response: response.rawValue, acknowledgementResponse: acknowledgementResponse, settings: settings)
             }
         } else {
             let response = alert.runModal()
-            if terminalService.shouldAcknowledgeFirstUseWarning(
-                response: response.rawValue,
-                acknowledgementResponse: acknowledgementResponse
-            ) {
-                terminalService.acknowledgeFirstUseWarning(settings: settings)
-            }
+            presentation.acknowledgeWarningIfNeeded(response: response.rawValue, acknowledgementResponse: acknowledgementResponse, settings: settings)
         }
     }
 
@@ -1777,7 +1759,7 @@ extension MainWindowViewController {
                 let details = try await Task.detached(priority: .userInitiated) {
                     try accessPolicy.withValidatedAccess(to: item.url) {
                         let values = try item.url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
-                        let size = try SystemFileSizeService().size(of: item.url)
+                        let size = try fileSizeService.size(of: item.url)
                         return (isDirectory: values.isDirectory == true, modificationDate: values.contentModificationDate, size: size)
                     }
                 }.value
@@ -1926,7 +1908,7 @@ extension MainWindowViewController {
             return
         }
         do {
-            try workflows.fileTransfer.writeToClipboard(sources, operation: operation)
+            try clipboardSession.write(sources, operation: operation) { [weak self] in self?.clearClipboardFeedback() }
             showClipboardFeedback(for: operation, itemCount: sources.count)
             updateCutItemMarkers(operation: operation, urls: sources, sourcePane: targetPane())
             beginClipboardChangeMonitoring()
@@ -1936,7 +1918,7 @@ extension MainWindowViewController {
     }
 
     private func pasteClipboardItems() {
-        guard let payload = workflows.fileTransfer.clipboardPayload(), !payload.urls.isEmpty else {
+        guard let payload = clipboardSession.payload(), !payload.urls.isEmpty else {
             clearClipboardFeedback()
             showError(message: "Clipboard Is Empty".localized, detail: "Copy or cut one or more files before pasting.".localized)
             return
@@ -1963,11 +1945,6 @@ extension MainWindowViewController {
         let verb = operation == .copy ? "Copied".localized : "Cut".localized
         let itemLabel = itemCount == 1 ? "item".localized : "items".localized
         commandBar.setTransientStatus("%@ %d %@".localized(with: verb, itemCount, itemLabel))
-        clipboardFeedbackTimer?.invalidate()
-        clipboardFeedbackTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in
-            self?.commandBar.clearOperationStatus()
-            self?.clipboardFeedbackTimer = nil
-        }
     }
 
     private func updateCutItemMarkers(operation: FileClipboard.Operation, urls: [URL], sourcePane: FilePaneViewController) {
@@ -1978,22 +1955,11 @@ extension MainWindowViewController {
     }
 
     private func beginClipboardChangeMonitoring() {
-        trackedClipboardChangeCount = fileClipboard.changeCount
-        clipboardChangeMonitor?.invalidate()
-        clipboardChangeMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, let trackedClipboardChangeCount = self.trackedClipboardChangeCount else { return }
-            if self.fileClipboard.changeCount != trackedClipboardChangeCount {
-                self.clearClipboardFeedback()
-            }
-        }
+        // ClipboardSessionCoordinator owns pasteboard change monitoring.
     }
 
     private func clearClipboardFeedback() {
-        clipboardFeedbackTimer?.invalidate()
-        clipboardFeedbackTimer = nil
-        clipboardChangeMonitor?.invalidate()
-        clipboardChangeMonitor = nil
-        trackedClipboardChangeCount = nil
+        clipboardSession.clear()
         leftPane.setDimmedFileURLs([])
         rightPane.setDimmedFileURLs([])
         if !isFileOperationActive {
@@ -2157,7 +2123,7 @@ extension MainWindowViewController {
             showError(message: "Undo Unavailable".localized, detail: "The last operation cannot be safely undone.".localized)
             return
         }
-        undoRecovery = nil
+        fileOperationCoordinator.clearRecovery()
         startFileOperation(named: recovery.undoTitle.localized) { [fileOperations] progressHandler in
             try await fileOperations.undo(recovery, progressHandler: progressHandler)
         }
@@ -2165,32 +2131,26 @@ extension MainWindowViewController {
 
     private func cancelActiveFileOperation() {
         guard isFileOperationActive else { return }
-        activeOperationTask?.cancel()
+        fileOperationCoordinator.cancel()
         fileOperationProgressWindowController.showCancellationPending()
     }
 
     private func detachActiveFileOperation() {
-        guard let generation = currentFileOperationGeneration else { return }
-        activeOperationTask?.cancel()
+        guard fileOperationCoordinator.detach() != nil else { return }
         // Incrementing the generation makes late progress and completion from
         // this worker observational only. A blocking FileManager call cannot
         // reliably be cancelled, so it would be unsafe to call it cancelled.
-        currentFileOperationGeneration = nil
-        fileOperationGeneration += 1
-        activeOperationTask = nil
-        isFileOperationActive = false
-        undoRecovery = nil
         fileOperationProgressWindowController.dismiss()
+        refreshCommandAvailability()
         refreshBothPanes()
         showAlert(
             message: "Operation Needs Verification".localized,
             detail: "PulseFiles stopped waiting because the operation made no progress or did not finish after cancellation. Its final filesystem state is unknown; refresh and verify the affected items before trying another operation.".localized,
             style: .warning
         )
-        // The task stays in retainedOperationTasks until its worker actually
+        // The coordinator retains the task until its worker actually
         // returns, preventing a discarded worker from being deallocated while
         // it still owns filesystem state.
-        _ = retainedOperationTasks[generation]
     }
 
     private func recordOperationSummary(_ operation: String, result: FileOperationResult) {
@@ -2213,7 +2173,7 @@ extension MainWindowViewController {
                 return
             }
             do {
-                let bundle = try DiagnosticsExportService().export(
+                let bundle = try diagnosticsExporter.export(
                     to: destination,
                     entries: DiagnosticLogService.shared.entries,
                     operationSummaries: recentOperationSummaries
@@ -2226,25 +2186,20 @@ extension MainWindowViewController {
     }
 
     private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult, refresh: ((FileOperationResult) -> Void)? = nil, completion: ((FileOperationResult) -> Void)? = nil) {
-        guard !isFileOperationActive else { return }
-        fileOperationGeneration += 1
-        let generation = fileOperationGeneration
-        currentFileOperationGeneration = generation
+        guard let generation = fileOperationCoordinator.begin() else { return }
         let previousWindowTitle = view.window?.title
-        isFileOperationActive = true
+        refreshCommandAvailability()
         fileOperationProgressWindowController.show(operationName: operationName, parentWindow: view.window)
-        activeOperationTask = Task { @MainActor [weak self] in
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                self.retainedOperationTasks[generation] = nil
-                if self.currentFileOperationGeneration == generation {
+                if self.fileOperationCoordinator.acceptsUpdates(for: generation) {
                     if let previousWindowTitle {
                         self.view.window?.title = previousWindowTitle
                     }
                     self.fileOperationProgressWindowController.dismiss()
-                    self.isFileOperationActive = false
-                    self.activeOperationTask = nil
-                    self.currentFileOperationGeneration = nil
+                    self.fileOperationCoordinator.finish(generation: generation, result: nil, captureRecovery: false)
+                    self.refreshCommandAvailability()
                 }
             }
 
@@ -2255,12 +2210,12 @@ extension MainWindowViewController {
                 // first suspension point.
                 let result = try await runFileOperationOffMain {
                     try await operation { [weak self] progress in
-                        guard self?.currentFileOperationGeneration == generation else { return }
+                        guard self?.fileOperationCoordinator.acceptsUpdates(for: generation) == true else { return }
                         self?.updateFileOperationProgress(progress, operationName: operationName)
                     }
                 }
-                guard self.currentFileOperationGeneration == generation else { return }
-                if captureRecovery { self.undoRecovery = result.succeededCompletely ? result.recovery : nil }
+                guard self.fileOperationCoordinator.acceptsUpdates(for: generation) else { return }
+                if captureRecovery { self.fileOperationCoordinator.captureRecovery(from: result) }
                 self.recordOperationSummary(operationName, result: result)
                 self.clearClipboardFeedback()
                 if let refresh {
@@ -2271,13 +2226,13 @@ extension MainWindowViewController {
                 completion?(result)
                 self.showOperationResult(result, operationName: operationName)
             } catch {
-                guard self.currentFileOperationGeneration == generation else { return }
+                guard self.fileOperationCoordinator.acceptsUpdates(for: generation) else { return }
                 let localizedError = error as? LocalizedError
                 let detail = localizedError?.failureReason ?? error.localizedDescription
                 self.showError(message: "Could Not %@ Items".localized(with: operationName), detail: detail)
             }
         }
-        retainedOperationTasks[generation] = activeOperationTask
+        fileOperationCoordinator.retain(task, for: generation)
     }
 
     private func runFileOperationOffMain(

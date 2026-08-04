@@ -39,6 +39,30 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.undoRecovery)
     }
 
+    @MainActor
+    func testFileOperationCoordinatorOwnsGenerationAndDetachState() {
+        let coordinator = FileOperationCoordinator()
+        let first = coordinator.begin()
+        XCTAssertEqual(first, 1)
+        XCTAssertTrue(coordinator.isActive)
+        XCTAssertNil(coordinator.begin())
+        XCTAssertEqual(coordinator.detach(), first)
+        XCTAssertFalse(coordinator.isActive)
+        XCTAssertFalse(coordinator.acceptsUpdates(for: first!))
+        XCTAssertEqual(coordinator.begin(), 3)
+    }
+
+    @MainActor
+    func testTerminalPresentationCoordinatorRejectsDisabledFirstUseAndTracksVisibility() {
+        let coordinator = TerminalPresentationCoordinator()
+        XCTAssertEqual(coordinator.toggle(isEnabled: false), .disabled)
+        XCTAssertFalse(coordinator.isVisible)
+        XCTAssertEqual(coordinator.toggle(isEnabled: true), .show)
+        XCTAssertTrue(coordinator.isVisible)
+        XCTAssertEqual(coordinator.toggle(isEnabled: true), .hide)
+        XCTAssertFalse(coordinator.isVisible)
+    }
+
     func testWindowLayoutControllerTracksIndependentPanelsAndPaneMode() {
         var layout = WindowLayoutController(isSidebarVisible: true, isTerminalVisible: false)
         layout.setSidebarVisible(false)
