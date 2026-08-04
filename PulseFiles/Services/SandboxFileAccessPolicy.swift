@@ -1,6 +1,3 @@
-#if canImport(AppKit)
-import AppKit
-#endif
 import Foundation
 #if os(macOS)
 import Darwin
@@ -165,38 +162,6 @@ struct SandboxFileAccessPolicy {
         DiagnosticLogger.log(.warning, category: "Sandbox", "Rejected denied directory with no accessible fallback: requested=\(DiagnosticLogger.sanitizedPath(url))")
         return fallback ?? url
     }
-
-    #if canImport(AppKit)
-    @MainActor
-    func requestAccess(to directory: URL, window: NSWindow?, completion: @escaping (Bool) -> Void) {
-        if canAccess(directory) {
-            completion(true)
-            return
-        }
-
-        let panel = NSOpenPanel()
-        panel.directoryURL = directory
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Grant Access".localized
-        panel.message = "Choose a folder to grant PulseFiles access.".localized
-
-        let finish: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .OK, let selectedURL = panel.url else {
-                completion(false)
-                return
-            }
-            completion(grantSelectedFolder(selectedURL, for: directory))
-        }
-
-        if let window {
-            panel.beginSheetModal(for: window, completionHandler: finish)
-        } else {
-            finish(panel.runModal())
-        }
-    }
-    #endif
 
     /// Completes a folder-picker decision. Kept separate from AppKit so the
     /// containment and post-grant validation are testable.

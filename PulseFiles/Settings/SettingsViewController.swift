@@ -70,8 +70,9 @@ final class SettingsViewController: NSViewController {
     private let categoryControl = NSSegmentedControl()
     private let scrollView = NSScrollView()
     private var selectedCategory: Category = .general
-    private let accessPolicy = SandboxFileAccessPolicy.current
-    private let accessGrantService = FolderAccessGrantService.shared
+    private let accessPolicy: SandboxFileAccessPolicy
+    private let accessGrantService: FolderAccessGrantService
+    private let authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     private let standardFolderAccessService = StandardFolderAccessService()
     private let stagingCleanupService: StagingCleanupService
     private let scratchCleanupService: ScratchFolderCleanupService
@@ -80,11 +81,16 @@ final class SettingsViewController: NSViewController {
     init(
         settings: SettingsService = SettingsService(),
         stagingCleanupService: StagingCleanupService = StagingCleanupService(),
-        scratchCleanupService: ScratchFolderCleanupService = ScratchFolderCleanupService()
+        scratchCleanupService: ScratchFolderCleanupService = ScratchFolderCleanupService(),
+        accessPolicy: SandboxFileAccessPolicy = .current,
+        accessGrantService: FolderAccessGrantService = .shared
     ) {
         self.settings = settings
         self.stagingCleanupService = stagingCleanupService
         self.scratchCleanupService = scratchCleanupService
+        self.accessPolicy = accessPolicy
+        self.accessGrantService = accessGrantService
+        self.authorizedFolderSelection = AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: accessGrantService)
         super.init(nibName: nil, bundle: nil)
         preferredContentSize = NSSize(width: 680, height: 500)
     }
@@ -882,13 +888,19 @@ final class SettingsViewController: NSViewController {
     }
 
     @objc private func grantFolderAccess(_ sender: Any?) {
-        accessGrantService.requestGrant(startingAt: nil, window: view.window) { [weak self] result in
+        let window = view.window
+        let request = AuthorizedFolderSelectionCoordinator.Request(
+            prompt: "Grant Access".localized,
+            message: "Choose a folder to grant PulseFiles access.".localized,
+            acceptsExistingAccessibleURL: false,
+            presentingWindow: window
+        )
+        authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
             guard let self else { return }
             self.accessGrantService.refreshResolvedGrants()
             self.rebuildSettingsPage()
-            if case .failure(let error) = result,
-               (error as? CocoaError)?.code != .userCancelled {
-                self.showFolderGrantFailureAlert(error)
+            if case .failure(let failure) = result {
+                FolderAccessFailurePresenter.present(failure, in: window)
             }
         }
     }
@@ -1027,64 +1039,21 @@ final class SettingsViewController: NSViewController {
     }
 
     private func chooseDirectory(completion: @escaping (URL) -> Void) {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose".localized
-        let handleSelection: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
-            guard let self, response == .OK, let url = panel?.url else { return }
-            do {
-                let accessibleURL = try self.grantedDirectoryURL(for: url)
-                completion(accessibleURL)
-            } catch {
-                self.showDirectoryAccessDeniedAlert()
+        let window = view.window
+        let request = AuthorizedFolderSelectionCoordinator.Request(
+            prompt: "Choose".localized,
+            acceptsExistingAccessibleURL: true,
+            presentingWindow: window
+        )
+        authorizedFolderSelection.selectFolder(for: request) { result in
+            switch result {
+            case .success(let url): completion(url)
+            case .failure(let failure):
+                FolderAccessFailurePresenter.present(failure, in: window)
             }
         }
-
-        if let window = view.window {
-            panel.beginSheetModal(for: window, completionHandler: handleSelection)
-        } else {
-            handleSelection(panel.runModal())
-        }
     }
 
-    private func grantedDirectoryURL(for url: URL) throws -> URL {
-        if accessPolicy.canAccess(url) {
-            try accessPolicy.validateAccess(to: url)
-            return url
-        }
-
-        let grant = try accessGrantService.grantAccess(to: url)
-        try accessPolicy.validateAccess(to: grant.url)
-        return grant.url
-    }
-
-    private func showDirectoryAccessDeniedAlert() {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Folder Access Needed".localized
-        alert.informativeText = "PulseFiles does not currently have permission to access this folder. Choose another folder or grant access in macOS privacy settings.".localized
-        alert.addButton(withTitle: "OK".localized)
-        if let window = view.window {
-            alert.beginSheetModal(for: window)
-        } else {
-            alert.runModal()
-        }
-    }
-
-    private func showFolderGrantFailureAlert(_ error: Error) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Could Not Grant Folder Access".localized
-        alert.informativeText = "PulseFiles could not create a secure folder-access bookmark. No additional folder access was granted. %@".localized(with: error.localizedDescription)
-        alert.addButton(withTitle: "OK".localized)
-        if let window = view.window {
-            alert.beginSheetModal(for: window)
-        } else {
-            alert.runModal()
-        }
-    }
 }
 
 private final class FolderAccessGrantButton: NSButton {
