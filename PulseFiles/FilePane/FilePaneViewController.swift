@@ -62,7 +62,7 @@ final class FilePaneViewController: NSViewController {
         self.dropProbeCache.requestVolumeIdentifier(url)
         return self.dropProbeCache.volumeIdentifier(for: url)
     }))
-    let accessGrantService = FolderAccessGrantService.shared
+    private let authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
     let thumbnailLoader = ThumbnailLoadingService()
     var thumbnailTasks: [URL: Task<Void, Never>] = [:]
@@ -72,12 +72,14 @@ final class FilePaneViewController: NSViewController {
         paneID: PaneID,
         viewModel: FilePaneViewModel,
         presentationMode: PanePresentationMode = .list,
-        openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil
+        openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil,
+        authorizedFolderSelection: AuthorizedFolderSelectionCoordinator? = nil
     ) {
         self.paneID = paneID
         self.viewModel = viewModel
         self.presentationMode = presentationMode
         self.contextMenuProvider = FilePaneContextMenuProvider(openWithApplicationResolver: openWithApplicationResolver ?? OpenWithMenuApplicationResolver())
+        self.authorizedFolderSelection = authorizedFolderSelection ?? AuthorizedFolderSelectionCoordinator(accessPolicy: .current, grantService: .shared)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -886,59 +888,24 @@ final class FilePaneViewController: NSViewController {
     }
 
     func chooseRecoveryDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose".localized
-        let completion: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
-            guard let self, response == .OK, let url = panel?.url else { return }
-            self.openGrantedRecoveryDirectory(url)
-        }
-        if let window = view.window {
-            panel.beginSheetModal(for: window, completionHandler: completion)
-        } else {
-            completion(panel.runModal())
+        let window = view.window
+        let request = AuthorizedFolderSelectionCoordinator.Request(
+            prompt: "Choose".localized,
+            initialDirectory: viewModel.currentDirectory,
+            acceptsExistingAccessibleURL: true,
+            presentingWindow: window
+        )
+        authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
+            switch result {
+            case .success(let url): self?.openGrantedRecoveryDirectory(url)
+            case .failure(let failure): FolderAccessFailurePresenter.present(failure, in: window)
+            }
         }
     }
 
     func openGrantedRecoveryDirectory(_ url: URL) {
-        do {
-            let accessibleURL = try grantedDirectoryURL(for: url)
-            onDirectoryAccessGranted?(accessibleURL)
-            navigate(to: accessibleURL)
-        } catch {
-            showDirectoryAccessDeniedAlert()
-        }
-    }
-
-    func grantedDirectoryURL(for url: URL) throws -> URL {
-        if accessGrantService.hasGrant(containing: url) {
-            try viewModel.validateAccess(to: url)
-            return url
-        }
-
-        if viewModel.isAccessRestrictedToExperimentalSandbox {
-            try viewModel.validateAccess(to: url)
-            return url
-        }
-
-        let grant = try accessGrantService.grantAccess(to: url)
-        try viewModel.validateAccess(to: grant.url)
-        return grant.url
-    }
-
-    func showDirectoryAccessDeniedAlert() {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Folder Access Needed".localized
-        alert.informativeText = "PulseFiles does not currently have permission to access this folder. Choose another folder or grant access in macOS privacy settings.".localized
-        alert.addButton(withTitle: "OK".localized)
-        if let window = view.window {
-            alert.beginSheetModal(for: window)
-        } else {
-            alert.runModal()
-        }
+        onDirectoryAccessGranted?(url)
+        navigate(to: url)
     }
 
     @objc private func refresh() {

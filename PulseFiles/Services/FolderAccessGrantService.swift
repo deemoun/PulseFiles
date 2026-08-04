@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(AppKit)
-import AppKit
-#endif
 
 struct FolderAccessGrant: Codable, Equatable {
     let url: URL
@@ -97,43 +94,6 @@ final class FolderAccessGrantService {
         resolveStoredBookmarks()
         return grant
     }
-
-    #if canImport(AppKit)
-    @MainActor
-    func requestGrant(startingAt directory: URL?, window: NSWindow?, completion: @escaping (Result<URL, Error>) -> Void) {
-        if let directory, let existingGrant = grant(containing: directory) {
-            completion(.success(existingGrant.url))
-            return
-        }
-
-        let panel = NSOpenPanel()
-        panel.directoryURL = directory
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Grant Access".localized
-        panel.message = "Choose a folder to grant PulseFiles access.".localized
-
-        let finish: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .OK, let selectedURL = panel.url else {
-                completion(.failure(CocoaError(.userCancelled)))
-                return
-            }
-            do {
-                let grant = try self.grantAccess(to: selectedURL)
-                completion(.success(grant.url))
-            } catch {
-                completion(.failure(error))
-            }
-        }
-
-        if let window {
-            panel.beginSheetModal(for: window, completionHandler: finish)
-        } else {
-            finish(panel.runModal())
-        }
-    }
-    #endif
 
     func resolveStoredBookmarks() {
         resolvedGrants.removeAll()

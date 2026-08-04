@@ -81,6 +81,7 @@ final class MainWindowViewController: NSViewController {
 
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
+    private lazy var authorizedFolderSelection = AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: .shared)
     private let sandboxRootEnsurer: () -> Void
     private let symbolicLinkResolver: SymbolicLinkResolutionService
     private let workflows: MainWindowWorkflowDependencies
@@ -109,7 +110,8 @@ final class MainWindowViewController: NSViewController {
             quickSearchMatchMode: settings.quickSearchMatchMode,
             quickSearchPresentation: settings.quickSearchPresentation
         ),
-        presentationMode: settings.presentationMode(for: .left)
+        presentationMode: settings.presentationMode(for: .left),
+        authorizedFolderSelection: authorizedFolderSelection
     )
     private lazy var rightPane = FilePaneViewController(
         paneID: .right,
@@ -123,7 +125,8 @@ final class MainWindowViewController: NSViewController {
             quickSearchMatchMode: settings.quickSearchMatchMode,
             quickSearchPresentation: settings.quickSearchPresentation
         ),
-        presentationMode: settings.presentationMode(for: .right)
+        presentationMode: settings.presentationMode(for: .right),
+        authorizedFolderSelection: authorizedFolderSelection
     )
     private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy)
     private let terminal = TerminalViewController()
@@ -883,10 +886,22 @@ final class MainWindowViewController: NSViewController {
             if let window = view.window { alert.beginSheetModal(for: window, completionHandler: completion) }
             else { completion(alert.runModal()) }
         case .requestAccess(let directory):
-            accessPolicy.requestAccess(to: directory, window: view.window) { [weak self] granted in
+            let request = AuthorizedFolderSelectionCoordinator.Request(
+                prompt: "Grant Access".localized,
+                message: "Choose a folder containing the configured scratch folder.".localized,
+                initialDirectory: directory,
+                acceptsExistingAccessibleURL: true,
+                presentingWindow: view.window
+            )
+            authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
                 guard let self else { return }
+                let granted: Bool
+                if case .success = result { granted = self.accessPolicy.canAccess(directory) } else { granted = false }
                 if case .navigate(let recovered) = router.routeAfterAccessRecovery(to: directory, wasGranted: granted) {
                     self.navigateToScratchDirectory(recovered, useInactive: useInactive)
+                }
+                if case .failure(let failure) = result {
+                    FolderAccessFailurePresenter.present(failure, in: self.view.window)
                 }
             }
         case .navigate(let directory):
@@ -897,14 +912,14 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func chooseScratchDirectory(useInactive: Bool) {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose".localized
-        let completion: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
-            guard let self, response == .OK, let directory = panel?.url,
-                  self.accessPolicy.grantSelectedFolder(directory, for: directory) else { return }
+        let window = view.window
+        let request = AuthorizedFolderSelectionCoordinator.Request(prompt: "Choose".localized, presentingWindow: window)
+        authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
+            guard let self else { return }
+            guard case .success(let directory) = result else {
+                if case .failure(let failure) = result { FolderAccessFailurePresenter.present(failure, in: window) }
+                return
+            }
             let selection: ScratchFolderSelection
             do {
                 selection = try ScratchFolderCleanupService(
@@ -923,8 +938,6 @@ final class MainWindowViewController: NSViewController {
             self.navigateToScratchDirectory(selection.directory, useInactive: useInactive)
             self.sidebar.refresh()
         }
-        if let window = view.window { panel.beginSheetModal(for: window, completionHandler: completion) }
-        else { completion(panel.runModal()) }
     }
 
     private func navigateToScratchDirectory(_ directory: URL, useInactive: Bool) {
@@ -2186,23 +2199,29 @@ extension MainWindowViewController {
     }
 
     private func exportDiagnostics() {
-        let panel = NSOpenPanel()
-        panel.title = "Export Diagnostics".localized
-        panel.message = "Choose a folder for a local support bundle. Review it before attaching it to a support request.".localized
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
-        do {
-            let bundle = try DiagnosticsExportService().export(
-                to: destination,
-                entries: DiagnosticLogService.shared.entries,
-                operationSummaries: recentOperationSummaries
-            )
-            NSWorkspace.shared.activateFileViewerSelecting([bundle])
-        } catch {
-            showError(message: "Could Not Export Diagnostics".localized, detail: error.localizedDescription)
+        let window = view.window
+        let request = AuthorizedFolderSelectionCoordinator.Request(
+            prompt: "Export".localized,
+            message: "Choose a folder for a local support bundle. Review it before attaching it to a support request.".localized,
+            acceptsExistingAccessibleURL: true,
+            presentingWindow: window
+        )
+        authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
+            guard let self else { return }
+            guard case .success(let destination) = result else {
+                if case .failure(let failure) = result { FolderAccessFailurePresenter.present(failure, in: window) }
+                return
+            }
+            do {
+                let bundle = try DiagnosticsExportService().export(
+                    to: destination,
+                    entries: DiagnosticLogService.shared.entries,
+                    operationSummaries: recentOperationSummaries
+                )
+                NSWorkspace.shared.activateFileViewerSelecting([bundle])
+            } catch {
+                showError(message: "Could Not Export Diagnostics".localized, detail: error.localizedDescription)
+            }
         }
     }
 
