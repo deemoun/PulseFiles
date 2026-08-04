@@ -376,118 +376,21 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func bindPaneCallbacks() {
-        leftPane.onDirectoryAccessGranted = { [weak self] url in
-            self?.settings.startupLeftDirectory = url
-        }
-        rightPane.onDirectoryAccessGranted = { [weak self] url in
-            self?.settings.startupRightDirectory = url
+        [leftPane, rightPane].forEach {
+            $0.navigationDelegate = self
+            $0.commandDelegate = self
+            $0.presentationDelegate = self
         }
         terminal.workingDirectoryProvider = { [weak self] in
             guard let self else { return ExperimentalFlags.appSandboxRoot }
-            return self.terminalPresentationCoordinator.workingDirectory(
-                activePaneURL: self.targetPane().currentDirectory,
-                accessPolicy: self.accessPolicy
-            )
+            return self.terminalPresentationCoordinator.workingDirectory(activePaneURL: self.targetPane().currentDirectory, accessPolicy: self.accessPolicy)
         }
         terminal.isShellInteractionAllowedProvider = { [weak self] in
             guard let self else { return false }
             return self.settings.experimentalTerminalEnabled && self.settings.hasAcknowledgedTerminalWarning
         }
-        leftPane.onActivate = { [weak self] in self?.activePaneID = .left }
-        rightPane.onActivate = { [weak self] in self?.activePaneID = .right }
-        leftPane.onSwitchPane = { [weak self] in self?.performCommand(.switchPane, from: .left, entrySurface: .paneCallback) }
-        rightPane.onSwitchPane = { [weak self] in self?.performCommand(.switchPane, from: .right, entrySurface: .paneCallback) }
-        leftPane.onToggleTerminal = { [weak self] in self?.performCommand(.toggleTerminal, from: .left, entrySurface: .paneCallback) }
-        rightPane.onToggleTerminal = { [weak self] in self?.performCommand(.toggleTerminal, from: .right, entrySurface: .paneCallback) }
-        leftPane.onNewFolder = { [weak self] in self?.performCommand(.newFolder, from: .left, entrySurface: .paneCallback) }
-        rightPane.onNewFolder = { [weak self] in self?.performCommand(.newFolder, from: .right, entrySurface: .paneCallback) }
-        leftPane.onNewFile = { [weak self] in self?.performCommand(.newFile, from: .left, entrySurface: .paneCallback) }
-        rightPane.onNewFile = { [weak self] in self?.performCommand(.newFile, from: .right, entrySurface: .paneCallback) }
-        leftPane.onRenameItem = { [weak self] item, name in
-            self?.performRoutedPaneCallback(.rename, from: .left) { self?.rename(item: item, to: name) }
-        }
-        rightPane.onRenameItem = { [weak self] item, name in
-            self?.performRoutedPaneCallback(.rename, from: .right) { self?.rename(item: item, to: name) }
-        }
-        leftPane.onOpenURL = { [weak self] fileURL in
-            self?.performRoutedPaneCallback(.open, from: .left) { self?.openFile(fileURL, with: nil) }
-        }
-        rightPane.onOpenURL = { [weak self] fileURL in
-            self?.performRoutedPaneCallback(.open, from: .right) { self?.openFile(fileURL, with: nil) }
-        }
-        leftPane.onOpenWithApplication = { [weak self] fileURL, applicationURL in
-            self?.performRoutedPaneCallback(.openWith, from: .left) { self?.openFile(fileURL, with: applicationURL) }
-        }
-        rightPane.onOpenWithApplication = { [weak self] fileURL, applicationURL in
-            self?.performRoutedPaneCallback(.openWith, from: .right) { self?.openFile(fileURL, with: applicationURL) }
-        }
-        leftPane.onCommand = { [weak self] command in
-            self?.performCommand(command, from: .left, entrySurface: .contextMenu)
-        }
-        rightPane.onCommand = { [weak self] command in
-            self?.performCommand(command, from: .right, entrySurface: .contextMenu)
-        }
-        leftPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .left) }
-        rightPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .right) }
-        leftPane.onDropFiles = { [weak self] urls, destination, shouldCopy in
-            self?.activePaneID = .left
-            self?.transferDroppedItems(urls, to: destination, copy: shouldCopy)
-        }
-        rightPane.onDropFiles = { [weak self] urls, destination, shouldCopy in
-            self?.activePaneID = .right
-            self?.transferDroppedItems(urls, to: destination, copy: shouldCopy)
-        }
-        leftPane.onDirectoryChanged = { [weak self] url in
-            self?.settings.lastLeftDirectory = url
-            self?.recentLocations.record(url)
-            if self?.activePaneID == .left {
-                self?.terminal.suggestedWorkingDirectory = url
-            }
-        }
-        rightPane.onDirectoryChanged = { [weak self] url in
-            self?.settings.lastRightDirectory = url
-            self?.recentLocations.record(url)
-            if self?.activePaneID == .right {
-                self?.terminal.suggestedWorkingDirectory = url
-            }
-        }
-        [leftPane, rightPane].forEach { pane in
-            pane.onTabsChanged = { [weak self, weak pane] state in
-                guard let self, let pane else { return }
-                self.settings.setPaneTabRestoration(PaneRestorationState(paneState: state), for: pane.paneID)
-                self.refreshCommandAvailability()
-            }
-            pane.onSearchQueryChanged = { [weak self, weak pane] query in
-                guard let self, pane?.paneID == self.activePaneID else { return }
-                self.toolbarSearchField?.stringValue = query
-            }
-            pane.onDisplayPreferencesChanged = { [weak self, weak pane] showsHiddenFiles, sort in
-                self?.settings.showHiddenFilesByDefault = showsHiddenFiles
-                if let paneID = pane?.paneID { self?.settings.setSortDescriptor(sort, for: paneID) }
-            }
-            pane.onSelectionChanged = { [weak self, weak pane] items in
-                guard let self else { return }
-                if pane?.paneID == self.activePaneID { self.sidebar.showSelection(items) }
-                self.refreshCommandAvailability()
-            }
-        }
-        sidebar.onOpenLocation = { [weak self] url, useInactive in
-            self?.targetPane(useInactive: useInactive).navigate(to: url)
-        }
-        commandBar.onAction = { [weak self] action in
-            self?.performCommand(MainCommand(commandBarAction: action), entrySurface: .commandBar)
-        }
-    }
-
-    /// Opens a directory that has already been authorized by the application
-    /// delegate for an external Finder/Launch Services event. The active pane
-    /// is deliberate: one event changes one visible destination, while any
-    /// additional folders in the same event are left untouched.
-    func openAcceptedFolderFromExternalEvent(_ directory: URL) {
-        let pane = targetPane()
-        pane.setSearchQuery("")
-        pane.navigate(to: directory)
-        view.window?.makeFirstResponder(pane.tableView)
+        sidebar.onOpenLocation = { [weak self] url, useInactive in self?.targetPane(useInactive: useInactive).navigate(to: url) }
+        commandBar.onAction = { [weak self] action in self?.performCommand(MainCommand(commandBarAction: action), entrySurface: .commandBar) }
     }
 
     private func targetPane(useInactive: Bool = false) -> FilePaneViewController {
@@ -2753,5 +2656,48 @@ private final class MinimalDividerSplitView: NSSplitView {
         )
         LiquidGlassStyle.subtleStroke.setFill()
         lineRect.fill()
+    }
+}
+
+
+extension MainWindowViewController: FilePaneNavigationDelegate {
+    func filePane(_ pane: FilePaneViewController, didEmit event: FilePaneNavigationEvent) {
+        switch event {
+        case .activate: activePaneID = pane.paneID
+        case .switchPane: performCommand(.switchPane, from: pane.paneID, entrySurface: .paneCallback)
+        case let .open(url): performRoutedPaneCallback(.open, from: pane.paneID) { [weak self] in self?.openFile(url, with: nil) }
+        case let .directoryChanged(url):
+            if pane.paneID == .left { settings.lastLeftDirectory = url } else { settings.lastRightDirectory = url }
+            recentLocations.record(url)
+            if activePaneID == pane.paneID { terminal.suggestedWorkingDirectory = url }
+        case let .directoryAccessGranted(url):
+            if pane.paneID == .left { settings.startupLeftDirectory = url } else { settings.startupRightDirectory = url }
+        }
+    }
+}
+
+extension MainWindowViewController: FilePaneCommandDelegate {
+    func filePane(_ pane: FilePaneViewController, didEmit event: FilePaneCommandEvent) {
+        switch event {
+        case let .command(command): performCommand(command, from: pane.paneID, entrySurface: .contextMenu)
+        case .toggleTerminal: performCommand(.toggleTerminal, from: pane.paneID, entrySurface: .paneCallback)
+        case .newFolder: performCommand(.newFolder, from: pane.paneID, entrySurface: .paneCallback)
+        case .newFile: performCommand(.newFile, from: pane.paneID, entrySurface: .paneCallback)
+        case let .openWith(url, application): performRoutedPaneCallback(.openWith, from: pane.paneID) { [weak self] in self?.openFile(url, with: application) }
+        case let .drop(urls, destination, copy): activePaneID = pane.paneID; transferDroppedItems(urls, to: destination, copy: copy)
+        case let .rename(item, name): performRoutedPaneCallback(.rename, from: pane.paneID) { [weak self] in self?.rename(item: item, to: name) }
+        }
+    }
+}
+
+extension MainWindowViewController: FilePanePresentationDelegate {
+    func filePane(_ pane: FilePaneViewController, didEmit event: FilePanePresentationEvent) {
+        switch event {
+        case let .displayPreferences(hidden, sort): settings.showHiddenFilesByDefault = hidden; settings.setSortDescriptor(sort, for: pane.paneID)
+        case let .selection(items): if pane.paneID == activePaneID { sidebar.showSelection(items) }; refreshCommandAvailability()
+        case let .searchQuery(query): if pane.paneID == activePaneID { toolbarSearchField?.stringValue = query }
+        case let .tabs(state): settings.setPaneTabRestoration(PaneRestorationState(paneState: state), for: pane.paneID); refreshCommandAvailability()
+        case let .mode(mode): settings.setPresentationMode(mode, for: pane.paneID)
+        }
     }
 }

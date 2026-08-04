@@ -29,126 +29,11 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    struct SidebarItem {
-        let title: String
-        let subtitle: String?
-        let url: URL
-        let symbol: String
-        let group: String
-        let badge: Int?
-        let isAvailable: Bool
-
-        init(title: String, subtitle: String? = nil, url: URL, symbol: String, group: String, badge: Int? = nil, isAvailable: Bool = true) {
-            self.title = title
-            self.subtitle = subtitle
-            self.url = url
-            self.symbol = symbol
-            self.group = group
-            self.badge = badge
-            self.isAvailable = isAvailable
-        }
-    }
-
-    struct InfoRow {
-        let title: String
-        let value: String
-        let symbol: String
-    }
-
-    struct SelectionInspectorPresentation {
-        let title: String
-        let subtitle: String
-        let icon: NSImage
-        let rows: [InfoRow]
-        let selectedURLs: [URL]
-
-        @MainActor
-        static func make(for items: [FileItem]) -> SelectionInspectorPresentation? {
-            guard !items.isEmpty else { return nil }
-            if items.count == 1, let item = items.first {
-                return SelectionInspectorPresentation(
-                    title: item.displayName,
-                    subtitle: displayPath(for: item.url),
-                    icon: FileIconProvider.shared.image(for: item.iconKey),
-                    rows: singleSelectionRows(for: item),
-                    selectedURLs: [item.url]
-                )
-            }
-
-            let totalSize = items.reduce(Int64(0)) { $0 + $1.size }
-            let folderCount = items.filter(\.isDirectory).count
-            let fileCount = items.count - folderCount
-            return SelectionInspectorPresentation(
-                title: "\(items.count) items selected",
-                subtitle: selectionBreakdown(fileCount: fileCount, folderCount: folderCount),
-                icon: NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: nil) ?? NSImage(),
-                rows: [
-                    InfoRow(title: "Selected Items", value: "\(items.count)", symbol: "number"),
-                    InfoRow(title: "Selected Size", value: FileSizeFormatter.string(fromByteCount: totalSize), symbol: "doc.on.doc"),
-                    InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"),
-                    InfoRow(title: "Type", value: "Mixed selection", symbol: "tag")
-                ],
-                selectedURLs: items.map(\.url)
-            )
-        }
-
-        private static func singleSelectionRows(for item: FileItem) -> [InfoRow] {
-            var rows = [
-                InfoRow(title: "Total Space", value: "Calculating…", symbol: "externaldrive"),
-                InfoRow(title: "File Size", value: item.isDirectory ? "Folder" : FileSizeFormatter.string(fromByteCount: item.size), symbol: "doc.text"),
-                InfoRow(title: "Type", value: item.fileType.displayName, symbol: item.isDirectory ? "folder" : "tag"),
-                InfoRow(title: "Localized Type", value: item.localizedTypeDescription, symbol: "text.badge.checkmark")
-            ]
-            rows.append(InfoRow(title: "Created", value: formattedDate(item.creationDate), symbol: "calendar.badge.plus"))
-            rows.append(InfoRow(title: "Modified", value: formattedDate(item.modificationDate), symbol: "calendar"))
-            rows.append(InfoRow(title: "Permissions", value: formattedPermissions(item.posixPermissions), symbol: "lock.shield"))
-            rows.append(InfoRow(title: "Owner", value: nonEmpty(item.owner), symbol: "person"))
-            rows.append(InfoRow(title: "Group", value: nonEmpty(item.group), symbol: "person.2"))
-            return rows
-        }
-
-        private static func selectionBreakdown(fileCount: Int, folderCount: Int) -> String {
-            [pluralized(fileCount, singular: "file"), pluralized(folderCount, singular: "folder")]
-                .filter { !$0.hasPrefix("0 ") }
-                .joined(separator: ", ")
-        }
-
-        private static func pluralized(_ count: Int, singular: String) -> String {
-            "\(count) \(singular)\(count == 1 ? "" : "s")"
-        }
-
-        private static func formattedDate(_ date: Date?) -> String {
-            guard let date else { return "Unknown" }
-            return dateFormatter.string(from: date)
-        }
-
-        private static func formattedPermissions(_ permissions: Int?) -> String {
-            guard let permissions else { return "Unknown" }
-            return String(format: "%03o", permissions & 0o777)
-        }
-
-        private static func nonEmpty(_ value: String?) -> String {
-            guard let value, !value.isEmpty else { return "Unknown" }
-            return value
-        }
-
-        private static let dateFormatter: DateFormatter = {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            return formatter
-        }()
-
-        private static func displayPath(for url: URL) -> String {
-            url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        }
-    }
 
     private let recentLocations: any RecentLocationRecording
     private let bookmarkService: any BookmarkPersisting
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
-    private let volumeDiscovery: any VolumeDiscovering
     private let metadataReader: MetadataReader
     private let scrollView = NSScrollView()
     private let documentView = SidebarDocumentView()
@@ -157,11 +42,9 @@ final class SidebarViewController: NSViewController {
     private var selectedItems: [FileItem] = []
     private var selectedMode: SidebarMode = .navigation
     private var userSelectedMode = false
-    private var sizeTask: Task<Void, Never>?
-    private var deviceDiscoveryTask: Task<Void, Never>?
-    private var deviceDiscoveryGeneration = 0
-    private var lastSuccessfulDeviceVolumes: [Volume] = []
-    private var representedSelectionID = UUID()
+    private let inspectorModel = SelectionInspectorViewModel()
+    private let navigationModel: SidebarNavigationModel
+    private var representedSelectionID = 0
 
     init(
         recentLocations: any RecentLocationRecording,
@@ -175,17 +58,12 @@ final class SidebarViewController: NSViewController {
         self.bookmarkService = bookmarkService
         self.settings = settings
         self.accessPolicy = accessPolicy
-        self.volumeDiscovery = volumeDiscovery
+        self.navigationModel = SidebarNavigationModel(volumeDiscovery: volumeDiscovery)
         self.metadataReader = metadataReader
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { nil }
-
-    deinit {
-        sizeTask?.cancel()
-        deviceDiscoveryTask?.cancel()
-    }
 
     override func loadView() {
         view = NSVisualEffectView()
@@ -285,8 +163,7 @@ final class SidebarViewController: NSViewController {
     }
 
     private func rebuild(refreshingDevices: Bool = true) {
-        sizeTask?.cancel()
-        representedSelectionID = UUID()
+        representedSelectionID = inspectorModel.beginSelection()
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
         updateModeControl()
 
@@ -322,15 +199,12 @@ final class SidebarViewController: NSViewController {
     }
 
     private func addNavigationContent() {
-        addSectionIfNeeded("Temporary Workspace".localized, items: scratchItems())
-        if ExperimentalFlags.restrictFileAccessToAppSandboxRoot {
-            addSandboxBanner()
-            addSectionIfNeeded("Workspace", items: sandboxItems())
-        } else {
-            addSectionIfNeeded("Favorites", items: favoriteItems())
-            addSectionIfNeeded("Devices", items: deviceItems())
-        }
-        addSectionIfNeeded("Recent", items: recentItems())
+        let isRestricted = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
+        if isRestricted { addSandboxBanner() }
+        navigationModel.sections(
+            scratch: scratchItems(), workspace: sandboxItems(), favorites: favoriteItems(),
+            devices: deviceItems(), recent: recentItems(), isRestricted: isRestricted
+        ).forEach { addSectionIfNeeded($0.title, items: $0.items) }
         if stack.arrangedSubviews.isEmpty {
             addEmptyState("No accessible locations yet.")
         }
@@ -375,7 +249,7 @@ final class SidebarViewController: NSViewController {
     }
 
     func deviceItems() -> [SidebarItem] {
-        Self.deviceItems(volumes: lastSuccessfulDeviceVolumes, accessPolicy: accessPolicy)
+        Self.deviceItems(volumes: navigationModel.volumes, accessPolicy: accessPolicy)
     }
 
     /// Rebuilds navigation content after a mounted-volume change.
@@ -387,16 +261,8 @@ final class SidebarViewController: NSViewController {
     /// Keeps layout work independent from mounted-volume discovery, which can
     /// block on unavailable removable or network volumes.
     private func refreshDeviceVolumesAsynchronously() {
-        deviceDiscoveryGeneration += 1
-        let generation = deviceDiscoveryGeneration
-        deviceDiscoveryTask?.cancel()
-        let discovery = volumeDiscovery
-        deviceDiscoveryTask = Task { [weak self] in
-            let volumes = await discovery.mountedVolumes()
-            guard !Task.isCancelled else { return }
-            guard let self, self.deviceDiscoveryGeneration == generation else { return }
-            self.lastSuccessfulDeviceVolumes = volumes
-            guard self.selectedMode == .navigation else { return }
+        navigationModel.refresh { [weak self] in
+            guard let self, self.selectedMode == .navigation else { return }
             self.rebuild(refreshingDevices: false)
         }
     }
@@ -450,7 +316,7 @@ final class SidebarViewController: NSViewController {
         items.filter { accessPolicy.canAccess($0.url) }
     }
 
-    private func addFileInfo(for items: [FileItem], selectionID: UUID) {
+    private func addFileInfo(for items: [FileItem], selectionID: Int) {
         guard let presentation = SelectionInspectorPresentation.make(for: items) else { return }
         addInspectorSummary(presentation)
         let rows = visibleRows(presentation.rows)
@@ -462,7 +328,7 @@ final class SidebarViewController: NSViewController {
         addInspectorRows("Details", rows: extraRows)
         if items.count == 1, let item = items.first, isImage(item) {
             addSection("Metadata")
-            addInfoRow(InfoRow(title: "GPS Location", value: "Reading metadata…", symbol: "location"), identifier: "gps-location")
+            addSidebarInfoRow(SidebarInfoRow(title: "GPS Location", value: "Reading metadata…", symbol: "location"), identifier: "gps-location")
         }
         if items.count == 1, let item = items.first {
             loadDetails(for: item, selectionID: selectionID)
@@ -475,14 +341,14 @@ final class SidebarViewController: NSViewController {
     private static let dateRowTitles: Set<String> = ["Created", "Modified"]
     private static let ownershipRowTitles: Set<String> = ["Permissions", "Owner", "Group"]
 
-    private func visibleRows(_ rows: [InfoRow]) -> [InfoRow] {
+    private func visibleRows(_ rows: [SidebarInfoRow]) -> [SidebarInfoRow] {
         rows.filter { !$0.value.isEmpty && $0.value != "Unknown" }
     }
 
-    private func loadDetails(for item: FileItem, selectionID: UUID) {
+    private func loadDetails(for item: FileItem, selectionID: Int) {
         let accessPolicy = accessPolicy
         let metadataReader = metadataReader
-        sizeTask = Task { [weak self] in
+        inspectorModel.run { [weak self] in
             let details = await Task.detached(priority: .utility) {
                 let totalSize = Self.calculateTotalSize(for: item.url, fallback: item.size, accessPolicy: accessPolicy)
                 let gps: String?
@@ -494,31 +360,31 @@ final class SidebarViewController: NSViewController {
                 return (totalSize, gps)
             }.value
             await MainActor.run {
-                guard !Task.isCancelled, let self, self.representedSelectionID == selectionID else { return }
+                guard !Task.isCancelled, let self, self.inspectorModel.isCurrent(selectionID) else { return }
                 let totalSize = FileSizeFormatter.string(fromByteCount: details.0)
                 self.onInspectorDetailUpdate?("total-size", totalSize)
-                self.updateInfoRow(identifier: "total-size", value: totalSize)
+                self.updateSidebarInfoRow(identifier: "total-size", value: totalSize)
                 if self.isImage(item) {
                     let gps = details.1 ?? "No GPS metadata"
                     self.onInspectorDetailUpdate?("gps-location", gps)
-                    self.updateInfoRow(identifier: "gps-location", value: gps)
+                    self.updateSidebarInfoRow(identifier: "gps-location", value: gps)
                 }
             }
         }
     }
 
-    private func loadTotalSize(for items: [FileItem], selectionID: UUID) {
+    private func loadTotalSize(for items: [FileItem], selectionID: Int) {
         let accessPolicy = accessPolicy
-        sizeTask = Task { [weak self] in
+        inspectorModel.run { [weak self] in
             var total: Int64 = 0
             for item in items where !Task.isCancelled {
                 total += await Self.totalSize(for: item.url, fallback: item.size, accessPolicy: accessPolicy)
             }
             await MainActor.run {
-                guard !Task.isCancelled, let self, self.representedSelectionID == selectionID else { return }
+                guard !Task.isCancelled, let self, self.inspectorModel.isCurrent(selectionID) else { return }
                 let formattedTotal = FileSizeFormatter.string(fromByteCount: total)
                 self.onInspectorDetailUpdate?("total-size", formattedTotal)
-                self.updateInfoRow(identifier: "total-size", value: formattedTotal)
+                self.updateSidebarInfoRow(identifier: "total-size", value: formattedTotal)
             }
         }
     }
@@ -678,8 +544,8 @@ final class SidebarViewController: NSViewController {
         stack.setCustomSpacing(14, after: container)
     }
 
-    private func addInfoRow(_ info: InfoRow, identifier: String? = nil) {
-        let row = SidebarInfoRowView(info: info)
+    private func addSidebarInfoRow(_ info: SidebarInfoRow, identifier: String? = nil) {
+        let row = SidebarSidebarInfoRowView(info: info)
         if let identifier { row.identifier = NSUserInterfaceItemIdentifier(identifier) }
         stack.addArrangedSubview(row)
         pinToSidebarContentWidth(row)
@@ -694,12 +560,12 @@ final class SidebarViewController: NSViewController {
         widthConstraint.isActive = true
     }
 
-    private func addInspectorRows(_ title: String, rows: [InfoRow]) {
+    private func addInspectorRows(_ title: String, rows: [SidebarInfoRow]) {
         guard !rows.isEmpty else { return }
         addSection(title)
         for row in rows {
             let identifier: String? = row.title == "Total Space" ? "total-size" : nil
-            addInfoRow(row, identifier: identifier)
+            addSidebarInfoRow(row, identifier: identifier)
         }
         if let last = stack.arrangedSubviews.last {
             stack.setCustomSpacing(12, after: last)
@@ -727,9 +593,9 @@ final class SidebarViewController: NSViewController {
         stack.setCustomSpacing(12, after: container)
     }
 
-    private func updateInfoRow(identifier: String, value: String) {
+    private func updateSidebarInfoRow(identifier: String, value: String) {
         for view in stack.arrangedSubviews where view.identifier?.rawValue == identifier {
-            (view as? SidebarInfoRowView)?.setValue(value)
+            (view as? SidebarSidebarInfoRowView)?.setValue(value)
         }
     }
 
@@ -767,209 +633,5 @@ final class SidebarViewController: NSViewController {
         guard let paths = sender.identifier?.rawValue, !paths.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(paths, forType: .string)
-    }
-}
-
-private extension FileItemType {
-    var displayName: String {
-        switch self {
-        case .folder: return "Folder"
-        case .symbolicLink: return "Symbolic Link"
-        case .package: return "Package"
-        case .file: return "File"
-        case .unknown: return "Unknown"
-        }
-    }
-}
-
-private final class SidebarInfoRowView: NSView {
-    private let valueLabel = NSTextField(labelWithString: "")
-
-    init(info: SidebarViewController.InfoRow) {
-        super.init(frame: .zero)
-        setup(info: info)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    func setValue(_ value: String) {
-        valueLabel.stringValue = value
-        valueLabel.toolTip = value
-    }
-
-    private func setup(info: SidebarViewController.InfoRow) {
-        translatesAutoresizingMaskIntoConstraints = false
-
-        let imageView = NSImageView(image: NSImage(systemSymbolName: info.symbol, accessibilityDescription: info.title) ?? NSImage())
-        imageView.symbolConfiguration = .init(pointSize: 12, weight: .medium)
-        imageView.contentTintColor = LiquidGlassStyle.secondaryLabel
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.setContentHuggingPriority(.required, for: .horizontal)
-
-        let titleLabel = NSTextField(labelWithString: info.title)
-        titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
-        titleLabel.textColor = LiquidGlassStyle.secondaryLabel
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        valueLabel.stringValue = info.value
-        valueLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        valueLabel.textColor = LiquidGlassStyle.label
-        valueLabel.alignment = .left
-        valueLabel.lineBreakMode = .byWordWrapping
-        valueLabel.maximumNumberOfLines = 2
-        valueLabel.toolTip = info.value
-        valueLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let textStack = NSStackView(views: [titleLabel, valueLabel])
-        textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 1
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-
-        addSubview(imageView)
-        addSubview(textStack)
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 38),
-            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            imageView.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            imageView.widthAnchor.constraint(equalToConstant: 18),
-            imageView.heightAnchor.constraint(equalToConstant: 18),
-            textStack.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 9),
-            textStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            textStack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            textStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5)
-        ])
-    }
-}
-
-private final class SidebarDocumentView: NSView {
-    override var isFlipped: Bool { true }
-}
-
-private final class SidebarRowView: NSControl {
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let subtitleLabel = NSTextField(labelWithString: "")
-    private let imageView = NSImageView()
-    private let badgeLabel = NSTextField(labelWithString: "")
-    private var trackingArea: NSTrackingArea?
-    private var isHovering = false {
-        didSet { updateChrome() }
-    }
-
-    init(item: SidebarViewController.SidebarItem) {
-        super.init(frame: .zero)
-        setup(item: item)
-    }
-
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        let options: NSTrackingArea.Options = [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect]
-        let area = NSTrackingArea(rect: bounds, options: options, owner: self)
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        isHovering = true
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        isHovering = false
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard isEnabled else { return }
-        highlight(true)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard isEnabled else { return }
-        let shouldOpen = bounds.contains(convert(event.locationInWindow, from: nil))
-        highlight(false)
-        if shouldOpen {
-            sendAction(action, to: target)
-        }
-    }
-
-    private func setup(item: SidebarViewController.SidebarItem) {
-        wantsLayer = true
-        layer?.cornerRadius = LiquidGlassStyle.compactCornerRadius
-        layer?.cornerCurve = .continuous
-        translatesAutoresizingMaskIntoConstraints = false
-        heightAnchor.constraint(equalToConstant: item.subtitle == nil ? 32 : 42).isActive = true
-
-        imageView.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: item.title)
-        imageView.symbolConfiguration = .init(pointSize: 13, weight: .medium)
-        imageView.contentTintColor = LiquidGlassStyle.secondaryLabel
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-
-        titleLabel.stringValue = item.title
-        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        titleLabel.textColor = LiquidGlassStyle.label
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        subtitleLabel.stringValue = item.subtitle ?? ""
-        subtitleLabel.font = .systemFont(ofSize: 11, weight: .regular)
-        subtitleLabel.textColor = LiquidGlassStyle.secondaryLabel
-        subtitleLabel.lineBreakMode = .byTruncatingMiddle
-        subtitleLabel.isHidden = item.subtitle == nil
-        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        badgeLabel.stringValue = item.badge.map(String.init) ?? ""
-        badgeLabel.font = .systemFont(ofSize: 10, weight: .semibold)
-        badgeLabel.textColor = LiquidGlassStyle.secondaryLabel
-        badgeLabel.alignment = .right
-        badgeLabel.isHidden = item.badge == nil
-        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let textStack = NSStackView(views: [titleLabel, subtitleLabel])
-        textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 1
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-
-        addSubview(imageView)
-        addSubview(textStack)
-        addSubview(badgeLabel)
-
-        NSLayoutConstraint.activate([
-            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
-            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 17),
-            imageView.heightAnchor.constraint(equalToConstant: 17),
-
-            textStack.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 8),
-            textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: badgeLabel.leadingAnchor, constant: -8),
-
-            badgeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
-            badgeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 16)
-        ])
-
-        updateChrome()
-    }
-
-    private func highlight(_ active: Bool) {
-        layer?.backgroundColor = (active ? LiquidGlassStyle.activeFill : hoverFill).cgColor
-    }
-
-    private func updateChrome() {
-        layer?.backgroundColor = hoverFill.cgColor
-        layer?.borderWidth = isHovering ? 1 : 0
-        layer?.borderColor = LiquidGlassStyle.subtleStroke.cgColor
-    }
-
-    private var hoverFill: NSColor {
-        isHovering ? NSColor(calibratedWhite: 1, alpha: 0.07) : .clear
     }
 }
