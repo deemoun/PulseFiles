@@ -15,9 +15,11 @@ MainWindowController owns one MainWindowViewController.
 MainWindowController is the application composition root for injectable filesystem
 and macOS integration dependencies. MainWindowViewController creates the left and
 right FilePaneViewControllers, owns toolbar search and active-pane state, and keeps
-the cross-pane ownership boundary. Focused coordinators hold typed command routing,
-preview availability, volume-loss navigation decisions, operation result/undo state,
-and value-only window layout state. Menus, toolbar,
+the cross-pane ownership boundary. Focused workflow coordinators under `App/Coordinators` own file transfer and
+clipboard flow, creation naming, descendant search, auxiliary windows, and the
+mechanics of installing sidebar/terminal child views. Preview availability,
+volume-loss navigation decisions, operation result/undo state, and value-only
+window layout state remain separately testable. Menus, toolbar,
 command bar, context menus, and global keyboard actions should converge on its
 performCommand path. Keep cross-pane behavior here, not in a pane controller.
 
@@ -157,8 +159,13 @@ Limits that must remain visible in code and UI:
 
 | Type | Responsibility |
 | --- | --- |
-| MainWindowViewController | AppKit wiring, active-pane ownership, and cross-pane workflow presentation. |
+| MainWindowViewController | Single `performCommand` dispatch point, active-pane ownership, cross-pane coordination, and composition of pane state with shared `WindowLayoutController` state. |
 | MainWindowDependencies | Injectable filesystem operations/probing/search, recents, bookmarks, volumes, clipboard, and application opening boundaries. |
+| MainWindowWorkflowDependencies | Injected file-transfer, creation, search, and auxiliary-panel workflow collaborators. |
+| FileTransferWorkflowCoordinator | Clipboard validation/read/write and safe copy/move request construction; the controller supplies active/opposite-pane context. |
+| FileCreationWorkflowCoordinator / SearchWorkflowCoordinator | Creation operations and unique-name suggestions; cancellable descendant search, results-window ownership, and result-action dispatch. |
+| AuxiliaryPanelCoordinator | Settings/debug-log window lifetime and sizing. |
+| SidebarLayoutCoordinator / TerminalLayoutCoordinator | Child-view installation/removal; shared visibility and pane-layout state stays in the composition layer. |
 | FileOperationCoordinator / MainCommandRouter | Operation result and undo state; authoritative command availability and typed cross-pane targets. |
 | PreviewCoordinator / NavigationCoordinator / WindowLayoutController | Preview probing, standard/volume-loss navigation decisions, and value-only split/sidebar/terminal state. |
 | FilePaneViewModel | Per-pane async loading, history, filtering, sorting, hidden files and safe navigation. |

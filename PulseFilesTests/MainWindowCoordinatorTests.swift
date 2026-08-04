@@ -48,4 +48,19 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertTrue(layout.isTerminalVisible)
         XCTAssertTrue(layout.isSinglePane)
     }
+
+    func testTransferWorkflowRejectsDestinationInsideSource() {
+        let source = URL(fileURLWithPath: "/tmp/source", isDirectory: true)
+        XCTAssertThrowsError(try FileTransferWorkflowCoordinator.validatedRequest(
+            sources: [source], destination: source.appendingPathComponent("child", isDirectory: true)
+        ))
+    }
+
+    func testTransferWorkflowBuildsTypedRequest() throws {
+        let sources = [URL(fileURLWithPath: "/tmp/source/file")]
+        let destination = URL(fileURLWithPath: "/tmp/destination", isDirectory: true)
+        let request = try FileTransferWorkflowCoordinator.validatedRequest(sources: sources, destination: destination)
+        XCTAssertEqual(request.sources, sources)
+        XCTAssertEqual(request.destinationDirectory, destination)
+    }
 }

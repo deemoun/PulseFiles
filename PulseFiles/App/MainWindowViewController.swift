@@ -83,9 +83,7 @@ final class MainWindowViewController: NSViewController {
     private let accessPolicy: SandboxFileAccessPolicy
     private let sandboxRootEnsurer: () -> Void
     private let symbolicLinkResolver: SymbolicLinkResolutionService
-    private let descendantSearch: any DescendantSearching
-    private var descendantSearchTask: Task<Void, Never>?
-    private var descendantSearchResultsWindow: NSWindowController?
+    private let workflows: MainWindowWorkflowDependencies
     private let fileSystemScheduler = FileSystemOperationScheduler.shared
     private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: fileSystemScheduler)
     private let fileOperations: any FileOperationCoordinating
@@ -149,8 +147,6 @@ final class MainWindowViewController: NSViewController {
     private let mainStack = NSView()
     private weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
-    private var settingsWindowController: NSWindowController?
-    private var debugLogWindowController: NSWindowController?
     private var patternSelectionPanelController: PatternSelectionPanelController?
     private var quickLocationsPopover: NSPopover?
     private var didSetInitialSplitPositions = false
@@ -158,9 +154,11 @@ final class MainWindowViewController: NSViewController {
     private var flagsChangedEventMonitor: Any?
     private var sidebarMinWidthConstraint: NSLayoutConstraint?
     private var sidebarMaxWidthConstraint: NSLayoutConstraint?
-    private var isSidebarInstalled = false
-    private var isTerminalInstalled = false
+    private let sidebarLayoutCoordinator = SidebarLayoutCoordinator()
+    private let terminalLayoutCoordinator = TerminalLayoutCoordinator()
     private var terminalHeightConstraint: NSLayoutConstraint?
+    private var isSidebarInstalled: Bool { sidebarLayoutCoordinator.isInstalled }
+    private var isTerminalInstalled: Bool { terminalLayoutCoordinator.isInstalled }
     private var isSinglePaneMode = false
     private var activeOperationTask: Task<Void, Never>?
     /// A detached worker may still be inside an uninterruptible filesystem call.
@@ -169,7 +167,7 @@ final class MainWindowViewController: NSViewController {
     private var fileOperationGeneration = 0
     private var currentFileOperationGeneration: Int?
     private var undoRecovery: FileOperationRecovery?
-    private var quickLookPreviewURL: NSURL?
+    var quickLookPreviewURL: NSURL?
     private var quickLookProbeGeneration = 0
     private var viewerWindowControllers: [NSWindowController] = []
     private var navigationProbeGeneration = 0
@@ -193,6 +191,7 @@ final class MainWindowViewController: NSViewController {
         settings: SettingsService = SettingsService(),
         accessPolicy: SandboxFileAccessPolicy = .current,
         dependencies: MainWindowDependencies? = nil,
+        workflowDependencies: MainWindowWorkflowDependencies? = nil,
         symbolicLinkResolver: SymbolicLinkResolutionService = SymbolicLinkResolutionService(),
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
@@ -201,9 +200,9 @@ final class MainWindowViewController: NSViewController {
         self.symbolicLinkResolver = symbolicLinkResolver
         self.sandboxRootEnsurer = sandboxRootEnsurer
         let dependencies = dependencies ?? .production(accessPolicy: accessPolicy)
+        self.workflows = workflowDependencies ?? .production(from: dependencies, accessPolicy: accessPolicy)
         self.fileOperations = dependencies.fileOperations
         self.fileSystemProbe = dependencies.fileSystemProbe
-        self.descendantSearch = dependencies.descendantSearch
         self.recentLocations = dependencies.recentLocations
         self.bookmarkService = dependencies.bookmarks
         self.volumeDiscovery = dependencies.volumeDiscovery
@@ -1045,31 +1044,7 @@ final class MainWindowViewController: NSViewController {
     }
 }
 
-extension MainWindowViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        quickLookPreviewURL == nil ? 0 : 1
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        quickLookPreviewURL
-    }
-
-    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
-        true
-    }
-
-    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = self
-        panel.delegate = self
-    }
-
-    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = nil
-        panel.delegate = nil
-    }
-}
-
-extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
+extension MainWindowViewController {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
     }
@@ -1152,17 +1127,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         DiagnosticLogger.log(.info, category: "MainWindow", "Settings reload requested from JSON")
         settings.importJSONIfChanged()
         applySettingsChanges()
-        (settingsWindowController?.contentViewController as? SettingsViewController)?.reloadFromSettings()
+        (workflows.auxiliaryPanels.settingsWindowController?.contentViewController as? SettingsViewController)?.reloadFromSettings()
     }
 
     private func presentSettings(_ sender: Any?) {
         reloadSettingsFromJSONIfChanged()
-        if let existingWindow = settingsWindowController?.window, existingWindow.isVisible {
-            sizeAndPositionSettingsWindow(existingWindow, preferredContentSize: existingWindow.contentViewController?.preferredContentSize ?? NSSize(width: 680, height: 500))
-            existingWindow.makeKeyAndOrderFront(nil)
-            return
-        }
-
         let cleanupService = StagingCleanupService(legacyReviewDirectories: { [weak self] in
             guard let self else { return [] }
             return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
@@ -1185,77 +1154,14 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             self?.refreshBothPanes()
             self?.showOperationResult(result, operationName: operationName)
         }
-        let window = NSWindow(contentViewController: controller)
-        window.title = "Settings".localized
-        window.styleMask = [.titled, .closable, .miniaturizable]
-        window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 600, height: 420)
-        window.maxSize = NSSize(width: 760, height: 560)
-        sizeAndPositionSettingsWindow(window, preferredContentSize: controller.preferredContentSize)
-        window.delegate = self
-
-        let windowController = NSWindowController(window: window)
-        settingsWindowController = windowController
-        windowController.showWindow(nil)
-        window.makeKeyAndOrderFront(nil)
+        workflows.auxiliaryPanels.showSettings(controller, sender: sender)
     }
 
-    private func sizeAndPositionSettingsWindow(_ window: NSWindow, preferredContentSize: NSSize) {
-        let screen = view.window?.screen ?? NSScreen.main
-        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 900, height: 700)
-        let maxContentWidth = max(600, visibleFrame.width - 100)
-        let maxContentHeight = max(420, visibleFrame.height - 120)
-        let contentSize = NSSize(
-            width: min(max(preferredContentSize.width, 600), min(760, maxContentWidth)),
-            height: min(max(preferredContentSize.height, 420), min(540, maxContentHeight))
-        )
-
-        window.setContentSize(contentSize)
-        let frameSize = window.frame.size
-        let origin = NSPoint(
-            x: visibleFrame.midX - frameSize.width / 2,
-            y: visibleFrame.midY - frameSize.height / 2
-        )
-        window.setFrame(NSRect(origin: origin, size: frameSize), display: true)
-    }
 
     private func presentDebugLogs(_ sender: Any?) {
-        if let existingWindow = debugLogWindowController?.window, existingWindow.isVisible {
-            sizeAndPositionDebugLogWindow(existingWindow, preferredContentSize: existingWindow.contentViewController?.preferredContentSize ?? NSSize(width: 900, height: 520))
-            existingWindow.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let controller = DebugLogViewController()
-        let window = NSWindow(contentViewController: controller)
-        window.title = "Debug Logs".localized
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 720, height: 360)
-        sizeAndPositionDebugLogWindow(window, preferredContentSize: controller.preferredContentSize)
-        window.delegate = self
-
-        let windowController = NSWindowController(window: window)
-        debugLogWindowController = windowController
-        windowController.showWindow(nil)
-        window.makeKeyAndOrderFront(nil)
+        workflows.auxiliaryPanels.showDebugLogs(DebugLogViewController(), sender: sender)
     }
 
-    private func sizeAndPositionDebugLogWindow(_ window: NSWindow, preferredContentSize: NSSize) {
-        let screen = view.window?.screen ?? NSScreen.main
-        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1000, height: 760)
-        let contentSize = NSSize(
-            width: min(max(preferredContentSize.width, 720), max(720, visibleFrame.width - 120)),
-            height: min(max(preferredContentSize.height, 360), max(360, visibleFrame.height - 120))
-        )
-        window.setContentSize(contentSize)
-        let frameSize = window.frame.size
-        let origin = NSPoint(
-            x: visibleFrame.midX - frameSize.width / 2,
-            y: visibleFrame.midY - frameSize.height / 2
-        )
-        window.setFrame(NSRect(origin: origin, size: frameSize), display: true)
-    }
 
     private func applySettingsChanges() {
         DiagnosticLogger.log(.info, category: "MainWindow", "Applying settings changes: terminalEnabled=\(settings.experimentalTerminalEnabled); terminalDefaultVisible=\(settings.defaultTerminalVisible); sidebarDefaultVisible=\(settings.defaultSidebarVisible); singlePane=\(settings.defaultSinglePaneMode)")
@@ -1400,12 +1306,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         if showWarning {
             showFirstUseTerminalWarningIfNeeded()
         }
-        contentSplitView.addArrangedSubview(terminal.view)
-        if terminalHeightConstraint == nil {
-            terminalHeightConstraint = terminal.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
-        }
-        terminalHeightConstraint?.isActive = true
-        isTerminalInstalled = true
+        terminalLayoutCoordinator.install(terminal.view, in: contentSplitView, heightConstraint: &terminalHeightConstraint)
     }
 
     private func showTerminalDisabledAlert() {
@@ -1456,10 +1357,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         guard isTerminalInstalled else { return }
         DiagnosticLogger.log(.info, category: "Terminal", "Removing terminal panel")
         terminal.resetSession()
-        terminalHeightConstraint?.isActive = false
-        contentSplitView.removeArrangedSubview(terminal.view)
-        terminal.view.removeFromSuperview()
-        isTerminalInstalled = false
+        terminalLayoutCoordinator.remove(terminal.view, from: contentSplitView, heightConstraint: terminalHeightConstraint)
     }
 
     private func toggleSidebar() {
@@ -1489,21 +1387,12 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func installSidebarView() {
         guard !isSidebarInstalled else { return }
-        sidebar.view.isHidden = false
-        sidebarMinWidthConstraint?.isActive = true
-        sidebarMaxWidthConstraint?.isActive = true
-        rootSplitView.addArrangedSubview(sidebar.view)
-        isSidebarInstalled = true
+        sidebarLayoutCoordinator.install(sidebar.view, in: rootSplitView, constraints: [sidebarMinWidthConstraint, sidebarMaxWidthConstraint].compactMap { $0 })
     }
 
     private func removeSidebarView() {
         guard isSidebarInstalled else { return }
-        sidebarMinWidthConstraint?.isActive = false
-        sidebarMaxWidthConstraint?.isActive = false
-        rootSplitView.removeArrangedSubview(sidebar.view)
-        sidebar.view.removeFromSuperview()
-        sidebar.view.isHidden = true
-        isSidebarInstalled = false
+        sidebarLayoutCoordinator.remove(sidebar.view, from: rootSplitView, constraints: [sidebarMinWidthConstraint, sidebarMaxWidthConstraint].compactMap { $0 })
     }
 
     private func persistSidebarWidthFromSplitPosition() {
@@ -1580,44 +1469,23 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func populateSuggestedCreationName(in directory: URL, base: String, isDirectory: Bool, textField: NSTextField) {
-        let accessPolicy = accessPolicy
-        Task { [weak textField] in
-            let suggestion = await Self.uniqueCreationName(in: directory, base: base, isDirectory: isDirectory, accessPolicy: accessPolicy)
+        Task { [weak self, weak textField] in
+            guard let self else { return }
+            let suggestion = await self.workflows.fileCreation.suggestedName(in: directory, base: base, isDirectory: isDirectory)
             guard let textField, textField.stringValue == base else { return }
             textField.stringValue = suggestion
         }
     }
 
-    /// Avoid an unbounded existence-probe loop in a directory with many
-    /// similarly named items. This is advisory only; the operation service
-    /// performs the authoritative collision check immediately before creation.
-    private nonisolated static func uniqueCreationName(in directory: URL, base: String, isDirectory: Bool, accessPolicy: SandboxFileAccessPolicy) async -> String {
-        await Task.detached(priority: .utility) {
-            (try? accessPolicy.withValidatedAccess(to: directory) {
-                let fileManager = FileManager.default
-                let fileExtension = isDirectory ? "" : ".txt"
-                let stem = isDirectory ? base : "Untitled"
-                for index in 1...10_000 {
-                    if Task.isCancelled { return base }
-                    let candidate = index == 1 ? base : "\(stem) \(index)\(fileExtension)"
-                    if !fileManager.fileExists(atPath: directory.appendingPathComponent(candidate, isDirectory: isDirectory).path) {
-                        return candidate
-                    }
-                }
-                return "\(stem) \(UUID().uuidString)\(fileExtension)"
-            }) ?? base
-        }.value
-    }
-
     private func createFolder(named rawName: String, in directory: URL) {
-        startCreationOperation(named: "Create Folder".localized, directory: directory) { [fileOperations] _ in
-            try await fileOperations.createFolder(named: rawName, in: directory)
+        startCreationOperation(named: "Create Folder".localized, directory: directory) { [workflows] _ in
+            try await workflows.fileCreation.createFolder(named: rawName, in: directory)
         }
     }
 
     private func createFile(named rawName: String, in directory: URL) {
-        startCreationOperation(named: "Create File".localized, directory: directory) { [fileOperations] _ in
-            try await fileOperations.createFile(named: rawName, in: directory)
+        startCreationOperation(named: "Create File".localized, directory: directory) { [workflows] _ in
+            try await workflows.fileCreation.createFile(named: rawName, in: directory)
         }
     }
 
@@ -1753,18 +1621,10 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         let start: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
             let query = field.stringValue
-            self.descendantSearchTask?.cancel()
-            self.descendantSearchTask = Task { [weak self, descendantSearch] in
-                guard let self else { return }
-                do {
-                    let typedQuery = DescendantSearchQuery(nameMatcher: .glob("*\(query)*"), scopes: [.folder(root, includeDescendants: true)])
-                    let result = try await descendantSearch.search(query: typedQuery)
-                    guard !Task.isCancelled else { return }
-                    self.presentDescendantSearchResults(result, root: root, query: query)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    self.showError(message: "Could Not Search Folder".localized, detail: error.localizedDescription)
+            self.workflows.search.search(root: root, text: query) { [weak self] result in
+                switch result {
+                case .success(let searchResult): self?.presentDescendantSearchResults(searchResult, root: root, query: query)
+                case .failure(let error): self?.showError(message: "Could Not Search Folder".localized, detail: error.localizedDescription)
                 }
             }
         }
@@ -1772,13 +1632,11 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func presentDescendantSearchResults(_ result: DescendantSearchResult, root: URL, query: String) {
-        do { try accessPolicy.validateAccess(to: root) } catch { showError(message: "Could Not Show Search Results".localized, detail: error.localizedDescription); return }
-        let controller = DescendantSearchResultsViewController(); controller.title = "Search Results for “\(query)”"
-        controller.onAction = { [weak self] action, item in self?.routeSearchResultAction(action, item: item, root: root) }
-        _ = controller.view
-        controller.display(result)
-        let window = NSWindow(contentViewController: controller); window.title = controller.title ?? "Search Results"; window.setContentSize(NSSize(width: 760, height: 440))
-        let windowController = NSWindowController(window: window); descendantSearchResultsWindow = windowController; windowController.showWindow(self)
+        do {
+            try workflows.search.present(result, root: root, query: query, sender: self) { [weak self] action, item in
+                self?.routeSearchResultAction(action, item: item, root: root)
+            }
+        } catch { showError(message: "Could Not Show Search Results".localized, detail: error.localizedDescription) }
     }
 
     private func routeSearchResultAction(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) {
@@ -2028,15 +1886,9 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
         captureRecovery: Bool = false,
         operation: @escaping (FileOperationRequest, @escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult
     ) {
-        guard FilePathComparison.firstDirectoryContaining(destinationDirectory, among: sources) == nil else {
-            showError(
-                message: "Cannot Complete \(kind)".localized,
-                detail: "Cannot copy or move an item into itself or one of its subfolders.".localized
-            )
-            return
-        }
-
-        let request = FileOperationRequest(sources: sources, destinationDirectory: destinationDirectory)
+        let request: FileOperationRequest
+        do { request = try workflows.fileTransfer.request(sources: sources, destination: destinationDirectory) }
+        catch { showError(message: "Cannot Complete \(kind)".localized, detail: error.localizedDescription); return }
         let start: () -> Void = { [weak self] in
             self?.startFileOperation(named: kind, captureRecovery: captureRecovery) { [weak self] progressHandler in
                 try await operation(request, { destination in
@@ -2061,10 +1913,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
             return
         }
         do {
-            for url in sources {
-                try accessPolicy.validateAccess(to: url)
-            }
-            fileClipboard.write(urls: sources, operation: operation)
+            try workflows.fileTransfer.writeToClipboard(sources, operation: operation)
             showClipboardFeedback(for: operation, itemCount: sources.count)
             updateCutItemMarkers(operation: operation, urls: sources, sourcePane: targetPane())
             beginClipboardChangeMonitoring()
@@ -2074,7 +1923,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func pasteClipboardItems() {
-        guard let payload = fileClipboard.read(), !payload.urls.isEmpty else {
+        guard let payload = workflows.fileTransfer.clipboardPayload(), !payload.urls.isEmpty else {
             clearClipboardFeedback()
             showError(message: "Clipboard Is Empty".localized, detail: "Copy or cut one or more files before pasting.".localized)
             return
@@ -2558,7 +2407,7 @@ extension MainWindowViewController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 }
 
-extension MainWindowViewController: NSSplitViewDelegate {
+extension MainWindowViewController {
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         switch splitView {
         case rootSplitView:
@@ -2594,14 +2443,12 @@ extension MainWindowViewController: NSSplitViewDelegate {
     }
 }
 
-extension MainWindowViewController: NSWindowDelegate {
+extension MainWindowViewController {
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        if window === settingsWindowController?.window {
-            settingsWindowController = nil
+        if window === workflows.auxiliaryPanels.settingsWindowController?.window {
             view.window?.makeKeyAndOrderFront(nil)
-        } else if window === debugLogWindowController?.window {
-            debugLogWindowController = nil
+        } else if window === workflows.auxiliaryPanels.debugLogWindowController?.window {
             view.window?.makeKeyAndOrderFront(nil)
         }
     }
@@ -2654,7 +2501,7 @@ extension MainWindowViewController {
 }
 #endif
 
-extension MainWindowViewController: NSMenuItemValidation {
+extension MainWindowViewController {
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
