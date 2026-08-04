@@ -50,9 +50,18 @@ newer navigation result. On failure it retains prior directory/items and exposes
 DirectoryLoadFailure to the UI. On a mount change it refreshes the pane or falls
 back to a policy-valid directory if its current path vanished.
 
-FilePaneViewController renders the view-model output and adapts input; it must not
-duplicate filesystem logic. It renders breadcrumbs, table columns, status/overlay,
-selection and drag/drop, then sends navigation and mutation intent upward. The
+FilePaneViewController owns exactly one pane and its FilePaneViewModel. It retains
+the pane state machines: URL-backed selection, focused-item identity, navigation
+callbacks, and view-model binding. Focused collaborators adapt AppKit around that
+owner: FilePaneTableAdapter renders rows and lays out columns;
+FilePaneDropCoordinator extracts pasteboard URLs, resolves destinations and applies
+DropTransferPolicy without mutating the filesystem; InlineRenameCoordinator owns
+the field editor lifecycle and reload/commit policies; and
+FilePaneContextMenuProvider constructs context and Open With menus that emit
+MainCommand values through the controller callback. Narrow GalleryImageView,
+InlineRenameTextField, and PaneContainerView files contain their view-only behavior.
+All mutation intent, including accepted drops, is sent upward through controller
+callbacks rather than invoking filesystem services. The
 synthetic parent row (..) appears only without an active search filter. Parent,
 breadcrumb and go-to navigation must remain policy validated so restricted mode
 cannot be escaped through UI affordances. The active pane receives toolbar search;

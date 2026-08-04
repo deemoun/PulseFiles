@@ -428,11 +428,11 @@ final class MainWindowViewController: NSViewController {
         }
         leftPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .left) }
         rightPane.onPresentationModeChanged = { [weak self] mode in self?.settings.setPresentationMode(mode, for: .right) }
-        leftPane.onDropURLs = { [weak self] urls, destination, shouldCopy in
+        leftPane.onDropFiles = { [weak self] urls, destination, shouldCopy in
             self?.activePaneID = .left
             self?.transferDroppedItems(urls, to: destination, copy: shouldCopy)
         }
-        rightPane.onDropURLs = { [weak self] urls, destination, shouldCopy in
+        rightPane.onDropFiles = { [weak self] urls, destination, shouldCopy in
             self?.activePaneID = .right
             self?.transferDroppedItems(urls, to: destination, copy: shouldCopy)
         }

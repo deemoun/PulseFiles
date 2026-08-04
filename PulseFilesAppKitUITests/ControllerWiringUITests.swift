@@ -32,6 +32,18 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertNotNil(app.element(AccessibilityIdentifiers.CommandBar.list))
     }
 
+    func testPaneTableAdaptersPreserveKeyboardAndAccessibilityWiring() throws {
+        let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
+        for paneID in [PaneID.left, .right] {
+            let pane = controller.uiHarnessPane(paneID)
+            pane.loadViewIfNeeded()
+            XCTAssertNotNil(pane.tableView.delegate)
+            XCTAssertNotNil(pane.tableView.dataSource)
+            XCTAssertNotNil(pane.tableView.actionDelegate)
+            XCTAssertEqual(pane.tableView.accessibilityIdentifier(), AccessibilityIdentifiers.Pane.table(for: paneID))
+        }
+    }
+
     func testSettingsLanguageSelectorExposesBothLanguagesAndPersistsSelection() throws {
         let suite = "SettingsLanguageSelector.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
