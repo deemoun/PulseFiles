@@ -3,234 +3,6 @@ import Foundation
 import Darwin
 #endif
 
-enum FileOperationError: LocalizedError, Equatable {
-    case emptySelection
-    case duplicateSource(URL)
-    /// Multi-source operations reject overlapping paths instead of attempting
-    /// an order-dependent partial mutation of a parent and its descendant.
-    case overlappingSources(ancestor: URL, descendant: URL)
-    case duplicateDestination(URL)
-    case sourceMissing(URL)
-    case destinationDirectoryMissing(URL)
-    case destinationNotDirectory(URL)
-    case destinationInsideSource(source: URL, destination: URL)
-    case destinationExists(URL)
-    case unsafeReplacement(destination: URL, backup: URL)
-    case sourceCleanupFailed(source: URL, destination: URL)
-    case temporarySiblingUnavailable(destination: URL, prefix: String)
-    case insufficientDestinationCapacity(required: Int64, available: Int64)
-    case iCloudItemNotDownloaded(URL)
-    case readOnlyVolume(URL)
-    case volumeUnavailable(URL)
-    case traversalLimitExceeded(URL, maximumDepth: Int, maximumItems: Int)
-    case undoUnavailable
-
-    var errorDescription: String? {
-        switch self {
-        case .emptySelection:
-            return "No files are selected.".localized
-        case .duplicateSource(let url):
-            return "%@ is selected more than once.".localized(with: url.lastPathComponent)
-        case .overlappingSources(let ancestor, let descendant):
-            return "%@ and %@ cannot be selected together.".localized(with: ancestor.lastPathComponent, descendant.lastPathComponent)
-        case .duplicateDestination(let url):
-            return "Multiple selected items would write to %@.".localized(with: url.lastPathComponent)
-        case .sourceMissing(let url):
-            return "%@ no longer exists.".localized(with: url.lastPathComponent)
-        case .destinationDirectoryMissing:
-            return "The destination folder does not exist.".localized
-        case .destinationNotDirectory(let url):
-            return "%@ is not a folder.".localized(with: url.lastPathComponent)
-        case .destinationInsideSource:
-            return "Cannot copy or move a folder into itself.".localized
-        case .destinationExists(let url):
-            return "%@ already exists.".localized(with: url.lastPathComponent)
-        case .unsafeReplacement:
-            return "Could not safely replace the existing item.".localized
-        case .sourceCleanupFailed:
-            return "The item was copied, but the original could not be removed.".localized
-        case .temporarySiblingUnavailable:
-            return "Could not create a safe temporary file name.".localized
-        case .insufficientDestinationCapacity:
-            return "The destination does not have enough available space.".localized
-        case .iCloudItemNotDownloaded(let url):
-            return "%@ is stored in iCloud and has not finished downloading.".localized(with: url.lastPathComponent)
-        case .readOnlyVolume(let url):
-            return "%@ is on a read-only volume.".localized(with: url.lastPathComponent)
-        case .volumeUnavailable(let url):
-            return "The volume containing %@ is no longer available.".localized(with: url.lastPathComponent)
-        case .traversalLimitExceeded(let url, _, _):
-            return "%@ is too deeply nested or contains too many items to transfer safely.".localized(with: url.lastPathComponent)
-        case .undoUnavailable:
-            return "This operation can no longer be safely undone.".localized
-        }
-    }
-
-    private static func formattedByteCount(_ count: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
-    }
-
-    var failureReason: String? {
-        switch self {
-        case .emptySelection:
-            return "Select one or more items in the active pane.".localized
-        case .duplicateSource(let url):
-            return "PulseFiles rejected the operation before changing files because %@ appeared more than once.".localized(with: url.path)
-        case .overlappingSources(let ancestor, let descendant):
-            return "PulseFiles rejected the operation before changing files because %@ contains %@.".localized(with: ancestor.path, descendant.path)
-        case .duplicateDestination(let url):
-            return "PulseFiles rejected the operation before changing files because more than one source would write to %@.".localized(with: url.path)
-        case .sourceMissing(let url):
-            return "%@ was not found before the operation started.".localized(with: url.path)
-        case .destinationDirectoryMissing(let url):
-            return "%@ was not found before the operation started.".localized(with: url.path)
-        case .destinationNotDirectory(let url):
-            return "%@ must be a folder.".localized(with: url.path)
-        case .destinationInsideSource(let source, let destination):
-            return "Cannot copy or move %@ into %@.".localized(with: source.lastPathComponent, destination.path)
-        case .destinationExists(let url):
-            return "The destination already contains %@.".localized(with: url.lastPathComponent)
-        case .unsafeReplacement(let destination, let backup):
-            return "The original item was kept at %@. %@ was not overwritten.".localized(with: backup.path, destination.path)
-        case .sourceCleanupFailed(let source, let destination):
-            return "%@ now exists, but the original remains at %@.".localized(with: destination.path, source.path)
-        case .temporarySiblingUnavailable(let destination, let prefix):
-            return "PulseFiles tried multiple %@ staging names beside %@, but each candidate already existed.".localized(with: prefix, destination.path)
-        case .insufficientDestinationCapacity(let required, let available):
-            return "This operation requires %@, but the destination volume has only %@ available.".localized(with: Self.formattedByteCount(required), Self.formattedByteCount(available))
-        case .iCloudItemNotDownloaded(let url):
-            return "Download %@ in Finder, then try again. PulseFiles did not change any files.".localized(with: url.path)
-        case .readOnlyVolume(let url):
-            return "Choose a writable destination or eject the read-only media before modifying %@.".localized(with: url.path)
-        case .volumeUnavailable(let url):
-            return "Reconnect or remount the volume containing %@, then try again.".localized(with: url.path)
-        case .traversalLimitExceeded(let url, let maximumDepth, let maximumItems):
-            return "PulseFiles stopped before exhausting process resources while traversing %@. The safety limits are a depth of %@ and %@ items.".localized(with: url.path, String(maximumDepth), String(maximumItems))
-        case .undoUnavailable:
-            return "The operation was partial, cancelled, or did not retain a complete safe reversal path.".localized
-        }
-    }
-}
-
-/// Snapshot used to reject states that cannot safely be mutated.  It is
-/// injectable so tests can cover removable, network, and iCloud conditions
-/// without depending on the machine running the tests.
-struct FileOperationPathSafetyState: Equatable {
-    var isAvailable = true
-    var isReadOnlyVolume = false
-    var isICloudPlaceholder = false
-    /// Finder aliases are not symbolic links. Operations preserve the alias
-    /// object and never resolve its target.
-    var isFinderAlias = false
-}
-
-enum FileConflictResolution: Equatable {
-    case replace
-    case skip
-    case keepBoth
-    case cancel
-    case applyToRemainingReplace
-    case applyToRemainingSkip
-    case applyToRemainingKeepBoth
-}
-
-enum FileTransferCapacityPreflight: Equatable {
-    case notRequired
-    case sufficient(required: Int64, available: Int64)
-    case insufficient(required: Int64, available: Int64)
-    case cannotVerify(required: Int64?)
-}
-
-struct FileOperationRequest {
-    let sources: [URL]
-    let destinationDirectory: URL
-}
-
-struct FileOperationProgress {
-    let currentItemName: String
-    let completedCount: Int
-    let totalCount: Int
-    let completedRecursiveItemCount: Int?
-    let totalRecursiveItemCount: Int?
-    let completedByteCount: Int64?
-    let totalByteCount: Int64?
-    let isPreparingTransfer: Bool
-
-    init(
-        currentItemName: String,
-        completedCount: Int,
-        totalCount: Int,
-        completedRecursiveItemCount: Int? = nil,
-        totalRecursiveItemCount: Int? = nil,
-        completedByteCount: Int64? = nil,
-        totalByteCount: Int64? = nil,
-        isPreparingTransfer: Bool = false
-    ) {
-        self.currentItemName = currentItemName
-        self.completedCount = completedCount
-        self.totalCount = totalCount
-        self.completedRecursiveItemCount = completedRecursiveItemCount
-        self.totalRecursiveItemCount = totalRecursiveItemCount
-        self.completedByteCount = completedByteCount
-        self.totalByteCount = totalByteCount
-        self.isPreparingTransfer = isPreparingTransfer
-    }
-}
-
-struct FileOperationItemFailure {
-    let url: URL
-    let error: Error
-}
-
-struct FileOperationCleanupWarning {
-    let url: URL
-    let message: String
-}
-
-struct FileOperationResult {
-    let completedItems: [URL]
-    let skippedItems: [URL]
-    let failedItems: [FileOperationItemFailure]
-    let cleanupWarnings: [FileOperationCleanupWarning]
-    let wasCancelled: Bool
-    /// `true` means the caller stopped waiting while a filesystem call could
-    /// still be running. The resulting paths must be verified before reuse.
-    let needsVerification: Bool
-    let recovery: FileOperationRecovery?
-
-    init(
-        completedItems: [URL],
-        skippedItems: [URL],
-        failedItems: [FileOperationItemFailure],
-        cleanupWarnings: [FileOperationCleanupWarning] = [],
-        wasCancelled: Bool,
-        needsVerification: Bool = false,
-        recovery: FileOperationRecovery? = nil
-    ) {
-        self.completedItems = completedItems
-        self.skippedItems = skippedItems
-        self.failedItems = failedItems
-        self.cleanupWarnings = cleanupWarnings
-        self.wasCancelled = wasCancelled
-        self.needsVerification = needsVerification
-        self.recovery = recovery
-    }
-
-    var succeededCompletely: Bool {
-        !wasCancelled && !needsVerification && skippedItems.isEmpty && failedItems.isEmpty && cleanupWarnings.isEmpty
-    }
-
-    static func unknownAfterAbandoning(currentItem: URL? = nil) -> Self {
-        Self(
-            completedItems: [],
-            skippedItems: [],
-            failedItems: [],
-            wasCancelled: false,
-            needsVerification: true
-        )
-    }
-}
-
 /// State shared by the operation coordinator and its blocking filesystem
 /// worker. It intentionally records facts rather than attempting to interrupt
 /// FileManager: many network and provider-backed calls are uninterruptible.
@@ -269,10 +41,6 @@ typealias FileConflictHandler = (URL) async -> FileConflictResolution
 
 /// Requests a local copy of a provider-backed placeholder. `false` retains the
 /// normal safe failure path when a provider cannot perform the download.
-protocol FileOperationCloudDownloadPreparing: Sendable {
-    func prepareDownload(for url: URL) async throws -> Bool
-}
-
 /// Uses macOS ubiquitous-item support and bounds waiting for an unavailable
 /// provider so file operations never mutate an item that remains a placeholder.
 final class MacOSCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @unchecked Sendable {
@@ -299,140 +67,6 @@ final class MacOSCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @un
         #else
         return false
         #endif
-    }
-}
-
-protocol FileOperationServicing {
-    func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight
-    func copy(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func move(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func createFolder(named rawName: String, in directory: URL) async throws -> FileOperationResult
-    func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult
-    func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-}
-
-/// Optional archive capability kept separate so small filesystem clients and
-/// their test doubles cannot accidentally inherit a silent no-op.
-protocol FileOperationArchiveServicing {
-    func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-    func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult
-}
-
-/// Optional batch-rename capability. Conformers must implement every entry
-/// point; there are deliberately no fallback implementations.
-protocol FileOperationBatchRenameServicing {
-    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan
-    func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult
-}
-
-typealias FileOperationCoordinating = FileOperationServicing & FileOperationArchiveServicing & FileOperationBatchRenameServicing
-
-protocol FileOperationFileManaging {
-    func fileExists(atPath path: String) -> Bool
-    func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool
-    func copyItem(at srcURL: URL, to dstURL: URL) throws
-    func moveItem(at srcURL: URL, to dstURL: URL) throws
-    func removeItem(at URL: URL) throws
-    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws
-    func createEmptyFile(at url: URL) throws
-    func destinationOfSymbolicLink(atPath path: String) throws -> String
-    func createSymbolicLink(atPath path: String, withDestinationPath destPath: String) throws
-    func trashItem(at url: URL, resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws
-    func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: FileManager.DirectoryEnumerationOptions) throws -> [URL]
-}
-
-/// The byte-oriented part of a transfer is deliberately separate from the
-/// filesystem coordinator so it can be exercised without relying on
-/// `FileManager.copyItem`'s opaque progress behaviour.
-protocol FileOperationStreamingCopying {
-    func copyFile(
-        from source: URL,
-        to destination: URL,
-        progress: @escaping @Sendable (Int) async throws -> Void
-    ) async throws
-}
-
-#if os(macOS)
-extension FileOperationStreamingCopying {
-    /// The production copier overrides this path so creation is relative to a
-    /// checked directory descriptor.  The URL fallback keeps test copiers
-    /// source-compatible; it is never used by `FileHandleStreamingCopier`.
-    func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
-        try parent.revalidate()
-        try OpenDirectoryCapability.validateName(name)
-        try await copyFile(from: source, to: parent.directoryURL.appendingPathComponent(name), progress: progress)
-    }
-}
-#endif
-
-final class FileHandleStreamingCopier: FileOperationStreamingCopying {
-    private let chunkSize = 1_048_576
-
-    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
-        #if os(macOS)
-        let parent = try OpenDirectoryCapability(directory: destination.deletingLastPathComponent())
-        defer { parent.close() }
-        try await copyFile(from: source, toParent: parent, named: destination.lastPathComponent, progress: progress)
-        #else
-        // FileHandle reads and writes can block, particularly for network
-        // volumes. Use a detached executor even when this copier is used
-        // independently of FileOperationService.
-        let worker = Task.detached(priority: .utility) { [chunkSize = self.chunkSize] in
-            let reader = try FileHandle(forReadingFrom: source)
-            defer { try? reader.close() }
-            guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            let writer = try FileHandle(forWritingTo: destination)
-            defer { try? writer.close() }
-
-            while true {
-                try Task.checkCancellation()
-                guard let data = try reader.read(upToCount: chunkSize), !data.isEmpty else { break }
-                try writer.write(contentsOf: data)
-                try await progress(data.count)
-            }
-        }
-        try await withTaskCancellationHandler {
-            try await worker.value
-        } onCancel: {
-            worker.cancel()
-        }
-        #endif
-    }
-
-    #if os(macOS)
-    func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
-        try parent.revalidate()
-        try OpenDirectoryCapability.validateName(name)
-        let destinationFD = try parent.openNewRegularFile(named: name)
-        let worker = Task.detached(priority: .utility) { [chunkSize = self.chunkSize] in
-            let reader = try FileHandle(forReadingFrom: source)
-            defer { try? reader.close() }
-            let writer = FileHandle(fileDescriptor: destinationFD, closeOnDealloc: true)
-            defer { try? writer.close() }
-            while true {
-                try Task.checkCancellation()
-                guard let data = try reader.read(upToCount: chunkSize), !data.isEmpty else { break }
-                try writer.write(contentsOf: data)
-                try await progress(data.count)
-            }
-        }
-        try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
-    }
-    #endif
-}
-
-extension FileManager: FileOperationFileManaging {
-    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
-        try createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: nil)
-    }
-
-    func createEmptyFile(at url: URL) throws {
-        try Data().write(to: url, options: .withoutOverwriting)
     }
 }
 
@@ -546,6 +180,11 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
     private let traversalLimits: TraversalLimits
     private let replacementDirectoryProvider: (URL) throws -> URL
     private let stagingRegistry: StagingOwnershipRegistry
+    private let descriptorOperator: DescriptorRelativeFileOperator
+    private let preflightValidator: FileOperationPreflightValidator
+    private let transferPlanner: FileTransferPlanner
+    private let transferExecutor: FileTransferExecutor
+    private let metadataPreserver: FileMetadataPreserver
     private let archiveAdapter: FileOperationArchiveAdapter
     private let batchRenameAdapter: FileOperationBatchRenameAdapter
     private let undoPlanBuilder = FileOperationUndoPlanBuilder()
@@ -561,6 +200,11 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         self.traversalLimits = traversalLimits
         self.replacementDirectoryProvider = replacementDirectoryProvider
         self.stagingRegistry = stagingRegistry
+        self.descriptorOperator = DescriptorRelativeFileOperator(fileManager: fileManager)
+        self.preflightValidator = FileOperationPreflightValidator(fileManager: fileManager, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider)
+        self.transferPlanner = FileTransferPlanner(fileManager: fileManager, accessPolicy: accessPolicy)
+        self.transferExecutor = FileTransferExecutor(fileManager: fileManager, streamingCopier: streamingCopier, descriptorOperator: descriptorOperator)
+        self.metadataPreserver = FileMetadataPreserver(fileManager: fileManager)
         self.archiveAdapter = FileOperationArchiveAdapter(accessPolicy: accessPolicy)
         self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
     }
@@ -576,6 +220,11 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         self.traversalLimits = traversalLimits
         self.replacementDirectoryProvider = replacementDirectoryProvider
         self.stagingRegistry = stagingRegistry
+        self.descriptorOperator = DescriptorRelativeFileOperator(fileManager: fileManager)
+        self.preflightValidator = FileOperationPreflightValidator(fileManager: fileManager, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider)
+        self.transferPlanner = FileTransferPlanner(fileManager: fileManager, accessPolicy: accessPolicy)
+        self.transferExecutor = FileTransferExecutor(fileManager: fileManager, streamingCopier: streamingCopier, descriptorOperator: descriptorOperator)
+        self.metadataPreserver = FileMetadataPreserver(fileManager: fileManager)
         self.archiveAdapter = FileOperationArchiveAdapter(accessPolicy: accessPolicy)
         self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
     }
@@ -788,7 +437,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
 
         do {
             try accessPolicy.withAccess(to: [source, parentDirectory]) {
-                try descriptorRename(source, to: destination)
+                try descriptorOperator.rename(source, to: destination)
             }
             await progressHandler?(FileOperationProgress(currentItemName: destination.lastPathComponent, completedCount: 1, totalCount: 1))
             let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false, recovery: undoPlanBuilder.rename(from: source, to: destination))
@@ -828,7 +477,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
                     // Recheck directly before removal to close the validation/mutation window.
                     do {
                         guard itemIdentity(at: item.destinationURL) == item.destinationIdentity else { throw FileOperationError.undoUnavailable }
-                        try descriptorRemove(item.destinationURL)
+                        try descriptorOperator.remove(item.destinationURL)
                         completed.append(item.destinationURL)
                     } catch {
                         failures.append(.init(url: item.destinationURL, error: error))
@@ -862,7 +511,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
                 await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
                 do {
                     if recovery.kind == .trash, itemIdentity(at: item.destinationURL) != item.destinationIdentity { throw FileOperationError.undoUnavailable }
-                    try descriptorRename(item.destinationURL, to: item.originalURL)
+                    try descriptorOperator.rename(item.destinationURL, to: item.originalURL)
                     completed.append(item.originalURL)
                 } catch {
                     failures.append(.init(url: item.destinationURL, error: error))
@@ -900,7 +549,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
             context.beginBlockingCall(for: destination)
             do {
                 try accessPolicy.withAccess(to: [directory]) {
-                    try descriptorCreate(destination, isDirectory: isDirectory)
+                    try descriptorOperator.create(destination, isDirectory: isDirectory)
                 }
             } catch {
                 DiagnosticLogger.log(.error, category: "FileOperation", "Create \(operationName) operation failed: destination=\(DiagnosticLogger.sanitizedPath(destination)); reason=\(error.localizedDescription)")
@@ -933,7 +582,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
                 #if os(macOS)
                 // NSFileManager has no trashat equivalent. Pin and verify the
                 // parent and final component before invoking its platform trash API.
-                try descriptorVerifyExistingItem(url)
+                try descriptorOperator.verifyExistingItem(url)
                 var resultingURL: NSURL?
                 try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
                 guard let resultingURL else { throw FileOperationError.undoUnavailable }
@@ -959,7 +608,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         do { try preflightDelete(urls) } catch { logPreflightFailure(operation: "delete", error: error); throw error }
         let result = await accessPolicy.withAccess(to: urls) {
             await performDelete(urls, progressHandler: progressHandler) { fileManager, url in
-                try descriptorRemove(url)
+                try descriptorOperator.remove(url)
             }
         }
         logCompletion(operation: "delete", result: result)
@@ -1199,7 +848,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
     ) async throws -> [FileOperationCleanupWarning] {
         guard replacingExistingDestination else {
             do {
-                try descriptorRename(source, to: destination)
+                try descriptorOperator.rename(source, to: destination)
                 if recursiveProgress.totalItemCount != nil {
                     // A successful same-volume rename has no byte stream. The
                     // aggregate byte total is therefore intentionally unknown
@@ -1255,7 +904,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
             )
             warnings.append(contentsOf: try placeStagedItem(staging, at: destination))
             do {
-                try descriptorRemove(source)
+                try descriptorOperator.remove(source)
             } catch {
                 warnings.append(FileOperationCleanupWarning(
                     url: source,
@@ -1384,7 +1033,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
                 visitedItemCount += 1
                 switch try sourceItemKind(at: source) {
                 case .symbolicLink(let linkDestination):
-                    try descriptorCreateSymbolicLink(at: destination, destination: linkDestination)
+                    try descriptorOperator.createSymbolicLink(at: destination, destination: linkDestination)
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                     warnings.append(contentsOf: preserveMetadata(from: source, to: destination))
@@ -1395,7 +1044,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                 case .directory:
-                    try descriptorCreateDirectory(at: destination)
+                    try descriptorOperator.create(destination, isDirectory: true)
                     recursiveProgress.completedItemCount += 1
                     await emitProgress(currentItem: source, completedCount: topLevelCompletedCount, totalCount: topLevelTotalCount, recursiveProgress: recursiveProgress, progressHandler: progressHandler)
                     try Task.checkCancellation() // Check immediately before directory read.
@@ -1439,77 +1088,9 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         return warnings
     }
 
-    /// Preserve metadata after content. Metadata failures are reported as warnings so
-    /// a copied item is never presented as completely successful when it lost data.
     private func preserveMetadata(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
-        var warnings: [FileOperationCleanupWarning] = []
-        do {
-            let sourceAttributes = try FileManager.default.attributesOfItem(atPath: source.path)
-            let attributes = sourceAttributes.filter { [.posixPermissions, .ownerAccountID, .groupOwnerAccountID, .creationDate, .modificationDate].contains($0.key) }
-            try FileManager.default.setAttributes(attributes, ofItemAtPath: destination.path)
-        } catch {
-            warnings.append(metadataWarning(for: destination, error: error))
-        }
-        do {
-            let sourceValues = try source.resourceValues(forKeys: [.tagNamesKey, .labelNumberKey])
-            if sourceValues.labelNumber != nil {
-                var values = URLResourceValues()
-                values.labelNumber = sourceValues.labelNumber
-                var destinationURL = destination
-                try destinationURL.setResourceValues(values)
-            }
-        } catch {
-            warnings.append(metadataWarning(for: destination, error: error))
-        }
-        #if os(macOS)
-        warnings.append(contentsOf: copyExtendedAttributes(from: source, to: destination))
-        warnings.append(contentsOf: copyAccessControlList(from: source, to: destination))
-        #endif
-        return warnings
+        metadataPreserver.preserve(from: source, to: destination)
     }
-
-    private func metadataWarning(for url: URL, error: Error) -> FileOperationCleanupWarning {
-        FileOperationCleanupWarning(url: url, message: "PulseFiles copied item contents but could not preserve all metadata at %@: %@".localized(with: url.path, error.localizedDescription))
-    }
-
-    #if os(macOS)
-    private func copyExtendedAttributes(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
-        let options = Int32(XATTR_NOFOLLOW)
-        let size = listxattr(source.path, nil, 0, options)
-        guard size >= 0 else { return metadataWarnings(for: source, errno: errno) }
-        guard size > 0 else { return [] }
-        var names = [CChar](repeating: 0, count: size)
-        guard listxattr(source.path, &names, names.count, options) >= 0 else { return metadataWarnings(for: source, errno: errno) }
-        var warnings: [FileOperationCleanupWarning] = []
-        var offset = 0
-        while offset < names.count {
-            let name = names.withUnsafeBufferPointer { buffer -> String? in
-                guard let baseAddress = buffer.baseAddress else { return nil }
-                return String(validatingCString: baseAddress.advanced(by: offset))
-            }
-            guard let name else { break }
-            offset += name.utf8.count + 1
-            let valueSize = getxattr(source.path, name, nil, 0, 0, options)
-            guard valueSize >= 0 else { warnings.append(contentsOf: metadataWarnings(for: source, errno: errno)); continue }
-            var value = [UInt8](repeating: 0, count: valueSize)
-            guard getxattr(source.path, name, &value, value.count, 0, options) >= 0,
-                  setxattr(destination.path, name, value, value.count, 0, options) == 0 else {
-                warnings.append(contentsOf: metadataWarnings(for: destination, errno: errno)); continue
-            }
-        }
-        return warnings
-    }
-
-    private func copyAccessControlList(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
-        guard copyfile(source.path, destination.path, nil, copyfile_flags_t(COPYFILE_ACL)) == 0 else { return metadataWarnings(for: destination, errno: errno) }
-        return []
-    }
-
-    private func metadataWarnings(for url: URL, errno code: Int32) -> [FileOperationCleanupWarning] {
-        guard code != ENOTSUP && code != EOPNOTSUPP else { return [] }
-        return [metadataWarning(for: url, error: POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO))]
-    }
-    #endif
 
     private func emitProgress(
         currentItem: URL,
@@ -1573,18 +1154,18 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         }
         let stagedURL = staging.stagedItem
         guard fileManager.fileExists(atPath: destination.path) else {
-            try descriptorRename(stagedURL, to: destination)
+            try descriptorOperator.rename(stagedURL, to: destination)
             return []
         }
 
         let backupURL = staging.backupItem
-        try descriptorRename(destination, to: backupURL)
+        try descriptorOperator.rename(destination, to: backupURL)
         do {
-            try descriptorRename(stagedURL, to: destination)
+            try descriptorOperator.rename(stagedURL, to: destination)
         } catch {
             try? removeIfExists(stagedURL)
             do {
-                try descriptorRename(backupURL, to: destination)
+                try descriptorOperator.rename(backupURL, to: destination)
             } catch {
                 throw FileOperationError.unsafeReplacement(destination: destination, backup: backupURL)
             }
@@ -1662,24 +1243,11 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         reservedDestinations: Set<String> = [],
         fileExists: (URL) -> Bool
     ) -> URL {
-        let originalName = destination.lastPathComponent
-        let fileExtension = destination.pathExtension
-        let baseName = fileExtension.isEmpty
-            ? originalName
-            : destination.deletingPathExtension().lastPathComponent
-
-        var copyIndex = 1
-        while true {
-            let suffix = copyIndex == 1 ? " copy" : " copy \(copyIndex)"
-            let candidateName = fileExtension.isEmpty
-                ? "\(baseName)\(suffix)"
-                : "\(baseName)\(suffix).\(fileExtension)"
-            let candidate = destination.deletingLastPathComponent().appendingPathComponent(candidateName)
-            if !fileExists(candidate), !reservedDestinations.contains(FilePathComparison.normalizedPath(candidate)) {
-                return candidate
-            }
-            copyIndex += 1
-        }
+        FileTransferPlanner.keepBothDestination(
+            for: destination,
+            reservedDestinations: reservedDestinations,
+            fileExists: fileExists
+        )
     }
 
     private func preflightCreation(rawName: String, in directory: URL, isDirectory: Bool) throws -> URL {
@@ -1762,7 +1330,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
     /// intentionally shared by copy, move, trash, and permanent delete so the
     /// outcome cannot depend on selection order or mutation progress.
     private func preflightMultiSourceSelection(_ urls: [URL]) throws {
-        guard !urls.isEmpty else { throw FileOperationError.emptySelection }
+        try preflightValidator.validateSelection(urls)
 
         var normalizedSources = Set<String>()
         for url in urls {
@@ -1889,84 +1457,6 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         #else
         guard fileManager.fileExists(atPath: url.path) else { return }
         try fileManager.removeItem(at: url)
-        #endif
-    }
-
-    /// Mutations never use a path after it has been checked. Each parent is
-    /// opened as an O_NOFOLLOW directory capability and revalidated directly
-    /// before its name is consumed by the Darwin *at syscall.
-    private func descriptorVerifyExistingItem(_ url: URL) throws {
-        #if os(macOS)
-        guard fileManager is FileManager else {
-            guard fileManager.fileExists(atPath: url.path) else { throw FileOperationError.sourceMissing(url) }
-            return
-        }
-        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
-        defer { parent.close() }
-        let identity = try parent.itemIdentity(named: url.lastPathComponent)
-        try parent.requireItem(named: url.lastPathComponent, identity: identity)
-        #else
-        guard fileManager.fileExists(atPath: url.path) else { throw FileOperationError.sourceMissing(url) }
-        #endif
-    }
-
-    private func descriptorRename(_ source: URL, to destination: URL) throws {
-        #if os(macOS)
-        guard fileManager is FileManager else { try fileManager.moveItem(at: source, to: destination); return }
-        let sourceParent = try OpenDirectoryCapability(directory: source.deletingLastPathComponent())
-        defer { sourceParent.close() }
-        let destinationParent = try OpenDirectoryCapability(directory: destination.deletingLastPathComponent())
-        defer { destinationParent.close() }
-        let sourceName = source.lastPathComponent
-        let destinationName = destination.lastPathComponent
-        let sourceIdentity = try sourceParent.itemIdentity(named: sourceName)
-        try sourceParent.requireItem(named: sourceName, identity: sourceIdentity)
-        try sourceParent.renameItem(named: sourceName, to: destinationParent, named: destinationName)
-        #else
-        try fileManager.moveItem(at: source, to: destination)
-        #endif
-    }
-
-    private func descriptorRemove(_ url: URL) throws {
-        #if os(macOS)
-        guard fileManager is FileManager else { try fileManager.removeItem(at: url); return }
-        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
-        defer { parent.close() }
-        let name = url.lastPathComponent
-        try parent.removeItem(named: name)
-        #else
-        try fileManager.removeItem(at: url)
-        #endif
-    }
-
-    private func descriptorCreate(_ url: URL, isDirectory: Bool) throws {
-        #if os(macOS)
-        guard fileManager is FileManager else {
-            if isDirectory { try fileManager.createDirectory(at: url, withIntermediateDirectories: false) }
-            else { try fileManager.createEmptyFile(at: url) }
-            return
-        }
-        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
-        defer { parent.close() }
-        let name = url.lastPathComponent
-        if isDirectory { try parent.createDirectory(named: name) }
-        else { Darwin.close(try parent.openNewRegularFile(named: name)) }
-        #else
-        if isDirectory { try fileManager.createDirectory(at: url, withIntermediateDirectories: false) }
-        else { try fileManager.createEmptyFile(at: url) }
-        #endif
-    }
-
-    private func descriptorCreateDirectory(at url: URL) throws { try descriptorCreate(url, isDirectory: true) }
-
-    private func descriptorCreateSymbolicLink(at url: URL, destination: String) throws {
-        #if os(macOS)
-        guard fileManager is FileManager else { try fileManager.createSymbolicLink(atPath: url.path, withDestinationPath: destination); return }
-        let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
-        defer { parent.close() }
-        try parent.createSymbolicLink(named: url.lastPathComponent, destination: destination)
-        #else
-        try fileManager.createSymbolicLink(atPath: url.path, withDestinationPath: destination)
         #endif
     }
 
