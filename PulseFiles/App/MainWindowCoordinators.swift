@@ -69,19 +69,32 @@ struct MainWindowDependencies {
     let volumeDiscovery: any VolumeDiscovering
     let clipboard: any FileClipboardProviding
     let applicationOpener: any ApplicationOpening
+    let fileSize: SystemFileSizeService
+    let readOnlyViewer: ReadOnlyViewerService
+    let diagnosticsExporter: DiagnosticsExportService
+    let stagingCleanup: (@escaping () -> [URL]) -> StagingCleanupService
+    let scratchCleanup: (@escaping () -> [URL]) -> ScratchFolderCleanupService
 
     @MainActor
     static func production(accessPolicy: SandboxFileAccessPolicy) -> Self {
         let scheduler = FileSystemOperationScheduler.shared
+        let fileOperations = FileOperationService(accessPolicy: accessPolicy)
         return Self(
-            fileOperations: FileOperationService(accessPolicy: accessPolicy),
+            fileOperations: fileOperations,
             fileSystemProbe: FileSystemProbeService(scheduler: scheduler),
             descendantSearch: DescendantSearchService(accessPolicy: accessPolicy),
             recentLocations: RecentLocationService(),
             bookmarks: BookmarkService(),
             volumeDiscovery: VolumeDiscoveryService(),
             clipboard: FileClipboard(),
-            applicationOpener: WorkspaceApplicationOpener()
+            applicationOpener: WorkspaceApplicationOpener(),
+            fileSize: SystemFileSizeService(),
+            readOnlyViewer: ReadOnlyViewerService(accessPolicy: accessPolicy),
+            diagnosticsExporter: DiagnosticsExportService(),
+            stagingCleanup: { activeRoots in StagingCleanupService(legacyReviewDirectories: activeRoots) },
+            scratchCleanup: { activeRoots in
+                ScratchFolderCleanupService(accessPolicy: accessPolicy, fileOperations: fileOperations, activePaneRoots: activeRoots)
+            }
         )
     }
 }
@@ -133,6 +146,9 @@ struct NavigationCoordinator {
 @MainActor
 final class FileOperationCoordinator {
     private(set) var activeTask: Task<Void, Never>?
+    private var retainedTasks: [Int: Task<Void, Never>] = [:]
+    private(set) var generation = 0
+    private(set) var currentGeneration: Int?
     private(set) var undoRecovery: FileOperationRecovery?
     private(set) var isActive = false
 
@@ -142,6 +158,44 @@ final class FileOperationCoordinator {
 
     func clearRecovery() { undoRecovery = nil }
     func cancel() { activeTask?.cancel() }
+
+    @discardableResult
+    func begin() -> Int? {
+        guard !isActive else { return nil }
+        generation += 1
+        currentGeneration = generation
+        isActive = true
+        return generation
+    }
+
+    func retain(_ task: Task<Void, Never>, for generation: Int) {
+        guard currentGeneration == generation else { return }
+        activeTask = task
+        retainedTasks[generation] = task
+    }
+
+    func acceptsUpdates(for generation: Int) -> Bool { currentGeneration == generation }
+
+    func finish(generation: Int, result: FileOperationResult?, captureRecovery: Bool) {
+        retainedTasks[generation] = nil
+        guard currentGeneration == generation else { return }
+        if captureRecovery, let result { self.captureRecovery(from: result) }
+        activeTask = nil
+        currentGeneration = nil
+        isActive = false
+    }
+
+    /// Releases presentation ownership while retaining the worker until it exits.
+    func detach() -> Int? {
+        guard let detached = currentGeneration else { return nil }
+        activeTask?.cancel()
+        generation += 1
+        activeTask = nil
+        currentGeneration = nil
+        isActive = false
+        undoRecovery = nil
+        return detached
+    }
 
     static func resultPresentation(_ result: FileOperationResult, operationName: String) -> (message: String, detail: String, style: NSAlert.Style)? {
         guard !result.succeededCompletely else { return nil }
@@ -161,6 +215,61 @@ final class FileOperationCoordinator {
             : onlyCancelled ? "%@ Cancelled".localized(with: operationName)
             : "%@ Finished With Issues".localized(with: operationName)
         return (message, details.joined(separator: "\n"), onlyCancelled ? .informational : .warning)
+    }
+}
+
+/// Owns the pasteboard session, including transient feedback and cut markers.
+@MainActor
+final class ClipboardSessionCoordinator {
+    private let transfer: FileTransferWorkflowCoordinator
+    private var feedbackTimer: Timer?
+    private var changeMonitor: Timer?
+    private var trackedChangeCount: Int?
+    private(set) var cutURLs: Set<URL> = []
+
+    init(transfer: FileTransferWorkflowCoordinator) { self.transfer = transfer }
+    func payload() -> FileClipboard.Payload? { transfer.clipboardPayload() }
+    func write(_ urls: [URL], operation: FileClipboard.Operation, onExpired: @escaping () -> Void) throws {
+        try transfer.writeToClipboard(urls, operation: operation)
+        cutURLs = operation == .move ? Set(urls) : []
+        trackedChangeCount = transfer.clipboard.changeCount
+        feedbackTimer?.invalidate()
+        feedbackTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in onExpired() }
+        changeMonitor?.invalidate()
+        changeMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, let trackedChangeCount, transfer.clipboard.changeCount != trackedChangeCount else { return }
+            self.clear(); onExpired()
+        }
+    }
+    func clear() {
+        feedbackTimer?.invalidate(); feedbackTimer = nil
+        changeMonitor?.invalidate(); changeMonitor = nil
+        trackedChangeCount = nil; cutURLs = []
+    }
+}
+
+/// Owns terminal policy and presentation state; split-view geometry stays in TerminalLayoutCoordinator.
+@MainActor
+final class TerminalPresentationCoordinator {
+    enum ToggleResult: Equatable { case show, hide, disabled }
+    private(set) var isVisible = false
+    private let service: TerminalService
+    init(service: TerminalService = TerminalService()) { self.service = service }
+    func toggle(isEnabled: Bool) -> ToggleResult {
+        if isVisible { isVisible = false; return .hide }
+        guard isEnabled else { return .disabled }
+        isVisible = true; return .show
+    }
+    func synchronize(installed: Bool) { isVisible = installed }
+    func workingDirectory(activePaneURL: URL, accessPolicy: SandboxFileAccessPolicy) -> URL? {
+        service.resolvedWorkingDirectory(activePaneURL: activePaneURL, accessPolicy: accessPolicy)
+    }
+    func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy) -> TerminalWarningState {
+        service.warningState(settings: settings, accessPolicy: accessPolicy)
+    }
+    func acknowledgeWarningIfNeeded(response: Int, acknowledgementResponse: Int, settings: SettingsService) {
+        guard service.shouldAcknowledgeFirstUseWarning(response: response, acknowledgementResponse: acknowledgementResponse) else { return }
+        service.acknowledgeFirstUseWarning(settings: settings)
     }
 }
 
