@@ -1,0 +1,61 @@
+import AppKit
+
+@MainActor
+protocol SettingsPageController: AnyObject {
+    var rootView: NSView { get }
+    var onChange: (() -> Void)? { get set }
+    func reloadFromSettings()
+}
+
+@MainActor
+class SettingsPageControllerBase: NSObject, SettingsPageController {
+    let rootView = FlippedSettingsView()
+    var onChange: (() -> Void)?
+
+    override init() {
+        super.init()
+        rootView.translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    func reloadFromSettings() {}
+
+    func install(sections: [NSView]) {
+        rootView.subviews.forEach { $0.removeFromSuperview() }
+        let stack = NSStackView(views: sections)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 18
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        rootView.addSubview(stack)
+        sections.forEach { $0.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: rootView.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: rootView.bottomAnchor)
+        ])
+    }
+
+    func section(title: String, views: [NSView]) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = .preferredFont(forTextStyle: .headline)
+        let stack = NSStackView(views: [label] + views)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        views.forEach { $0.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        return stack
+    }
+
+    func labeledPopup(_ title: String, popup: NSPopUpButton) -> NSView {
+        let row = NSStackView(views: [NSTextField(labelWithString: title), popup])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.distribution = .fillProportionally
+        return row
+    }
+}
+
+private final class FlippedSettingsView: NSView {
+    override var isFlipped: Bool { true }
+}

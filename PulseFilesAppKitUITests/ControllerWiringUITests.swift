@@ -61,6 +61,39 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertEqual(SettingsService(defaults: defaults).appLanguage, .russian)
     }
 
+    func testSettingsCategoriesSwitchStableRegisteredPages() throws {
+        let controller = SettingsViewController()
+        controller.loadViewIfNeeded()
+        let categories = controller.categoryControlForTesting
+
+        XCTAssertEqual(categories.segmentCount, SettingsViewController.Category.allCases.count)
+        for category in SettingsViewController.Category.allCases {
+            categories.selectedSegment = category.rawValue
+            categories.sendAction(categories.action, to: categories.target)
+            XCTAssertTrue(controller.visiblePageForTesting === controller.pageForTesting(category)?.rootView)
+        }
+    }
+
+    func testSettingsImportantControlsHaveStableAccessibilityIdentifiers() throws {
+        let controller = SettingsViewController()
+        controller.loadViewIfNeeded()
+        XCTAssertEqual(controller.categoryControlForTesting.accessibilityIdentifier(), AccessibilityIdentifiers.Settings.categoryControl)
+        XCTAssertEqual(controller.appLanguageSelectorForTesting.accessibilityIdentifier(), AccessibilityIdentifiers.Settings.languageSelector)
+
+        let appearance = try XCTUnwrap(controller.pageForTesting(.appearance)?.rootView)
+        XCTAssertNotNil(findView(in: appearance, identifier: AccessibilityIdentifiers.Settings.sidebarWidth))
+        XCTAssertNotNil(findView(in: appearance, identifier: AccessibilityIdentifiers.Settings.resetPalette))
+        let navigation = try XCTUnwrap(controller.pageForTesting(.navigation)?.rootView)
+        XCTAssertNotNil(findView(in: navigation, identifier: AccessibilityIdentifiers.Settings.chooseScratchFolder))
+        let access = try XCTUnwrap(controller.pageForTesting(.access)?.rootView)
+        XCTAssertNotNil(findView(in: access, identifier: AccessibilityIdentifiers.Settings.grantFolderAccess))
+    }
+
+    private func findView(in view: NSView, identifier: String) -> NSView? {
+        if view.accessibilityIdentifier() == identifier { return view }
+        return view.subviews.lazy.compactMap { findView(in: $0, identifier: identifier) }.first
+    }
+
     func testMainWindowUsesStableAutosaveNameAndCentersFirstLaunchFallback() {
         XCTAssertEqual(app.window.frameAutosaveName, MainWindowController.frameAutosaveName)
 
