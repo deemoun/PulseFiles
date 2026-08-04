@@ -63,7 +63,28 @@ enum AccessibilityIdentifiers {
     }
 
     enum Settings {
+        static let categoryControl = "pulsefiles.settings.categories"
+        static let pageHost = "pulsefiles.settings.pageHost"
+        static let done = "pulsefiles.settings.done"
         static let languageSelector = "pulsefiles.settings.language.selector"
+        static let confirmCopy = "pulsefiles.settings.operations.confirmCopy"
+        static let confirmMove = "pulsefiles.settings.operations.confirmMove"
+        static let confirmDelete = "pulsefiles.settings.operations.confirmDelete"
+        static let permanentDelete = "pulsefiles.settings.operations.permanentDelete"
+        static let clearIncompleteTransfers = "pulsefiles.settings.operations.clearIncompleteTransfers"
+        static let liquidGlass = "pulsefiles.settings.appearance.liquidGlass"
+        static let sidebarVisible = "pulsefiles.settings.appearance.sidebarVisible"
+        static let singlePane = "pulsefiles.settings.appearance.singlePane"
+        static let sidebarWidth = "pulsefiles.settings.appearance.sidebarWidth"
+        static let resetPalette = "pulsefiles.settings.appearance.resetPalette"
+        static let hiddenFiles = "pulsefiles.settings.navigation.hiddenFiles"
+        static let quickSearchMatch = "pulsefiles.settings.navigation.quickSearchMatch"
+        static let quickSearchPresentation = "pulsefiles.settings.navigation.quickSearchPresentation"
+        static let grantFolderAccess = "pulsefiles.settings.access.grantFolder"
+        static let terminalEnabled = "pulsefiles.settings.experimental.terminalEnabled"
+        static let terminalVisible = "pulsefiles.settings.experimental.terminalVisible"
+        static let experimentalSandbox = "pulsefiles.settings.experimental.sandbox"
+        static func fileColor(_ category: FileVisualCategory) -> String { "pulsefiles.settings.appearance.color.\(category)" }
         static let scratchPath = "pulsefiles.settings.scratchFolder.path"
         static let chooseScratchFolder = "pulsefiles.settings.scratchFolder.choose"
         static let openScratchFolder = "pulsefiles.settings.scratchFolder.open"

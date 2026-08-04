@@ -185,7 +185,7 @@ Limits that must remain visible in code and UI:
 | PaneStatusView / PaneContentOverlayView | Selection/volume information and loading/error recovery UI. |
 | SidebarViewController | Locations/devices/recents and asynchronous selection inspection. |
 | TerminalViewController | Opt-in shell input/output, process lifecycle and working-directory access scope. |
-| SettingsViewController | Preferences form and folder-grant chooser; informs main window of changes. |
+| SettingsViewController / SettingsPageController | Category host and stable page registry. Focused General, Appearance, Navigation, Access, and Experimental page controllers own their controls, reload through typed `SettingsService` properties, and report changes to the host; folder selection, access grants, and cleanup services are injected only into pages that use them. |
 | DebugLogViewController | Filterable diagnostic-log view. |
 | CommandBarView | Bottom action bar, modifier-aware labels and operation progress/status. |
 

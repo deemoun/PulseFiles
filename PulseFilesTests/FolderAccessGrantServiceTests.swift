@@ -215,9 +215,9 @@ private struct FailingFolderAccessBookmarkResolver: FolderAccessBookmarkResolvin
 #if canImport(AppKit)
 final class SettingsPermissionsCategoryTests: XCTestCase {
     func testPermissionsCategoryIsAvailableWithLockShieldSymbol() {
-        XCTAssertTrue(SettingsViewController.Category.allCases.contains(.permissions))
-        XCTAssertEqual(SettingsViewController.Category.permissions.symbolName, "lock.shield")
-        XCTAssertEqual(SettingsViewController.Category.permissions.title, "Permissions".localized)
+        XCTAssertTrue(SettingsViewController.Category.allCases.contains(.access))
+        XCTAssertEqual(SettingsViewController.Category.access.symbolName, "lock.shield")
+        XCTAssertEqual(SettingsViewController.Category.access.title, "Access".localized)
         XCTAssertEqual("Files & Folders Access".localized, "Files & Folders Access")
         XCTAssertEqual("Request Access".localized, "Request Access")
     }
