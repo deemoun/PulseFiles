@@ -27,4 +27,79 @@ final class FileTransferPlanner {
         try accessPolicy.validateDestinationAccess(to: destination)
         _ = fileManager.fileExists(atPath: destination.path)
     }
+
+    struct TransferPlan {
+        let source: URL
+        let destination: URL
+        let conflictResolution: FileConflictResolution
+        let replacesExistingDestination: Bool
+    }
+
+    func resolveTransferPlans(
+        for request: FileOperationRequest,
+        conflictHandler: FileConflictHandler,
+        conflictResolutionHandler: (URL, FileConflictResolution) -> Void
+    ) async throws -> [TransferPlan] {
+        var plans: [TransferPlan] = []
+        var resolutionForRemainingConflicts: FileConflictResolution?
+        var reservedDestinations = Set(request.sources.map {
+            FilePathComparison.normalizedPath(request.destinationDirectory.appendingPathComponent($0.lastPathComponent))
+        })
+
+        for source in request.sources {
+            let originalDestination = request.destinationDirectory.appendingPathComponent(source.lastPathComponent)
+            let replacesExistingDestination = fileManager.fileExists(atPath: originalDestination.path)
+            let resolution: FileConflictResolution
+            if replacesExistingDestination {
+                let decision: FileConflictResolution
+                if let resolutionForRemainingConflicts {
+                    decision = resolutionForRemainingConflicts
+                } else {
+                    decision = await conflictHandler(originalDestination)
+                }
+                if let appliedResolution = decision.resolutionAppliedToRemainingConflicts {
+                    resolutionForRemainingConflicts = appliedResolution
+                    resolution = appliedResolution
+                } else {
+                    resolution = decision
+                }
+                conflictResolutionHandler(originalDestination, resolution)
+            } else {
+                resolution = .replace
+            }
+
+            if resolution == .cancel {
+                plans.append(TransferPlan(source: source, destination: originalDestination, conflictResolution: .cancel, replacesExistingDestination: true))
+                return plans
+            }
+
+            let destination: URL
+            if resolution == .keepBoth {
+                destination = Self.keepBothDestination(
+                    for: originalDestination,
+                    reservedDestinations: reservedDestinations,
+                    fileExists: { self.fileManager.fileExists(atPath: $0.path) }
+                )
+            } else {
+                destination = originalDestination
+            }
+            try accessPolicy.validateDestinationAccess(to: destination)
+            reservedDestinations.insert(FilePathComparison.normalizedPath(destination))
+            plans.append(TransferPlan(
+                source: source,
+                destination: destination,
+                conflictResolution: resolution,
+                replacesExistingDestination: resolution == .replace && replacesExistingDestination
+            ))
+        }
+
+        return plans
+    }
+}
+
+private extension FileConflictResolution {
+    var resolutionAppliedToRemainingConflicts: FileConflictResolution? {
+        switch self { case .applyToRemainingReplace: return .replace; case .applyToRemainingSkip: return .skip; case .applyToRemainingKeepBoth: return .keepBoth; default: return nil }
+    }
+
 }
