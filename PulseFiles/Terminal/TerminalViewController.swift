@@ -10,7 +10,7 @@ final class TerminalViewController: NSViewController {
     static let maximumRetainedOutputLines = 2_000
     private static let truncationNotice = "[Earlier terminal output truncated]\n"
 
-    private let terminalService = TerminalService()
+    private let terminalService: any TerminalStateProviding
     private let terminalView = TerminalTextView()
     private let scrollView = NSScrollView()
     private let processFactory: () -> TerminalProcess
@@ -24,7 +24,8 @@ final class TerminalViewController: NSViewController {
     var isShellInteractionAllowedProvider: (() -> Bool)?
     var suggestedWorkingDirectory = ExperimentalFlags.appSandboxRoot
 
-    init(processFactory: @escaping () -> TerminalProcess = { PTYTerminalProcess() }, accessPolicy: SandboxFileAccessPolicy = .current) {
+    init(terminalService: any TerminalStateProviding, processFactory: @escaping () -> TerminalProcess = { PTYTerminalProcess() }, accessPolicy: SandboxFileAccessPolicy = .current) {
+        self.terminalService = terminalService
         self.processFactory = processFactory
         self.accessPolicy = accessPolicy
         super.init(nibName: nil, bundle: nil)

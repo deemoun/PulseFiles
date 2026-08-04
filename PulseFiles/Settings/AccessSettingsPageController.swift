@@ -4,12 +4,13 @@ import AppKit
 final class AccessSettingsPageController: SettingsPageControllerBase {
     private let accessPolicy: SandboxFileAccessPolicy
     private let grantService: FolderAccessGrantService
-    private let standardAccess = StandardFolderAccessService()
+    private let standardAccess: any StandardFolderAccessProviding
     private let folderSelection: AuthorizedFolderSelectionCoordinator
     private var states: [StandardFolder: StandardFolderAccessState] = [:]
 
-    init(accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService) {
+    init(accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, standardAccess: any StandardFolderAccessProviding) {
         self.accessPolicy = accessPolicy; self.grantService = accessGrantService
+        self.standardAccess = standardAccess
         self.folderSelection = AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: accessGrantService)
         super.init(); reloadFromSettings()
     }

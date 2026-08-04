@@ -49,7 +49,7 @@ final class FilePaneViewController: NSViewController {
     }))
     private let authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
-    let thumbnailLoader = ThumbnailLoadingService()
+    let thumbnailLoader: any ThumbnailLoading
     let thumbnailRequests = ThumbnailRequestCoordinator()
     private(set) var presentationMode: PanePresentationMode
 
@@ -57,12 +57,14 @@ final class FilePaneViewController: NSViewController {
         paneID: PaneID,
         viewModel: FilePaneViewModel,
         presentationMode: PanePresentationMode = .list,
+        thumbnailLoader: any ThumbnailLoading,
         openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil,
         authorizedFolderSelection: AuthorizedFolderSelectionCoordinator? = nil
     ) {
         self.paneID = paneID
         self.viewModel = viewModel
         self.presentationMode = presentationMode
+        self.thumbnailLoader = thumbnailLoader
         self.contextMenuProvider = FilePaneContextMenuProvider(openWithApplicationResolver: openWithApplicationResolver ?? OpenWithMenuApplicationResolver())
         self.authorizedFolderSelection = authorizedFolderSelection ?? AuthorizedFolderSelectionCoordinator(accessPolicy: .current, grantService: .shared)
         super.init(nibName: nil, bundle: nil)

@@ -9,10 +9,12 @@ final class MainWindowController: NSWindowController {
         dependencies: MainWindowDependencies? = nil,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
+        let dependencies = dependencies ?? .production(accessPolicy: accessPolicy)
         let content = MainWindowViewController(
             settings: settings,
             accessPolicy: accessPolicy,
-            dependencies: dependencies ?? .production(accessPolicy: accessPolicy),
+            dependencies: dependencies,
+            workflowDependencies: .production(from: dependencies, accessPolicy: accessPolicy),
             sandboxRootEnsurer: sandboxRootEnsurer
         )
         let window = NSWindow(contentViewController: content)
