@@ -1,6 +1,7 @@
 import Foundation
+import PulseFilesUtilities
 
-enum FileOperationError: LocalizedError, Equatable {
+package enum FileOperationError: LocalizedError, Equatable {
     case emptySelection
     case duplicateSource(URL)
     /// Multi-source operations reject overlapping paths instead of attempting
@@ -22,7 +23,7 @@ enum FileOperationError: LocalizedError, Equatable {
     case traversalLimitExceeded(URL, maximumDepth: Int, maximumItems: Int)
     case undoUnavailable
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .emptySelection:
             return "No files are selected.".localized
@@ -67,7 +68,7 @@ enum FileOperationError: LocalizedError, Equatable {
         ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 
-    var failureReason: String? {
+    package var failureReason: String? {
         switch self {
         case .emptySelection:
             return "Select one or more items in the active pane.".localized
@@ -112,16 +113,16 @@ enum FileOperationError: LocalizedError, Equatable {
 /// Snapshot used to reject states that cannot safely be mutated.  It is
 /// injectable so tests can cover removable, network, and iCloud conditions
 /// without depending on the machine running the tests.
-struct FileOperationPathSafetyState: Equatable {
-    var isAvailable = true
-    var isReadOnlyVolume = false
-    var isICloudPlaceholder = false
+package struct FileOperationPathSafetyState: Equatable {
+    package var isAvailable = true
+    package var isReadOnlyVolume = false
+    package var isICloudPlaceholder = false
     /// Finder aliases are not symbolic links. Operations preserve the alias
     /// object and never resolve its target.
-    var isFinderAlias = false
+    package var isFinderAlias = false
 }
 
-enum FileConflictResolution: Equatable {
+package enum FileConflictResolution: Equatable {
     case replace
     case skip
     case keepBoth
@@ -131,29 +132,29 @@ enum FileConflictResolution: Equatable {
     case applyToRemainingKeepBoth
 }
 
-enum FileTransferCapacityPreflight: Equatable {
+package enum FileTransferCapacityPreflight: Equatable {
     case notRequired
     case sufficient(required: Int64, available: Int64)
     case insufficient(required: Int64, available: Int64)
     case cannotVerify(required: Int64?)
 }
 
-struct FileOperationRequest {
-    let sources: [URL]
-    let destinationDirectory: URL
+package struct FileOperationRequest {
+    package let sources: [URL]
+    package let destinationDirectory: URL
 }
 
-struct FileOperationProgress {
-    let currentItemName: String
-    let completedCount: Int
-    let totalCount: Int
-    let completedRecursiveItemCount: Int?
-    let totalRecursiveItemCount: Int?
-    let completedByteCount: Int64?
-    let totalByteCount: Int64?
-    let isPreparingTransfer: Bool
+package struct FileOperationProgress {
+    package let currentItemName: String
+    package let completedCount: Int
+    package let totalCount: Int
+    package let completedRecursiveItemCount: Int?
+    package let totalRecursiveItemCount: Int?
+    package let completedByteCount: Int64?
+    package let totalByteCount: Int64?
+    package let isPreparingTransfer: Bool
 
-    init(
+    package init(
         currentItemName: String,
         completedCount: Int,
         totalCount: Int,
@@ -174,28 +175,28 @@ struct FileOperationProgress {
     }
 }
 
-struct FileOperationItemFailure {
-    let url: URL
-    let error: Error
+package struct FileOperationItemFailure {
+    package let url: URL
+    package let error: Error
 }
 
-struct FileOperationCleanupWarning {
-    let url: URL
-    let message: String
+package struct FileOperationCleanupWarning {
+    package let url: URL
+    package let message: String
 }
 
-struct FileOperationResult {
-    let completedItems: [URL]
-    let skippedItems: [URL]
-    let failedItems: [FileOperationItemFailure]
-    let cleanupWarnings: [FileOperationCleanupWarning]
-    let wasCancelled: Bool
+package struct FileOperationResult {
+    package let completedItems: [URL]
+    package let skippedItems: [URL]
+    package let failedItems: [FileOperationItemFailure]
+    package let cleanupWarnings: [FileOperationCleanupWarning]
+    package let wasCancelled: Bool
     /// `true` means the caller stopped waiting while a filesystem call could
     /// still be running. The resulting paths must be verified before reuse.
-    let needsVerification: Bool
-    let recovery: FileOperationRecovery?
+    package let needsVerification: Bool
+    package let recovery: FileOperationRecovery?
 
-    init(
+    package init(
         completedItems: [URL],
         skippedItems: [URL],
         failedItems: [FileOperationItemFailure],
@@ -213,11 +214,11 @@ struct FileOperationResult {
         self.recovery = recovery
     }
 
-    var succeededCompletely: Bool {
+    package var succeededCompletely: Bool {
         !wasCancelled && !needsVerification && skippedItems.isEmpty && failedItems.isEmpty && cleanupWarnings.isEmpty
     }
 
-    static func unknownAfterAbandoning(currentItem: URL? = nil) -> Self {
+    package static func unknownAfterAbandoning(currentItem: URL? = nil) -> Self {
         Self(
             completedItems: [],
             skippedItems: [],

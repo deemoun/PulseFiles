@@ -1,13 +1,13 @@
 import Foundation
 
-enum ExperimentalFlags {
-    static let restrictFileAccessUserDefaultsKey = "ExperimentalFlags.restrictFileAccessToAppSandboxRoot"
+package enum ExperimentalFlags {
+    package static let restrictFileAccessUserDefaultsKey = "ExperimentalFlags.restrictFileAccessToAppSandboxRoot"
 
-    static var restrictFileAccessToAppSandboxRoot: Bool {
+    package static var restrictFileAccessToAppSandboxRoot: Bool {
         isSandboxRestrictionEnabled()
     }
 
-    static func isSandboxRestrictionEnabled(
+    package static func isSandboxRestrictionEnabled(
         defaults: UserDefaults = .standard,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> Bool {
@@ -27,9 +27,9 @@ enum ExperimentalFlags {
         return false
     }
 
-    static var sandboxRestrictionExplanation: String { "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable.".localized }
+    package static var sandboxRestrictionExplanation: String { "Browsing is restricted to the PulseFiles experimental sandbox while sandbox mode is enabled. Normal macOS favorites and folders outside this root may be hidden or unavailable.".localized }
 
-    static var appSandboxRoot: URL {
+    package static var appSandboxRoot: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base
@@ -37,7 +37,7 @@ enum ExperimentalFlags {
             .appendingPathComponent("ExperimentalSandbox", isDirectory: true)
     }
 
-    static func ensureAppSandboxRootExists() {
+    package static func ensureAppSandboxRootExists() {
         #if DEBUG
         guard restrictFileAccessToAppSandboxRoot else { return }
         let fileManager = FileManager.default

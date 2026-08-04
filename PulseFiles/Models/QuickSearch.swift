@@ -1,6 +1,7 @@
 import Foundation
+import PulseFilesUtilities
 
-enum QuickSearchMatchMode: String, Codable, CaseIterable {
+package enum QuickSearchMatchMode: String, Codable, CaseIterable {
     case fuzzy
     case contains
     case prefix
@@ -8,19 +9,19 @@ enum QuickSearchMatchMode: String, Codable, CaseIterable {
     case prefixOrSuffix
 }
 
-enum QuickSearchPresentation: String, Codable, CaseIterable {
+package enum QuickSearchPresentation: String, Codable, CaseIterable {
     case filterMatches
     case showAllAndHighlightMatches
 }
 
 /// A match expressed in the original string, so callers can decorate text
 /// without replacing its spelling or performing another lookup.
-struct QuickSearchMatch: Equatable {
-    let ranges: [Range<String.Index>]
+package struct QuickSearchMatch: Equatable {
+    package let ranges: [Range<String.Index>]
 }
 
-enum QuickSearchMatcher {
-    static func match(_ query: String, in candidate: String, mode: QuickSearchMatchMode) -> QuickSearchMatch? {
+package enum QuickSearchMatcher {
+    package static func match(_ query: String, in candidate: String, mode: QuickSearchMatchMode) -> QuickSearchMatch? {
         let needle = characters(query)
         let haystack = characters(candidate)
         guard !needle.isEmpty else { return QuickSearchMatch(ranges: []) }

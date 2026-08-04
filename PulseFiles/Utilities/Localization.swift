@@ -1,6 +1,6 @@
 import Foundation
 
-enum AppLanguage: String, CaseIterable, Codable {
+package enum AppLanguage: String, CaseIterable, Codable {
     case english = "en"
     case russian = "ru"
 
@@ -11,7 +11,7 @@ enum AppLanguage: String, CaseIterable, Codable {
         }
     }
 
-    var locale: Locale {
+    package var locale: Locale {
         Locale(identifier: rawValue == "ru" ? "ru_RU" : "en_US")
     }
 }
@@ -19,19 +19,19 @@ enum AppLanguage: String, CaseIterable, Codable {
 /// The single synchronization point for application-controlled localization.
 /// Bundle selection is immutable between explicit configuration calls, and all
 /// reads are protected so background-created status strings are safe.
-enum LocalizationConfiguration {
+package enum LocalizationConfiguration {
     private static let lock = NSLock()
     private static var _language: AppLanguage = .english
 
-    static var language: AppLanguage {
+    package static var language: AppLanguage {
         lock.withLock { _language }
     }
 
-    static func configure(language: AppLanguage) {
+    package static func configure(language: AppLanguage) {
         lock.withLock { _language = language }
     }
 
-    static func localizedString(forKey key: String) -> String {
+    package static func localizedString(forKey key: String) -> String {
         let selectedLanguage = language
         let resources = Bundle.pulseFilesLocalization
         guard let path = resources.path(forResource: selectedLanguage.rawValue, ofType: "lproj"),
@@ -42,7 +42,7 @@ enum LocalizationConfiguration {
     }
 }
 
-extension String {
+package extension String {
     var localized: String {
         LocalizationConfiguration.localizedString(forKey: self)
     }

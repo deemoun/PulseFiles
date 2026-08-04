@@ -1,10 +1,11 @@
 import Foundation
+import PulseFilesUtilities
 
 /// Keeps the pane's volume status responsive while volume resource values are read.
 /// A result is accepted only for the directory and directory-load generation that
 /// initiated it, preventing a slow previous volume from replacing current status.
 @MainActor
-final class VolumeStatusResolutionCache {
+package final class VolumeStatusResolutionCache {
     private struct Request: Equatable {
         let directory: URL
         let loadGeneration: Int
@@ -13,9 +14,9 @@ final class VolumeStatusResolutionCache {
     private var task: Task<Void, Never>?
     private var request: Request?
     private(set) var status: VolumeStatusPresentation
-    var onChange: (() -> Void)?
+    package var onChange: (() -> Void)?
 
-    init(directory: URL) {
+    package init(directory: URL) {
         status = .loading(for: directory)
     }
 
@@ -23,7 +24,7 @@ final class VolumeStatusResolutionCache {
         task?.cancel()
     }
 
-    func resolveIfNeeded(for directory: URL, loadGeneration: Int) {
+    package func resolveIfNeeded(for directory: URL, loadGeneration: Int) {
         let request = Request(directory: directory.standardizedFileURL, loadGeneration: loadGeneration)
         guard request != self.request else { return }
         beginResolution(for: directory, loadGeneration: loadGeneration)
@@ -34,7 +35,7 @@ final class VolumeStatusResolutionCache {
         }
     }
 
-    func beginResolution(for directory: URL, loadGeneration: Int) {
+    package func beginResolution(for directory: URL, loadGeneration: Int) {
         task?.cancel()
         self.request = Request(directory: directory.standardizedFileURL, loadGeneration: loadGeneration)
         status = .loading(for: directory)
@@ -43,7 +44,7 @@ final class VolumeStatusResolutionCache {
 
     /// Kept internal so XCTest can verify stale-result suppression without relying
     /// on timing-sensitive filesystem behavior.
-    func apply(_ status: VolumeStatusPresentation, for directory: URL, loadGeneration: Int) {
+    package func apply(_ status: VolumeStatusPresentation, for directory: URL, loadGeneration: Int) {
         let completedRequest = Request(directory: directory.standardizedFileURL, loadGeneration: loadGeneration)
         guard completedRequest == request else { return }
         self.status = status

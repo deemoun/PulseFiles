@@ -1,11 +1,12 @@
 import Foundation
+import PulseFilesUtilities
 
-struct Bookmark: Codable, Identifiable, Equatable {
-    var id: UUID
-    var title: String
-    var url: URL
+package struct Bookmark: Codable, Identifiable, Equatable {
+    package var id: UUID
+    package var title: String
+    package var url: URL
 
-    init(id: UUID = UUID(), title: String, url: URL) {
+    package init(id: UUID = UUID(), title: String, url: URL) {
         self.id = id
         self.title = title
         self.url = url

@@ -1,23 +1,24 @@
 import Foundation
+import PulseFilesUtilities
 
 /// A lightweight, directory-level summary of the volume that contains a pane.
 /// This deliberately uses volume resource values only; it never walks a directory
 /// or calculates directory sizes.
-struct VolumeStatusPresentation: Equatable {
-    enum Availability: Equatable {
+package struct VolumeStatusPresentation: Equatable {
+    package enum Availability: Equatable {
         case available
         case unavailable
         case permissionDenied
     }
 
-    let volumeURL: URL?
-    let localizedName: String
-    let availableCapacity: Int64?
-    let totalCapacity: Int64?
-    let isReadOnly: Bool
-    let availability: Availability
+    package let volumeURL: URL?
+    package let localizedName: String
+    package let availableCapacity: Int64?
+    package let totalCapacity: Int64?
+    package let isReadOnly: Bool
+    package let availability: Availability
 
-    init(
+    package init(
         volumeURL: URL?,
         localizedName: String,
         availableCapacity: Int64?,
@@ -36,7 +37,7 @@ struct VolumeStatusPresentation: Equatable {
     /// Resolves volume metadata on a utility-priority background task. Callers may
     /// cancel their task while the resource lookup is in progress; in that case the
     /// result is discarded before it can be returned to the caller.
-    static func resolve(for directory: URL) async -> VolumeStatusPresentation {
+    package static func resolve(for directory: URL) async -> VolumeStatusPresentation {
         let task = Task.detached(priority: .utility) {
             guard !Task.isCancelled else { return loading(for: directory) }
             let presentation = resolveSynchronously(for: directory)
@@ -49,11 +50,11 @@ struct VolumeStatusPresentation: Equatable {
         })
     }
 
-    static func loading(for directory: URL) -> VolumeStatusPresentation {
+    package static func loading(for directory: URL) -> VolumeStatusPresentation {
         unavailable(for: directory, availability: .unavailable)
     }
 
-    static func resolveSynchronously(for directory: URL) -> VolumeStatusPresentation {
+    package static func resolveSynchronously(for directory: URL) -> VolumeStatusPresentation {
         do {
             let directoryValues = try directory.resourceValues(forKeys: [.volumeURLKey])
             guard let volumeURL = directoryValues.allValues[.volumeURLKey] as? URL else {
@@ -81,7 +82,7 @@ struct VolumeStatusPresentation: Equatable {
         }
     }
 
-    var label: String {
+    package var label: String {
         switch availability {
         case .permissionDenied:
             return "\(localizedName) — Permission required".localized
@@ -95,22 +96,22 @@ struct VolumeStatusPresentation: Equatable {
         }
     }
 
-    var isWarning: Bool {
+    package var isWarning: Bool {
         availability != .available || isReadOnly || isNearlyFull
     }
 
-    var isNearlyFull: Bool {
+    package var isNearlyFull: Bool {
         guard let availableCapacity, let totalCapacity, totalCapacity > 0 else { return false }
         return Double(availableCapacity) / Double(totalCapacity) <= 0.10
     }
 
-    var detail: String {
+    package var detail: String {
         var parts = [label]
         if isReadOnly { parts.append("Read-only".localized) }
         return parts.joined(separator: " • ")
     }
 
-    var locationDescription: String {
+    package var locationDescription: String {
         let path = volumeURL?.path ?? "Unknown volume path".localized
         return "%@ (%@)".localized(with: localizedName, path)
     }

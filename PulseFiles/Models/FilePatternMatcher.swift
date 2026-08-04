@@ -1,22 +1,23 @@
 import Foundation
+import PulseFilesUtilities
 
-enum FilePatternMode: Equatable {
+package enum FilePatternMode: Equatable {
     case glob
     case regularExpression
 }
 
-struct FilePatternMatchResult: Equatable {
-    let matchingURLs: Set<URL>
-    let sampleNames: [String]
-    let totalCount: Int
+package struct FilePatternMatchResult: Equatable {
+    package let matchingURLs: Set<URL>
+    package let sampleNames: [String]
+    package let totalCount: Int
 }
 
 /// Matches one directory snapshot supplied by the caller. It never traverses the
 /// filesystem, which keeps pattern selection scoped to the pane's visible items.
-struct FilePatternMatcher {
-    static let defaultPreviewLimit = 8
+package struct FilePatternMatcher {
+    package static let defaultPreviewLimit = 8
 
-    static func validationError(pattern: String, mode: FilePatternMode) -> String? {
+    package static func validationError(pattern: String, mode: FilePatternMode) -> String? {
         guard mode == .regularExpression else { return nil }
         do {
             _ = try NSRegularExpression(pattern: pattern)
@@ -26,7 +27,7 @@ struct FilePatternMatcher {
         }
     }
 
-    static func matches(
+    package static func matches(
         pattern: String,
         mode: FilePatternMode,
         items: [FileItem],
@@ -47,7 +48,7 @@ struct FilePatternMatcher {
         )
     }
 
-    static func globRegularExpression(_ glob: String) -> String {
+    package static func globRegularExpression(_ glob: String) -> String {
         var result = "^"
         var index = glob.startIndex
         while index < glob.endIndex {
@@ -73,11 +74,11 @@ struct FilePatternMatcher {
     }
 }
 
-enum MarkMutation: Equatable {
+package enum MarkMutation: Equatable {
     case select
     case deselect
 
-    func applying(matches: Set<URL>, to marks: Set<URL>) -> Set<URL> {
+    package func applying(matches: Set<URL>, to marks: Set<URL>) -> Set<URL> {
         switch self {
         case .select: return marks.union(matches)
         case .deselect: return marks.subtracting(matches)
@@ -85,10 +86,10 @@ enum MarkMutation: Equatable {
     }
 }
 
-enum SameExtensionMatcher {
+package enum SameExtensionMatcher {
     /// Extension comparisons are case-insensitive. An extensionless focused item
     /// matches every other extensionless visible item (including directories).
-    static func matchingURLs(focusedItem: FileItem?, visibleItems: [FileItem]) -> Set<URL>? {
+    package static func matchingURLs(focusedItem: FileItem?, visibleItems: [FileItem]) -> Set<URL>? {
         guard let focusedItem else { return nil }
         let extensionKey = focusedItem.fileExtension.lowercased()
         return Set(visibleItems.lazy.filter { $0.fileExtension.lowercased() == extensionKey }.map(\.url))
