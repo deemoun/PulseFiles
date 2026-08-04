@@ -1,15 +1,16 @@
 import Foundation
+import PulseFilesUtilities
 
-enum PaneID: Equatable {
+package enum PaneID: Equatable {
     case left
     case right
 
-    var opposite: PaneID {
+    package var opposite: PaneID {
         self == .left ? .right : .left
     }
 }
 
-enum FileSortKey: String, Codable, Hashable {
+package enum FileSortKey: String, Codable, Hashable {
     case name
     case `extension`
     case kind
@@ -20,19 +21,19 @@ enum FileSortKey: String, Codable, Hashable {
     case accessed
 }
 
-enum FileSortComparisonMode: String, Codable, Hashable {
+package enum FileSortComparisonMode: String, Codable, Hashable {
     case naturalLocalized
     case caseInsensitive
     case caseSensitive
 }
 
-struct FileSortDescriptor: Codable, Equatable, Hashable {
-    var key: FileSortKey = .name
-    var ascending: Bool = true
-    var comparisonMode: FileSortComparisonMode = .naturalLocalized
-    var foldersFirst: Bool = true
+package struct FileSortDescriptor: Codable, Equatable, Hashable {
+    package var key: FileSortKey = .name
+    package var ascending: Bool = true
+    package var comparisonMode: FileSortComparisonMode = .naturalLocalized
+    package var foldersFirst: Bool = true
 
-    init(
+    package init(
         key: FileSortKey = .name,
         ascending: Bool = true,
         comparisonMode: FileSortComparisonMode = .naturalLocalized,
@@ -46,7 +47,7 @@ struct FileSortDescriptor: Codable, Equatable, Hashable {
 
     private enum CodingKeys: String, CodingKey { case key, ascending, comparisonMode, foldersFirst }
 
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         key = try values.decodeIfPresent(FileSortKey.self, forKey: .key) ?? .name
         ascending = try values.decodeIfPresent(Bool.self, forKey: .ascending) ?? true
@@ -55,20 +56,20 @@ struct FileSortDescriptor: Codable, Equatable, Hashable {
     }
 }
 
-struct PaneTabState: Identifiable, Equatable {
-    let id: UUID
-    var currentDirectory: URL
+package struct PaneTabState: Identifiable, Equatable {
+    package let id: UUID
+    package var currentDirectory: URL
     /// The marked set used by copy, move, trash, drag, and other bulk operations.
     /// Focus is deliberately represented separately by `focusedURL`.
-    var markedURLs: Set<URL> = []
-    var focusedRow: Int = 0
-    var focusedURL: URL?
-    var searchQuery = ""
-    var history = NavigationHistory()
-    var sort = FileSortDescriptor()
-    var showsHiddenFiles = false
+    package var markedURLs: Set<URL> = []
+    package var focusedRow: Int = 0
+    package var focusedURL: URL?
+    package var searchQuery = ""
+    package var history = NavigationHistory()
+    package var sort = FileSortDescriptor()
+    package var showsHiddenFiles = false
 
-    init(
+    package init(
         id: UUID = UUID(),
         currentDirectory: URL,
         markedURLs: Set<URL> = [],
@@ -90,30 +91,30 @@ struct PaneTabState: Identifiable, Equatable {
         self.showsHiddenFiles = showsHiddenFiles
     }
 
-    mutating func setFocus(_ url: URL?) { focusedURL = url }
+    package mutating func setFocus(_ url: URL?) { focusedURL = url }
 }
 
-struct PaneState: Equatable {
-    var tabs: [PaneTabState]
-    var activeTabID: UUID
+package struct PaneState: Equatable {
+    package var tabs: [PaneTabState]
+    package var activeTabID: UUID
 
-    var activeTabIndex: Int { tabs.firstIndex { $0.id == activeTabID } ?? 0 }
-    var currentDirectory: URL { get { tabs[activeTabIndex].currentDirectory } set { tabs[activeTabIndex].currentDirectory = newValue } }
-    var markedURLs: Set<URL> { get { tabs[activeTabIndex].markedURLs } set { tabs[activeTabIndex].markedURLs = newValue } }
-    var focusedRow: Int { get { tabs[activeTabIndex].focusedRow } set { tabs[activeTabIndex].focusedRow = newValue } }
-    var focusedURL: URL? { get { tabs[activeTabIndex].focusedURL } set { tabs[activeTabIndex].focusedURL = newValue } }
-    var searchQuery: String { get { tabs[activeTabIndex].searchQuery } set { tabs[activeTabIndex].searchQuery = newValue } }
-    var history: NavigationHistory { get { tabs[activeTabIndex].history } set { tabs[activeTabIndex].history = newValue } }
-    var sort: FileSortDescriptor { get { tabs[activeTabIndex].sort } set { tabs[activeTabIndex].sort = newValue } }
-    var showsHiddenFiles: Bool { get { tabs[activeTabIndex].showsHiddenFiles } set { tabs[activeTabIndex].showsHiddenFiles = newValue } }
+    package var activeTabIndex: Int { tabs.firstIndex { $0.id == activeTabID } ?? 0 }
+    package var currentDirectory: URL { get { tabs[activeTabIndex].currentDirectory } set { tabs[activeTabIndex].currentDirectory = newValue } }
+    package var markedURLs: Set<URL> { get { tabs[activeTabIndex].markedURLs } set { tabs[activeTabIndex].markedURLs = newValue } }
+    package var focusedRow: Int { get { tabs[activeTabIndex].focusedRow } set { tabs[activeTabIndex].focusedRow = newValue } }
+    package var focusedURL: URL? { get { tabs[activeTabIndex].focusedURL } set { tabs[activeTabIndex].focusedURL = newValue } }
+    package var searchQuery: String { get { tabs[activeTabIndex].searchQuery } set { tabs[activeTabIndex].searchQuery = newValue } }
+    package var history: NavigationHistory { get { tabs[activeTabIndex].history } set { tabs[activeTabIndex].history = newValue } }
+    package var sort: FileSortDescriptor { get { tabs[activeTabIndex].sort } set { tabs[activeTabIndex].sort = newValue } }
+    package var showsHiddenFiles: Bool { get { tabs[activeTabIndex].showsHiddenFiles } set { tabs[activeTabIndex].showsHiddenFiles = newValue } }
 
-    init(tabs: [PaneTabState], activeTabID: UUID? = nil) {
+    package init(tabs: [PaneTabState], activeTabID: UUID? = nil) {
         precondition(!tabs.isEmpty, "A pane must contain at least one tab.")
         self.tabs = tabs
         self.activeTabID = activeTabID.flatMap { id in tabs.contains { $0.id == id } ? id : nil } ?? tabs[0].id
     }
 
-    init(
+    package init(
         currentDirectory: URL,
         markedURLs: Set<URL> = [],
         focusedRow: Int = 0,
@@ -128,7 +129,7 @@ struct PaneState: Equatable {
     }
 
     @available(*, deprecated, message: "Use markedURLs; selection means the operation mark set, not keyboard focus.")
-    init(
+    package init(
         currentDirectory: URL,
         selectedURLs: Set<URL>,
         focusedRow: Int = 0,
@@ -144,39 +145,39 @@ struct PaneState: Equatable {
     /// Source-compatible spelling for older callers. PaneState is not persisted,
     /// but retaining this alias also avoids changing any external state adapters.
     @available(*, deprecated, renamed: "markedURLs")
-    var selectedURLs: Set<URL> {
+    package var selectedURLs: Set<URL> {
         get { markedURLs }
         set { markedURLs = newValue }
     }
 
-    mutating func setFocus(_ url: URL?) { focusedURL = url }
+    package mutating func setFocus(_ url: URL?) { focusedURL = url }
 }
 
 /// Deliberately excludes history, search, focus and marks: those are ephemeral and
 /// can refer to stale or sensitive filesystem objects after relaunch.
-struct PaneTabRestorationState: Codable, Equatable {
-    var id: UUID
-    var directory: URL
-    var sort: FileSortDescriptor
-    var showsHiddenFiles: Bool
+package struct PaneTabRestorationState: Codable, Equatable {
+    package var id: UUID
+    package var directory: URL
+    package var sort: FileSortDescriptor
+    package var showsHiddenFiles: Bool
 }
 
-struct PaneRestorationState: Codable, Equatable {
-    var tabs: [PaneTabRestorationState]
-    var activeTabID: UUID?
+package struct PaneRestorationState: Codable, Equatable {
+    package var tabs: [PaneTabRestorationState]
+    package var activeTabID: UUID?
 
-    init(tabs: [PaneTabRestorationState], activeTabID: UUID?) {
+    package init(tabs: [PaneTabRestorationState], activeTabID: UUID?) {
         self.tabs = tabs
         self.activeTabID = activeTabID
     }
 
-    init(paneState: PaneState) {
+    package init(paneState: PaneState) {
         tabs = paneState.tabs.map { .init(id: $0.id, directory: $0.currentDirectory, sort: $0.sort, showsHiddenFiles: $0.showsHiddenFiles) }
         activeTabID = paneState.activeTabID
     }
 }
 
-enum PaneFocusDestination: Equatable {
+package enum PaneFocusDestination: Equatable {
     case parent
     case item(URL)
 }
@@ -184,8 +185,8 @@ enum PaneFocusDestination: Equatable {
 /// Row-independent focus navigation shared by keyboard and accessibility tests.
 /// A missing/filtered focus is retained in pane state and reappears when its URL
 /// becomes visible again; movement starts at the nearest list boundary.
-enum PaneFocusNavigation {
-    static func destination(current: PaneFocusDestination?, displayed: [PaneFocusDestination], delta: Int) -> PaneFocusDestination? {
+package enum PaneFocusNavigation {
+    package static func destination(current: PaneFocusDestination?, displayed: [PaneFocusDestination], delta: Int) -> PaneFocusDestination? {
         guard !displayed.isEmpty, delta != 0 else { return current }
         let currentIndex = current.flatMap { current in
             displayed.firstIndex { destinationsMatch($0, current) }

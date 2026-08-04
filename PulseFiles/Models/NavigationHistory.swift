@@ -1,32 +1,33 @@
 import Foundation
+import PulseFilesUtilities
 
-struct NavigationHistory: Codable, Equatable {
+package struct NavigationHistory: Codable, Equatable {
     private(set) var backStack: [URL] = []
     private(set) var forwardStack: [URL] = []
     private(set) var current: URL
 
-    init(initialURL: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    package init(initialURL: URL = FileManager.default.homeDirectoryForCurrentUser) {
         current = initialURL
     }
 
-    var canGoBack: Bool { !backStack.isEmpty }
-    var canGoForward: Bool { !forwardStack.isEmpty }
+    package var canGoBack: Bool { !backStack.isEmpty }
+    package var canGoForward: Bool { !forwardStack.isEmpty }
 
-    mutating func visit(_ url: URL) {
+    package mutating func visit(_ url: URL) {
         guard url != current else { return }
         backStack.append(current)
         current = url
         forwardStack.removeAll()
     }
 
-    mutating func goBack() -> URL? {
+    package mutating func goBack() -> URL? {
         guard let previous = backStack.popLast() else { return nil }
         forwardStack.append(current)
         current = previous
         return previous
     }
 
-    mutating func goForward() -> URL? {
+    package mutating func goForward() -> URL? {
         guard let next = forwardStack.popLast() else { return nil }
         backStack.append(current)
         current = next

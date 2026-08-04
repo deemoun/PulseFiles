@@ -1,21 +1,21 @@
 import Foundation
 
-enum FilePathComparison {
-    static func normalizedPath(_ url: URL) -> String {
+package enum FilePathComparison {
+    package static func normalizedPath(_ url: URL) -> String {
         url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
-    static func isSamePath(_ lhs: URL, _ rhs: URL) -> Bool {
+    package static func isSamePath(_ lhs: URL, _ rhs: URL) -> Bool {
         normalizedPath(lhs) == normalizedPath(rhs)
     }
 
-    static func isSameOrDescendant(_ candidate: URL, ofDirectory directory: URL) -> Bool {
+    package static func isSameOrDescendant(_ candidate: URL, ofDirectory directory: URL) -> Bool {
         let candidatePath = normalizedPath(candidate)
         let directoryPath = normalizedPath(directory)
         return candidatePath == directoryPath || candidatePath.hasPrefix(directoryPath + "/")
     }
 
-    static func firstDirectoryContaining(
+    package static func firstDirectoryContaining(
         _ candidate: URL,
         among sources: [URL],
         fileManager: FileManager = .default

@@ -8,6 +8,33 @@ do not introduce a SwiftUI rewrite without an explicit product decision.
 
 ## Dependency policy
 
+Production code is separated one dependency boundary at a time rather than moved
+into a monolithic replacement for the executable target. The allowed direction is:
+
+```text
+PulseFilesUtilities → PulseFilesModels → Core/service modules
+    → AppKit presentation → PulseFiles executable composition/lifecycle
+```
+
+Arrows mean “may be depended on by.” `PulseFilesUtilities` contains
+Foundation-only, model-independent helpers. `PulseFilesModels` contains shared
+value and state types and may depend on utilities. Utilities must not import
+models, services, or presentation; models must not import services or AppKit.
+Future narrowly scoped service modules may depend on models and utilities,
+presentation may depend on those lower layers, and executable composition may
+depend on every required presentation module. Reverse dependencies are forbidden.
+
+Cross-target declarations use Swift's `package` access level so they remain
+implementation details rather than public library API. The executable temporarily
+re-exports extracted modules to preserve existing source and test imports during
+the incremental migration.
+
+Filesystem mutation currently remains with `FileOperationService` in the
+executable module. Its concrete validators, planners, executors, schedulers,
+metadata preservation, staging, and copy implementations remain internal. When
+that service is extracted, only request/result value types and the minimum
+caller-facing capability protocols may cross its module boundary.
+
 Concrete services are created only at application composition roots. In production,
 `AppDelegate` and `MainWindowController` assemble the object graph; controllers and
 workflow coordinators receive only the narrow capabilities they use through

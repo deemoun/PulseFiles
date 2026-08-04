@@ -1,11 +1,11 @@
 import Foundation
 
-enum PathUtilities {
-    static func shellEscaped(_ path: String) -> String {
+package enum PathUtilities {
+    package static func shellEscaped(_ path: String) -> String {
         "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    static func relativePath(from root: URL, to url: URL) -> String {
+    package static func relativePath(from root: URL, to url: URL) -> String {
         let rootComponents = root.standardizedFileURL.pathComponents
         let targetComponents = url.standardizedFileURL.pathComponents
         let common = zip(rootComponents, targetComponents).prefix { $0 == $1 }.count
