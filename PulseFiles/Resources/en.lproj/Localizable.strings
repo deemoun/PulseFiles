@@ -77,6 +77,7 @@
 "Could Not Create Folder" = "Could Not Create Folder";
 "Could Not Go to Folder" = "Could Not Go to Folder";
 "Could Not Open File" = "Could Not Open File";
+"%@ is not an application." = "%@ is not an application.";
 "Could not safely replace the existing item." = "Could not safely replace the existing item.";
 "Create" = "Create";
 "Create a file in %@" = "Create a file in %@";
