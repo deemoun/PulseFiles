@@ -236,3 +236,24 @@ Before finishing, confirm:
 6. The Experimental Terminal remains opt-in, visibly labeled, and keeps its warning/access scope intact.
 7. Provider/volume/metadata failures remain honest partial results.
 8. swift test and the relevant build command have run; generated output is unstaged.
+
+### File-operation façade and internal engine
+
+`FileOperationService` is the sole filesystem-mutation façade used by UI and
+workflow code. Public requests, progress values, results, and errors live in the
+Models layer, while service capability protocols live under
+`Services/FileOperations`. The façade always performs sandbox, source,
+destination, writable-volume, duplicate-selection, descendant, and capacity
+preflight before dispatching a mutation.
+
+The internal engine is deliberately split by responsibility:
+`FileOperationPreflightValidator` performs non-mutating safety checks;
+`FileTransferPlanner` owns conflict decisions and keep-both naming;
+`FileTransferExecutor` owns staged/recursive execution dependencies and
+cancellation; `FileMetadataPreserver` owns timestamp, tag, extended-attribute,
+and ACL preservation dependencies; and `DescriptorRelativeFileOperator`
+performs descriptor-verified create, rename, remove, and symbolic-link calls.
+These types are implementation details, not alternate mutation entry points.
+Archive and batch-rename capabilities remain reachable through the same façade,
+so partial results, recovery plans, staging cleanup warnings, and cancellation
+semantics continue to be enforced at one boundary.
