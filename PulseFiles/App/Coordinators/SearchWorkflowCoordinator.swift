@@ -15,6 +15,25 @@ final class SearchWorkflowCoordinator {
 
     func cancel() { task?.cancel() }
 
+    func prompt(root: URL, presenter: any WorkflowPresentationCallbacks,
+                onAction: @escaping (DescendantSearchResultsViewController.Action, DescendantSearchItem) -> Void) {
+        let alert = NSAlert(); alert.messageText = "Search This Folder".localized
+        alert.informativeText = "Searches descendants of %@ without following symbolic links. Results are limited for safety.".localized(with: root.path)
+        alert.addButton(withTitle: "Search".localized); alert.addButton(withTitle: "Cancel".localized)
+        let field = NSTextField(string: ""); field.placeholderString = "Filename contains".localized
+        field.frame = NSRect(x: 0, y: 0, width: 420, height: 24); alert.accessoryView = field
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }; let query = field.stringValue
+            self?.search(root: root, text: query) { result in
+                do {
+                    let value = try result.get()
+                    try self?.present(value, root: root, query: query, sender: presenter, onAction: onAction)
+                } catch { presenter.workflowFailed(message: "Could Not Search Folder".localized, detail: error.localizedDescription) }
+            }
+        }
+        if let window = presenter.workflowWindow { alert.beginSheetModal(for: window, completionHandler: completion) } else { completion(alert.runModal()) }
+    }
+
     func search(root: URL, text: String, completion: @escaping (Result<DescendantSearchResult, Error>) -> Void) {
         task?.cancel()
         task = Task { [service] in
@@ -29,6 +48,20 @@ final class SearchWorkflowCoordinator {
                 completion(.failure(error))
             }
         }
+    }
+
+    func route(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) throws -> URL {
+        try accessPolicy.validateAccess(to: root); try accessPolicy.validateAccess(to: item.url)
+        let command: SearchResultAction = action == .open ? .open : (action == .reveal ? .reveal : .navigate)
+        let route = SearchResultActionRouter().route(command, item: item, root: root,
+            canAccess: { accessPolicy.canAccess($0, logDecision: false) }, fileExists: FileManager.default.fileExists(atPath:))
+        guard case .perform(_, let destination) = route else { throw SearchResultRoutingError.staleResult }
+        return destination
+    }
+
+    enum SearchResultRoutingError: LocalizedError {
+        case staleResult
+        var errorDescription: String? { "The result moved, was removed, or is no longer inside the search scope.".localized }
     }
 
     func present(_ result: DescendantSearchResult, root: URL, query: String, sender: Any?, onAction: @escaping (DescendantSearchResultsViewController.Action, DescendantSearchItem) -> Void) throws {
