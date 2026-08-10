@@ -4,17 +4,15 @@ final class MainWindowController: NSWindowController {
     static let frameAutosaveName = "PulseFilesMainWindow"
 
     init(
-        settings: SettingsService = SettingsService(),
-        accessPolicy: SandboxFileAccessPolicy = .current,
-        dependencies: MainWindowDependencies? = nil,
+        settings: SettingsService,
+        dependencies: MainWindowDependencies,
+        workflowDependencies: MainWindowWorkflowDependencies,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
-        let dependencies = dependencies ?? .production(accessPolicy: accessPolicy)
         let content = MainWindowViewController(
             settings: settings,
-            accessPolicy: accessPolicy,
             dependencies: dependencies,
-            workflowDependencies: .production(from: dependencies, accessPolicy: accessPolicy),
+            workflowDependencies: workflowDependencies,
             sandboxRootEnsurer: sandboxRootEnsurer
         )
         let window = NSWindow(contentViewController: content)

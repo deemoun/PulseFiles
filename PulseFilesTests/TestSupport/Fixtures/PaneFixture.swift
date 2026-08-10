@@ -18,7 +18,7 @@ final class PaneFixture {
         sandbox = try SandboxFixture(testCase: testCase)
         root = sandbox.allowedDirectory
         accessPolicy = sandbox.policy
-        fileSystem = FileSystemService(accessPolicy: accessPolicy)
+        fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: FileSystemOperationScheduler())
         viewModel = FilePaneViewModel(
             initialDirectory: root,
             showsHiddenFiles: showsHiddenFiles,

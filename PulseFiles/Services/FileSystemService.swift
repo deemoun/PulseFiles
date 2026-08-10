@@ -35,7 +35,7 @@ struct DirectoryContentsResult {
     var isComplete: Bool { itemReadFailures.isEmpty }
 }
 
-protocol FileSystemServicing {
+protocol FileSystemServicing: AnyObject {
     func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult
     func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
 }
@@ -45,7 +45,7 @@ final class FileSystemService: FileSystemServicing {
     private let accessPolicy: SandboxFileAccessPolicy
     private let scheduler: FileSystemOperationScheduler
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, scheduler: FileSystemOperationScheduler = .shared) {
+    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy, scheduler: FileSystemOperationScheduler) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.scheduler = scheduler

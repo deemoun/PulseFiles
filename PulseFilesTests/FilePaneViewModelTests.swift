@@ -145,7 +145,7 @@ final class FilePaneViewModelTests: XCTestCase {
 
     func testFailedOutsideSandboxLoadPreservesSafeState() async throws {
         let sandbox = try SandboxFixture(testCase: self)
-        let fileSystem = FileSystemService(accessPolicy: sandbox.policy)
+        let fileSystem = FileSystemService(accessPolicy: sandbox.policy, scheduler: FileSystemOperationScheduler())
         let allowedFile = try sandbox.allowedFile("Allowed.txt", contents: "allowed")
         let viewModel = FilePaneViewModel(
             initialDirectory: sandbox.allowedDirectory,

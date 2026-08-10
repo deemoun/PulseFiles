@@ -8,6 +8,8 @@ final class FilePaneViewModel {
     }
     private let fileSystem: FileSystemServicing
     private let accessPolicy: SandboxFileAccessPolicy
+    var fileSystemForCompositionTesting: any FileSystemServicing { fileSystem }
+    var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private let snapshotCache = DirectorySnapshotCache()
     private let directoryMonitor: DirectoryMonitor
     private var loadTask: Task<Void, Never>?
@@ -74,7 +76,7 @@ final class FilePaneViewModel {
         sort: FileSortDescriptor = FileSortDescriptor(),
         restoration: PaneRestorationState? = nil,
         fileSystem: FileSystemServicing,
-        accessPolicy: SandboxFileAccessPolicy = .current,
+        accessPolicy: SandboxFileAccessPolicy,
         directoryLoadTimeout: TimeInterval = 15,
         directoryMonitor: DirectoryMonitor = DirectoryMonitor(),
         quickSearchMatchMode: QuickSearchMatchMode = .contains,

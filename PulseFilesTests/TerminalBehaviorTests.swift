@@ -102,7 +102,7 @@ final class TerminalBehaviorTests: XCTestCase {
     @MainActor
     func testStopTerminatesPersistentSessionAndReportsTermination() {
         let process = FakeTerminalProcess()
-        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process })
+        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: .current)
         controller.loadView()
         controller.viewDidLoad()
 
@@ -122,7 +122,7 @@ final class TerminalBehaviorTests: XCTestCase {
     func testStoppingFinishedTerminalSessionDoesNotReportTermination() {
         let process = FakeTerminalProcess()
         process.isRunning = false
-        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process })
+        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: .current)
         controller.loadView()
         controller.viewDidLoad()
 
@@ -136,7 +136,7 @@ final class TerminalBehaviorTests: XCTestCase {
     @MainActor
     func testResetSessionStopsCommandAndClearsPriorTerminalOutput() {
         let process = FakeTerminalProcess()
-        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process })
+        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: .current)
         controller.loadView()
         controller.viewDidLoad()
 

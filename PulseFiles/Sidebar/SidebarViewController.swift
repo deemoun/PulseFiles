@@ -34,6 +34,7 @@ final class SidebarViewController: NSViewController {
     private let bookmarkService: any BookmarkPersisting
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
+    var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private let metadataReader: MetadataReader
     private let scrollView = NSScrollView()
     private let documentView = SidebarDocumentView()
@@ -48,10 +49,10 @@ final class SidebarViewController: NSViewController {
 
     init(
         recentLocations: any RecentLocationRecording,
-        bookmarkService: any BookmarkPersisting = BookmarkService(),
-        settings: SettingsService = SettingsService(),
-        accessPolicy: SandboxFileAccessPolicy = .current,
-        volumeDiscovery: any VolumeDiscovering = VolumeDiscoveryService(),
+        bookmarkService: any BookmarkPersisting,
+        settings: SettingsService,
+        accessPolicy: SandboxFileAccessPolicy,
+        volumeDiscovery: any VolumeDiscovering,
         metadataReader: @escaping MetadataReader = SidebarViewController.gpsLocation
     ) {
         self.recentLocations = recentLocations
@@ -389,7 +390,7 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    static func totalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy = .current) async -> Int64 {
+    static func totalSize(for url: URL, fallback: Int64, accessPolicy: SandboxFileAccessPolicy) async -> Int64 {
         await Task.detached(priority: .utility) {
             Self.calculateTotalSize(for: url, fallback: fallback, accessPolicy: accessPolicy)
         }.value

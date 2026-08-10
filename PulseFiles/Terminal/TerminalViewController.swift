@@ -15,6 +15,7 @@ final class TerminalViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let processFactory: () -> TerminalProcess
     private let accessPolicy: SandboxFileAccessPolicy
+    var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private var runningProcess: TerminalProcess?
     private var runningAccessScope: FolderAccessScope?
     private let outputLock = NSLock()
@@ -24,7 +25,7 @@ final class TerminalViewController: NSViewController {
     var isShellInteractionAllowedProvider: (() -> Bool)?
     var suggestedWorkingDirectory = ExperimentalFlags.appSandboxRoot
 
-    init(terminalService: any TerminalStateProviding, processFactory: @escaping () -> TerminalProcess = { PTYTerminalProcess() }, accessPolicy: SandboxFileAccessPolicy = .current) {
+    init(terminalService: any TerminalStateProviding, processFactory: @escaping () -> TerminalProcess = { PTYTerminalProcess() }, accessPolicy: SandboxFileAccessPolicy) {
         self.terminalService = terminalService
         self.processFactory = processFactory
         self.accessPolicy = accessPolicy

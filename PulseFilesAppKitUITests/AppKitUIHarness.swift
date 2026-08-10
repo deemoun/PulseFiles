@@ -16,7 +16,7 @@ final class AppKitUIHarness {
     init() {
         // NSWindow construction requires the shared application to exist.
         _ = NSApplication.shared
-        windowController = MainWindowController()
+        windowController = AppDelegate.makeProductionMainWindowController()
     }
 
     var window: NSWindow {

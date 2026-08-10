@@ -59,14 +59,14 @@ final class FilePaneViewController: NSViewController {
         presentationMode: PanePresentationMode = .list,
         thumbnailLoader: any ThumbnailLoading,
         openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil,
-        authorizedFolderSelection: AuthorizedFolderSelectionCoordinator? = nil
+        authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     ) {
         self.paneID = paneID
         self.viewModel = viewModel
         self.presentationMode = presentationMode
         self.thumbnailLoader = thumbnailLoader
         self.contextMenuProvider = FilePaneContextMenuProvider(openWithApplicationResolver: openWithApplicationResolver ?? OpenWithMenuApplicationResolver())
-        self.authorizedFolderSelection = authorizedFolderSelection ?? AuthorizedFolderSelectionCoordinator(accessPolicy: .current, grantService: .shared)
+        self.authorizedFolderSelection = authorizedFolderSelection
         super.init(nibName: nil, bundle: nil)
     }
 

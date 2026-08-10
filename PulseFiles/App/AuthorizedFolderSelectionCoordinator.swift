@@ -1,5 +1,11 @@
 import AppKit
 
+protocol FolderAccessGrantProviding: AnyObject {
+    func grantAccess(to directory: URL) throws -> FolderAccessGrant
+}
+
+extension FolderAccessGrantService: FolderAccessGrantProviding {}
+
 @MainActor
 final class AuthorizedFolderSelectionCoordinator {
     struct Request {
@@ -33,9 +39,10 @@ final class AuthorizedFolderSelectionCoordinator {
     typealias Resolution = Result<URL, Failure>
 
     private let accessPolicy: SandboxFileAccessPolicy
-    private let grantService: FolderAccessGrantService
+    private let grantService: any FolderAccessGrantProviding
+    var grantServiceForCompositionTesting: any FolderAccessGrantProviding { grantService }
 
-    init(accessPolicy: SandboxFileAccessPolicy, grantService: FolderAccessGrantService) {
+    init(accessPolicy: SandboxFileAccessPolicy, grantService: any FolderAccessGrantProviding) {
         self.accessPolicy = accessPolicy
         self.grantService = grantService
     }

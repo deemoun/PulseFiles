@@ -17,18 +17,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let privacyPolicyURL = URL(string: "https://github.com/deemoun/PulseFiles/blob/main/PRIVACY.md")!
     private static let issueReportingURL = URL(string: "https://github.com/deemoun/PulseFiles/issues/new/choose")!
 
+    @MainActor
+    static func makeProductionMainWindowController(
+        settings: SettingsService = SettingsService(),
+        accessPolicy: SandboxFileAccessPolicy = .current,
+        sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
+    ) -> MainWindowController {
+        let dependencies = MainWindowDependencies.production(accessPolicy: accessPolicy)
+        return MainWindowController(
+            settings: settings,
+            dependencies: dependencies,
+            workflowDependencies: .production(from: dependencies, accessPolicy: accessPolicy),
+            sandboxRootEnsurer: sandboxRootEnsurer
+        )
+    }
+
     init(
         launchArguments: [String] = ProcessInfo.processInfo.arguments,
         userDefaults: UserDefaults = .standard,
         accessPolicy: SandboxFileAccessPolicy = .current,
         fileManager: FileManager = .default,
-        mainWindowControllerFactory: @escaping () -> MainWindowController = { MainWindowController() }
+        mainWindowControllerFactory: (() -> MainWindowController)? = nil
     ) {
         self.launchArguments = launchArguments
         self.userDefaults = userDefaults
         self.accessPolicy = accessPolicy
         self.fileManager = fileManager
-        self.mainWindowControllerFactory = mainWindowControllerFactory
+        self.mainWindowControllerFactory = mainWindowControllerFactory ?? {
+            Self.makeProductionMainWindowController(accessPolicy: accessPolicy)
+        }
         super.init()
     }
 

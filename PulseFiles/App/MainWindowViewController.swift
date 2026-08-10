@@ -81,12 +81,11 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
 
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
-    private lazy var authorizedFolderSelection = AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: .shared)
+    private let authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     private let sandboxRootEnsurer: () -> Void
     private let symbolicLinkResolver: SymbolicLinkResolutionService
     private let workflows: MainWindowWorkflowDependencies
-    private let fileSystemScheduler = FileSystemOperationScheduler.shared
-    private lazy var fileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: fileSystemScheduler)
+    private let fileSystem: any FileSystemServicing
     private let fileOperations: any FileOperationCoordinating
     private lazy var volumeChangeMonitor = VolumeChangeMonitor()
     private let fileSystemProbe: any FileSystemProbing
@@ -192,6 +191,22 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private var isFileOperationActive: Bool { fileOperationCoordinator.isActive }
     private var undoRecovery: FileOperationRecovery? { fileOperationCoordinator.undoRecovery }
 
+    var compositionForTesting: (
+        paneFileSystems: [any FileSystemServicing],
+        panePolicies: [SandboxFileAccessPolicy],
+        sidebarPolicy: SandboxFileAccessPolicy,
+        terminalPolicy: SandboxFileAccessPolicy,
+        folderAccessGrants: any FolderAccessGrantProviding
+    ) {
+        (
+            [leftPane.viewModel.fileSystemForCompositionTesting, rightPane.viewModel.fileSystemForCompositionTesting],
+            [leftPane.viewModel.accessPolicyForCompositionTesting, rightPane.viewModel.accessPolicyForCompositionTesting],
+            sidebar.accessPolicyForCompositionTesting,
+            terminal.accessPolicyForCompositionTesting,
+            authorizedFolderSelection.grantServiceForCompositionTesting
+        )
+    }
+
     private var activePaneID: PaneID = .left {
         didSet {
             guard oldValue != activePaneID else { return }
@@ -201,13 +216,14 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
 
     init(
         settings: SettingsService,
-        accessPolicy: SandboxFileAccessPolicy,
         dependencies: MainWindowDependencies,
         workflowDependencies: MainWindowWorkflowDependencies,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
         self.settings = settings
-        self.accessPolicy = accessPolicy
+        self.accessPolicy = dependencies.accessPolicy
+        self.fileSystem = dependencies.paneFileSystem
+        self.authorizedFolderSelection = dependencies.authorizedFolderSelection
         self.symbolicLinkResolver = dependencies.symbolicLinkResolver
         self.sandboxRootEnsurer = sandboxRootEnsurer
         self.workflows = workflowDependencies
@@ -222,7 +238,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         self.fileSizeService = dependencies.fileSize
         self.readOnlyViewerService = dependencies.readOnlyViewer
         self.diagnosticsExporter = dependencies.diagnosticsExporter
-        self.terminal = TerminalViewController(terminalService: dependencies.terminalState, accessPolicy: accessPolicy)
+        self.terminal = TerminalViewController(terminalService: dependencies.terminalState, accessPolicy: dependencies.accessPolicy)
         self.terminalPresentationCoordinator = TerminalPresentationCoordinator(service: dependencies.terminalState)
         self.stagingCleanupFactory = dependencies.stagingCleanup
         self.scratchCleanupFactory = dependencies.scratchCleanup
