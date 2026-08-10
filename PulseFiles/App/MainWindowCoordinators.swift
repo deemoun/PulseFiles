@@ -204,6 +204,13 @@ final class FileOperationCoordinator {
 
     func acceptsUpdates(for generation: Int) -> Bool { currentGeneration == generation }
 
+    /// The coordinator owns the detached worker boundary so cancellation and
+    /// generation invalidation cannot drift apart from presentation state.
+    func runDetached(_ operation: @escaping @Sendable () async throws -> FileOperationResult) async throws -> FileOperationResult {
+        let worker = Task.detached(priority: .userInitiated, operation: operation)
+        return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+    }
+
     func finish(generation: Int, result: FileOperationResult?, captureRecovery: Bool) {
         retainedTasks[generation] = nil
         guard currentGeneration == generation else { return }

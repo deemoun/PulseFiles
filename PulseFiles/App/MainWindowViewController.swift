@@ -72,7 +72,7 @@ struct RenamePaneRefreshPlan {
     }
 }
 
-final class MainWindowViewController: NSViewController {
+final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflowPresenting, WorkflowPresentationCallbacks {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220
         static let maxWidth: CGFloat = 340
@@ -188,8 +188,6 @@ final class MainWindowViewController: NSViewController {
     var quickLookPreviewURL: NSURL?
     private var quickLookProbeGeneration = 0
     private var viewerWindowControllers: [NSWindowController] = []
-    private var navigationProbeGeneration = 0
-    private var dropProbeGeneration = 0
     private var volumeChangeProbeGeneration = 0
     private var isFileOperationActive: Bool { fileOperationCoordinator.isActive }
     private var undoRecovery: FileOperationRecovery? { fileOperationCoordinator.undoRecovery }
@@ -626,54 +624,17 @@ final class MainWindowViewController: NSViewController {
     }
 
     private func promptForArchiveCreation() {
-        let sources = targetPane().selectedItems.map(\.url)
-        guard !sources.isEmpty else { NSSound.beep(); return }
-        let panel = NSSavePanel(); panel.title = "Create Archive".localized; panel.nameFieldStringValue = "Archive.zip".localized
-        panel.directoryURL = targetPane().currentDirectory; panel.allowedContentTypes = [.zip]
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
-        let request = ArchiveCreateRequest(sources: sources, destinationURL: destination)
-        startFileOperation(named: "Create Archive".localized) { [fileOperations] progress in
-            try await fileOperations.createArchive(request, progressHandler: progress)
-        }
+        let pane = targetPane()
+        workflows.archiveAndRename.promptForArchiveCreation(sources: pane.selectedItems.map(\.url), directory: pane.currentDirectory, presenter: self)
     }
 
     private func confirmArchiveExtraction() {
-        guard let archive = targetPane().focusedItem?.url else { NSSound.beep(); return }
-        let alert = NSAlert(); alert.messageText = "Extract Archive?".localized
-        alert.informativeText = "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision.".localized
-        alert.addButton(withTitle: "Extract".localized); alert.addButton(withTitle: "Cancel".localized)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let request = ArchiveExtractRequest(archiveURL: archive, destinationDirectory: targetPane().currentDirectory)
-        startFileOperation(named: "Extract Archive".localized) { [weak self, fileOperations] progress in
-            try await fileOperations.extractArchive(request, conflictHandler: { destination in
-                guard let self else { return .cancel }
-                return await self.promptForConflict(destination: destination, operationName: "Extract Archive".localized)
-            }, progressHandler: progress)
-        }
+        let pane = targetPane()
+        workflows.archiveAndRename.confirmArchiveExtraction(archive: pane.focusedItem?.url, directory: pane.currentDirectory, presenter: self)
     }
 
     private func promptForBatchRename() {
-        let sources = targetPane().selectedItems.map(\.url)
-        guard !sources.isEmpty else { NSSound.beep(); return }
-        let alert = NSAlert(); alert.messageText = "Batch Rename".localized
-        alert.informativeText = "Enter a base name. PulseFiles will preview every destination before changing files.".localized
-        let field = NSTextField(string: "Item"); field.frame.size.width = 320; alert.accessoryView = field
-        alert.addButton(withTitle: "Preview".localized); alert.addButton(withTitle: "Cancel".localized)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let names = sources.enumerated().map { index, source in
-            let suffix = source.pathExtension.isEmpty ? "" : ".\(source.pathExtension)"
-            return "\(field.stringValue) \(index + 1)\(suffix)"
-        }
-        do {
-            let plan = try fileOperations.planBatchRename(.init(sources: sources, proposedNames: names))
-            let preview = plan.items.map { "\($0.sourceURL.lastPathComponent) → \($0.destinationURL.lastPathComponent)" }.joined(separator: "\n")
-            let confirmation = NSAlert(); confirmation.messageText = "Confirm Batch Rename".localized
-            confirmation.informativeText = preview; confirmation.addButton(withTitle: "Rename All".localized); confirmation.addButton(withTitle: "Cancel".localized)
-            guard confirmation.runModal() == .alertFirstButtonReturn else { return }
-            startFileOperation(named: "Batch Rename".localized) { [fileOperations] progress in
-                await fileOperations.batchRename(plan, progressHandler: progress)
-            }
-        } catch { showError(message: "Could Not Plan Batch Rename".localized, detail: error.localizedDescription) }
+        workflows.archiveAndRename.promptForBatchRename(sources: targetPane().selectedItems.map(\.url), presenter: self)
     }
 
     private func presentQuickLocations() {
@@ -1332,76 +1293,21 @@ extension MainWindowViewController {
 
     private func promptForNewFolder() {
         view.window?.makeFirstResponder(nil)
-        let alert = NSAlert()
-        alert.messageText = "New Folder".localized
-        alert.informativeText = "Create a folder in %@".localized(with: targetPane().currentDirectory.path)
-        alert.addButton(withTitle: "Create".localized)
-        alert.addButton(withTitle: "Cancel".localized)
-
-        let directory = targetPane().currentDirectory
-        let defaultName = "Untitled Folder"
-        let textField = NSTextField(string: defaultName)
-        textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-        alert.accessoryView = textField
-
-        let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            self.createFolder(named: textField.stringValue, in: directory)
-        }
-
-        populateSuggestedCreationName(in: directory, base: defaultName, isDirectory: true, textField: textField)
-        if let window = view.window {
-            alert.beginSheetModal(for: window, completionHandler: handleResponse)
-        } else {
-            handleResponse(alert.runModal())
+        workflows.fileCreation.promptForFolder(in: targetPane().currentDirectory, window: view.window) { [weak self] name, directory in
+            guard let self else { return }
+            self.startCreationOperation(named: "Create Folder".localized, directory: directory) { [workflows = self.workflows] _ in
+                try await workflows.fileCreation.createFolder(named: name, in: directory)
+            }
         }
     }
 
     private func promptForNewFile() {
         view.window?.makeFirstResponder(nil)
-        let alert = NSAlert()
-        alert.messageText = "New File".localized
-        alert.informativeText = "Create a file in %@".localized(with: targetPane().currentDirectory.path)
-        alert.addButton(withTitle: "Create".localized)
-        alert.addButton(withTitle: "Cancel".localized)
-
-        let directory = targetPane().currentDirectory
-        let defaultName = "Untitled.txt"
-        let textField = NSTextField(string: defaultName)
-        textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-        alert.accessoryView = textField
-
-        let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            self.createFile(named: textField.stringValue, in: directory)
-        }
-
-        populateSuggestedCreationName(in: directory, base: defaultName, isDirectory: false, textField: textField)
-        if let window = view.window {
-            alert.beginSheetModal(for: window, completionHandler: handleResponse)
-        } else {
-            handleResponse(alert.runModal())
-        }
-    }
-
-    private func populateSuggestedCreationName(in directory: URL, base: String, isDirectory: Bool, textField: NSTextField) {
-        Task { [weak self, weak textField] in
+        workflows.fileCreation.promptForFile(in: targetPane().currentDirectory, window: view.window) { [weak self] name, directory in
             guard let self else { return }
-            let suggestion = await self.workflows.fileCreation.suggestedName(in: directory, base: base, isDirectory: isDirectory)
-            guard let textField, textField.stringValue == base else { return }
-            textField.stringValue = suggestion
-        }
-    }
-
-    private func createFolder(named rawName: String, in directory: URL) {
-        startCreationOperation(named: "Create Folder".localized, directory: directory) { [workflows] _ in
-            try await workflows.fileCreation.createFolder(named: rawName, in: directory)
-        }
-    }
-
-    private func createFile(named rawName: String, in directory: URL) {
-        startCreationOperation(named: "Create File".localized, directory: directory) { [workflows] _ in
-            try await workflows.fileCreation.createFile(named: rawName, in: directory)
+            self.startCreationOperation(named: "Create File".localized, directory: directory) { [workflows = self.workflows] _ in
+                try await workflows.fileCreation.createFile(named: name, in: directory)
+            }
         }
     }
 
@@ -1409,54 +1315,13 @@ extension MainWindowViewController {
         startFileOperation(named: operationName, operation: operation, completion: { [weak self] result in
             guard let self, let destination = result.completedItems.first else { return }
             let pane = [self.leftPane, self.rightPane].first { $0.currentDirectory == directory } ?? self.targetPane()
-            pane.viewModel.invalidateCurrentDirectorySnapshot()
-            pane.loadDirectory(selecting: destination)
+            pane.viewModel.invalidateCurrentDirectorySnapshot(); pane.loadDirectory(selecting: destination)
         })
     }
 
     private func presentOpenWithApplicationPicker() {
-        let selectedFiles = targetPane().selectedItems.filter { !$0.isDirectory }
-        guard !selectedFiles.isEmpty else {
-            showError(message: "Nothing Selected".localized, detail: "Select one or more files to open with another application.".localized)
-            return
-        }
-
-        do {
-            for item in selectedFiles {
-                let exists = try accessPolicy.withValidatedAccess(to: item.url) {
-                    FileManager.default.fileExists(atPath: item.url.path)
-                }
-                guard exists else {
-                    throw FileOperationError.sourceMissing(item.url)
-                }
-            }
-        } catch {
-            showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
-            return
-        }
-
-        let panel = NSOpenPanel()
-        panel.title = "Open With…".localized
-        panel.prompt = "Open".localized
-        panel.message = selectedFiles.count == 1
-            ? "Choose an application to open %@.".localized(with: selectedFiles[0].url.lastPathComponent)
-            : "Choose an application to open the selected files.".localized
-        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.applicationBundle]
-
-        let completion: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
-            guard response == .OK, let applicationURL = panel?.url else { return }
-            selectedFiles.forEach { self?.openFile($0.url, with: applicationURL) }
-        }
-
-        if let window = view.window {
-            panel.beginSheetModal(for: window, completionHandler: completion)
-        } else {
-            completion(panel.runModal())
-        }
+        let files = targetPane().selectedItems.filter { !$0.isDirectory }.map(\.url)
+        workflows.openWith.present(files: files, presenter: self) { [weak self] file, application in self?.openFile(file, with: application) }
     }
 
     private func openFile(_ fileURL: URL, with applicationURL: URL?) {
@@ -1469,79 +1334,21 @@ extension MainWindowViewController {
 
     private func promptForGoToFolder() {
         view.window?.makeFirstResponder(nil)
-        let alert = NSAlert()
-        alert.messageText = "Go to Folder".localized
-#if DEBUG
-        alert.informativeText = ExperimentalFlags.restrictFileAccessToAppSandboxRoot
-            ? "Enter a folder path inside the PulseFiles experimental sandbox.".localized
-            : "Enter an absolute, home-relative, or active-pane-relative folder path. If macOS denies access, open or grant the folder first.".localized
-#else
-        alert.informativeText = "Enter an absolute, home-relative, or active-pane-relative folder path. If macOS denies access, open or grant the folder first.".localized
-#endif
-        alert.addButton(withTitle: "Go".localized)
-        alert.addButton(withTitle: "Cancel".localized)
-
-        let textField = NSTextField(string: targetPane().currentDirectory.path)
-        textField.frame = NSRect(x: 0, y: 0, width: 420, height: 24)
-        alert.accessoryView = textField
-
-        let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            self.goToFolder(path: textField.stringValue)
-        }
-
-        if let window = view.window {
-            alert.beginSheetModal(for: window, completionHandler: handleResponse)
-        } else {
-            handleResponse(alert.runModal())
+        let pane = targetPane()
+        workflows.goToFolder.prompt(currentDirectory: pane.currentDirectory, presenter: self) { [weak self, weak pane] url in
+            guard let self, let pane, self.targetPane() === pane else { return }; pane.navigate(to: url)
         }
     }
 
-    /// Recursive search is intentionally separate from the toolbar's cheap
-    /// current-folder filter. The pane never navigates while results are shown,
-    /// so closing this sheet is an explicit, reliable return to its original
-    /// directory.
     private func promptForDescendantSearch() {
         let pane = targetPane()
-        // A selected folder is the search root; otherwise search the directory
-        // currently displayed by the active pane.
         let root = pane.focusedItem.flatMap { $0.isDirectory ? $0.url : nil } ?? pane.currentDirectory
-        let alert = NSAlert()
-        alert.messageText = "Search This Folder".localized
-        alert.informativeText = "Searches descendants of %@ without following symbolic links. Results are limited for safety.".localized(with: root.path)
-        alert.addButton(withTitle: "Search".localized)
-        alert.addButton(withTitle: "Cancel".localized)
-        let field = NSTextField(string: "")
-        field.placeholderString = "Filename contains".localized
-        field.frame = NSRect(x: 0, y: 0, width: 420, height: 24)
-        alert.accessoryView = field
-        let start: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            let query = field.stringValue
-            self.workflows.search.search(root: root, text: query) { [weak self] result in
-                switch result {
-                case .success(let searchResult): self?.presentDescendantSearchResults(searchResult, root: root, query: query)
-                case .failure(let error): self?.showError(message: "Could Not Search Folder".localized, detail: error.localizedDescription)
-                }
-            }
-        }
-        if let window = view.window { alert.beginSheetModal(for: window, completionHandler: start) } else { start(alert.runModal()) }
-    }
-
-    private func presentDescendantSearchResults(_ result: DescendantSearchResult, root: URL, query: String) {
-        do {
-            try workflows.search.present(result, root: root, query: query, sender: self) { [weak self] action, item in
-                self?.routeSearchResultAction(action, item: item, root: root)
-            }
-        } catch { showError(message: "Could Not Show Search Results".localized, detail: error.localizedDescription) }
+        workflows.search.prompt(root: root, presenter: self) { [weak self] action, item in self?.routeSearchResultAction(action, item: item, root: root) }
     }
 
     private func routeSearchResultAction(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) {
         do {
-            try accessPolicy.validateAccess(to: root); try accessPolicy.validateAccess(to: item.url)
-            let command: SearchResultAction = action == .open ? .open : (action == .reveal ? .reveal : .navigate)
-            let route = SearchResultActionRouter().route(command, item: item, root: root, canAccess: { accessPolicy.canAccess($0, logDecision: false) }, fileExists: FileManager.default.fileExists(atPath:))
-            guard case .perform(_, let destination) = route else { throw SearchResultRoutingError.staleResult }
+            let destination = try workflows.search.route(action, item: item, root: root)
             switch action {
             case .open: NSWorkspace.shared.open(item.url)
             case .reveal: NSWorkspace.shared.activateFileViewerSelecting([item.url])
@@ -1549,60 +1356,6 @@ extension MainWindowViewController {
                 try accessPolicy.validateAccess(to: destination); targetPane().preparePendingSelection(item.url); targetPane().navigate(to: destination)
             }
         } catch { showError(message: "Search Result Unavailable".localized, detail: error.localizedDescription) }
-    }
-
-    private enum SearchResultRoutingError: LocalizedError {
-        case staleResult
-        var errorDescription: String? { "The result moved, was removed, or is no longer inside the search scope.".localized }
-    }
-
-    private func goToFolder(path rawPath: String) {
-        navigationProbeGeneration += 1
-        let generation = navigationProbeGeneration
-        let pane = targetPane()
-        Task { [weak self, fileSystemProbe] in
-            guard let self else { return }
-            do {
-                let url = try await self.resolveFolderPath(rawPath, probe: fileSystemProbe)
-                guard generation == self.navigationProbeGeneration, self.targetPane() === pane else { return }
-                pane.navigate(to: url)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard generation == self.navigationProbeGeneration else { return }
-                self.showError(message: "Could Not Go to Folder".localized, detail: error.localizedDescription)
-            }
-        }
-    }
-
-    private func resolveFolderPath(_ rawPath: String, probe: any FileSystemProbing) async throws -> URL {
-        let trimmedPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPath.isEmpty else { throw FileNameValidator.ValidationError.empty }
-
-        let expandedPath: String
-        if trimmedPath == "~" {
-            expandedPath = FileManager.default.homeDirectoryForCurrentUser.path
-        } else if trimmedPath.hasPrefix("~/") {
-            expandedPath = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(String(trimmedPath.dropFirst(2)))
-                .path
-        } else if trimmedPath.hasPrefix("/") {
-            expandedPath = trimmedPath
-        } else {
-            expandedPath = targetPane().currentDirectory.appendingPathComponent(trimmedPath).path
-        }
-
-        let url = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
-        let directoryAnswer = try await accessPolicy.withValidatedAccess(to: url) {
-            await probe.isDirectory(url, deadline: .milliseconds(250))
-        }
-        guard case .value(let isDirectory) = directoryAnswer else {
-            throw FileOperationError.destinationDirectoryMissing(url)
-        }
-        guard isDirectory else {
-            throw FileOperationError.destinationNotDirectory(url)
-        }
-        return url
     }
 
     private func beginInlineRename() {
@@ -1825,22 +1578,14 @@ extension MainWindowViewController {
             showError(message: "Clipboard Is Empty".localized, detail: "Copy or cut one or more files before pasting.".localized)
             return
         }
-        let kind = payload.operation == .copy ? "Paste Copy".localized : "Paste Move".localized
-        let shouldConfirm = payload.operation == .copy ? settings.confirmCopyOperations : settings.confirmMoveOperations
-        performFileTransfer(
-            kind: kind,
-            sources: payload.urls,
-            destinationDirectory: targetPane().currentDirectory,
-            shouldConfirm: shouldConfirm,
-            captureRecovery: true
-        ) { [fileOperations] request, conflictHandler, progressHandler in
-            switch payload.operation {
-            case .copy:
-                return try await fileOperations.copy(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
-            case .move:
-                return try await fileOperations.move(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
+        do {
+            let prepared = try workflows.fileTransfer.pasteOperation(payload: payload, destination: targetPane().currentDirectory)
+            let shouldConfirm = payload.operation == .copy ? settings.confirmCopyOperations : settings.confirmMoveOperations
+            performFileTransfer(kind: prepared.0, sources: payload.urls, destinationDirectory: prepared.1.destinationDirectory,
+                                shouldConfirm: shouldConfirm, captureRecovery: true) { _, conflicts, progress in
+                try await prepared.2(conflicts, progress)
             }
-        }
+        } catch { showError(message: "Could Not Paste".localized, detail: error.localizedDescription) }
     }
 
     private func showClipboardFeedback(for operation: FileClipboard.Operation, itemCount: Int) {
@@ -1876,17 +1621,13 @@ extension MainWindowViewController {
             showError(message: "Operation in Progress".localized, detail: "Wait for the current file operation to finish before starting another file-changing action.".localized)
             return
         }
-        dropProbeGeneration += 1
-        let generation = dropProbeGeneration
         Task { [weak self, fileSystemProbe] in
+            guard let self else { return }
             do {
-                try await self?.validateDroppedItems(urls, destinationDirectory: destinationDirectory, probe: fileSystemProbe)
-                guard let self, generation == self.dropProbeGeneration else { return }
+                let generation = try await self.workflows.fileTransfer.validateDrop(sources: urls, destination: destinationDirectory, probe: fileSystemProbe)
+                guard self.workflows.fileTransfer.isCurrentDrop(generation: generation) else { return }
                 self.beginDroppedItemTransfer(urls, destinationDirectory: destinationDirectory, copy: copy)
-            } catch {
-                guard let self, generation == self.dropProbeGeneration else { return }
-                self.showError(message: "Could Not Accept Drop".localized, detail: error.localizedDescription)
-            }
+            } catch { self.showError(message: "Could Not Accept Drop".localized, detail: error.localizedDescription) }
         }
     }
 
@@ -1913,27 +1654,6 @@ extension MainWindowViewController {
             confirmFileOperation(kind, urls: urls, destinationDirectory: destinationDirectory, confirmButtonTitle: kind, completion: start)
         } else {
             start()
-        }
-    }
-
-    private func validateDroppedItems(_ urls: [URL], destinationDirectory: URL, probe: any FileSystemProbing) async throws {
-        let destinationAnswer = try await accessPolicy.withValidatedAccess(to: destinationDirectory) {
-            await probe.isDirectory(destinationDirectory, deadline: .milliseconds(250))
-        }
-        guard case .value(let isDirectory) = destinationAnswer else {
-            throw FileOperationError.destinationDirectoryMissing(destinationDirectory)
-        }
-        guard isDirectory else {
-            throw FileOperationError.destinationNotDirectory(destinationDirectory)
-        }
-
-        for url in urls {
-            let sourceAnswer = try await accessPolicy.withValidatedAccess(to: url) {
-                await probe.exists(url, deadline: .milliseconds(250))
-            }
-            guard case .value(true) = sourceAnswer else {
-                throw FileOperationError.sourceMissing(url)
-            }
         }
     }
 
@@ -2110,7 +1830,7 @@ extension MainWindowViewController {
                 // main actor, while ensuring a service implementation cannot do
                 // synchronous filesystem work on the UI executor before its
                 // first suspension point.
-                let result = try await runFileOperationOffMain {
+                let result = try await fileOperationCoordinator.runDetached {
                     try await operation { [weak self] progress in
                         guard self?.fileOperationCoordinator.acceptsUpdates(for: generation) == true else { return }
                         self?.updateFileOperationProgress(progress, operationName: operationName)
@@ -2135,17 +1855,6 @@ extension MainWindowViewController {
             }
         }
         fileOperationCoordinator.retain(task, for: generation)
-    }
-
-    private func runFileOperationOffMain(
-        _ operation: @escaping @Sendable () async throws -> FileOperationResult
-    ) async throws -> FileOperationResult {
-        let worker = Task.detached(priority: .userInitiated, operation: operation)
-        return try await withTaskCancellationHandler {
-            try await worker.value
-        } onCancel: {
-            worker.cancel()
-        }
     }
 
     private func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
@@ -2378,6 +2087,13 @@ extension MainWindowViewController {
 #endif
 
 extension MainWindowViewController {
+    var workflowWindow: NSWindow? { view.window }
+
+    func startWorkflowOperation(named name: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) { startFileOperation(named: name, operation: operation) }
+    func presentWorkflowError(message: String, detail: String) { showError(message: message, detail: detail) }
+    func workflowFailed(message: String, detail: String) { showError(message: message, detail: detail) }
+    func resolveWorkflowConflict(destination: URL, operationName: String) async -> FileConflictResolution { await promptForConflict(destination: destination, operationName: operationName) }
+
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
     @objc func menuRename(_ sender: Any?) { performCommand(.rename) }

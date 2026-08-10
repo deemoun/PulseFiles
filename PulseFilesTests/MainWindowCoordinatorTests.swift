@@ -87,4 +87,28 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertEqual(request.sources, sources)
         XCTAssertEqual(request.destinationDirectory, destination)
     }
+
+    func testArchiveRenameCoordinatorPreservesExtensionsInNumberedNames() {
+        let sources = [URL(fileURLWithPath: "/tmp/one.txt"), URL(fileURLWithPath: "/tmp/folder")]
+        XCTAssertEqual(
+            ArchiveAndRenameWorkflowCoordinator.proposedNames(for: sources, baseName: "Report"),
+            ["Report 1.txt", "Report 2"]
+        )
+    }
+
+    func testGoToFolderCoordinatorRejectsEmptyPathBeforeProbing() async {
+        do {
+            _ = try await GoToFolderWorkflowCoordinator.resolvePath(
+                "   ", relativeTo: URL(fileURLWithPath: "/tmp"), probe: NeverCalledFileSystemProbe(),
+                accessPolicy: SandboxFileAccessPolicy(rootURL: URL(fileURLWithPath: "/tmp"))
+            )
+            XCTFail("Expected an empty-name validation error")
+        } catch { XCTAssertTrue(error is FileNameValidator.ValidationError) }
+    }
+}
+
+private struct NeverCalledFileSystemProbe: FileSystemProbing {
+    func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { XCTFail("Unexpected probe"); return .value(false) }
+    func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { XCTFail("Unexpected probe"); return .value(false) }
+    func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?> { XCTFail("Unexpected probe"); return .unavailable }
 }

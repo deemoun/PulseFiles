@@ -213,12 +213,13 @@ Limits that must remain visible in code and UI:
 | --- | --- |
 | MainWindowViewController | Single `performCommand` dispatch point, active-pane ownership, cross-pane coordination, and composition of pane state with shared `WindowLayoutController` state. |
 | MainWindowDependencies | Injectable filesystem operations/probing/search, recents, bookmarks, volumes, clipboard, and application opening boundaries. |
-| MainWindowWorkflowDependencies | Injected file-transfer, creation, search, and auxiliary-panel workflow collaborators. |
-| FileTransferWorkflowCoordinator | Clipboard validation/read/write and safe copy/move request construction; the controller supplies active/opposite-pane context. |
-| FileCreationWorkflowCoordinator / SearchWorkflowCoordinator | Creation operations and unique-name suggestions; cancellable descendant search, results-window ownership, and result-action dispatch. |
+| MainWindowWorkflowDependencies | Injected archive/rename, file-transfer, creation, descendant-search, Open With, Go to Folder, and auxiliary-panel workflow collaborators. |
+| FileTransferWorkflowCoordinator | Owns clipboard sessions plus paste/drop validation and copy/move orchestration; the controller supplies only source and destination pane context. |
+| FileCreationWorkflowCoordinator / ArchiveAndRenameWorkflowCoordinator | Own creation/archive/batch-rename prompting, request submission, unique-name suggestions, and result callbacks. |
+| SearchWorkflowCoordinator / OpenWithWorkflowCoordinator / GoToFolderWorkflowCoordinator | Protocol-backed AppKit prompting, cancellable descendant search and result routing, application selection, and safe asynchronous path resolution. |
 | AuxiliaryPanelCoordinator | Settings/debug-log window lifetime and sizing. |
 | SidebarLayoutCoordinator / TerminalLayoutCoordinator | Child-view installation/removal; shared visibility and pane-layout state stays in the composition layer. |
-| FileOperationCoordinator / MainCommandRouter | Operation result and undo state; authoritative command availability and typed cross-pane targets. |
+| FileOperationCoordinator / MainCommandRouter | Operation generation, detached-task/cancellation state, progress/result presentation state and undo recovery; authoritative command availability and typed cross-pane targets. |
 | PreviewCoordinator / NavigationCoordinator / WindowLayoutController | Preview probing, standard/volume-loss navigation decisions, and value-only split/sidebar/terminal state. |
 | FilePaneViewModel | Per-pane async loading, history, filtering, sorting, hidden files and safe navigation. |
 | FilePaneViewController | Table/breadcrumb/status rendering, selection and drag/drop adaptation. |
