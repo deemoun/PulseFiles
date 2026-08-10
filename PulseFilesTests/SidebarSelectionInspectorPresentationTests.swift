@@ -97,6 +97,10 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaults),
+            bookmarkService: BookmarkService(defaults: defaults),
+            settings: SettingsService(defaults: defaults),
+            accessPolicy: .current,
+            volumeDiscovery: VolumeDiscoveryService(),
             metadataReader: { url in
                 if url.lastPathComponent == "first.jpg" {
                     firstMetadataStarted.fulfill()
@@ -132,6 +136,10 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaults),
+            bookmarkService: BookmarkService(defaults: defaults),
+            settings: SettingsService(defaults: defaults),
+            accessPolicy: .current,
+            volumeDiscovery: VolumeDiscoveryService(),
             metadataReader: { _ in throw MetadataReaderError.failed }
         )
         sidebar.onInspectorDetailUpdate = { identifier, value in

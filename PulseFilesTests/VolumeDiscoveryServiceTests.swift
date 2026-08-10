@@ -11,6 +11,7 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
         settings.scratchDirectory = scratch
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaultsFixture.defaults),
+            bookmarkService: BookmarkService(defaults: defaultsFixture.defaults),
             settings: settings,
             accessPolicy: policy,
             volumeDiscovery: FixtureVolumeDiscovery(volumes: [])
@@ -77,6 +78,8 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaults),
+            bookmarkService: BookmarkService(defaults: defaults),
+            settings: SettingsService(defaults: defaults, accessPolicy: policy),
             accessPolicy: policy,
             volumeDiscovery: discovery
         )

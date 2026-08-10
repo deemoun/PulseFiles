@@ -81,6 +81,10 @@ final class WorkspaceApplicationOpener: ApplicationOpening {
 /// Dependencies are assembled above the view controller so workflow tests can
 /// replace filesystem and OS integration without constructing AppKit panes.
 struct MainWindowDependencies {
+    let accessPolicy: SandboxFileAccessPolicy
+    let paneFileSystem: any FileSystemServicing
+    let folderAccessGrants: any FolderAccessGrantProviding
+    let authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     let fileOperations: any FileOperationCoordinating
     let fileSystemProbe: any FileSystemProbing
     let descendantSearch: any DescendantSearching
@@ -102,8 +106,17 @@ struct MainWindowDependencies {
     @MainActor
     static func production(accessPolicy: SandboxFileAccessPolicy) -> Self {
         let scheduler = FileSystemOperationScheduler.shared
+        let paneFileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: scheduler)
+        let folderAccessGrants = FolderAccessGrantService.shared
         let fileOperations = FileOperationService(accessPolicy: accessPolicy)
         return Self(
+            accessPolicy: accessPolicy,
+            paneFileSystem: paneFileSystem,
+            folderAccessGrants: folderAccessGrants,
+            authorizedFolderSelection: AuthorizedFolderSelectionCoordinator(
+                accessPolicy: accessPolicy,
+                grantService: folderAccessGrants
+            ),
             fileOperations: fileOperations,
             fileSystemProbe: FileSystemProbeService(scheduler: scheduler),
             descendantSearch: DescendantSearchService(accessPolicy: accessPolicy),
@@ -123,6 +136,39 @@ struct MainWindowDependencies {
             scratchCleanup: { activeRoots in
                 ScratchFolderCleanupService(accessPolicy: accessPolicy, fileOperations: fileOperations, activePaneRoots: activeRoots)
             }
+        )
+    }
+
+    func replacingPaneComposition(
+        accessPolicy: SandboxFileAccessPolicy,
+        paneFileSystem: any FileSystemServicing,
+        folderAccessGrants: any FolderAccessGrantProviding
+    ) -> Self {
+        Self(
+            accessPolicy: accessPolicy,
+            paneFileSystem: paneFileSystem,
+            folderAccessGrants: folderAccessGrants,
+            authorizedFolderSelection: AuthorizedFolderSelectionCoordinator(
+                accessPolicy: accessPolicy,
+                grantService: folderAccessGrants
+            ),
+            fileOperations: fileOperations,
+            fileSystemProbe: fileSystemProbe,
+            descendantSearch: descendantSearch,
+            recentLocations: recentLocations,
+            bookmarks: bookmarks,
+            volumeDiscovery: volumeDiscovery,
+            clipboard: clipboard,
+            applicationOpener: applicationOpener,
+            fileSize: fileSize,
+            readOnlyViewer: readOnlyViewer,
+            diagnosticsExporter: diagnosticsExporter,
+            terminalState: terminalState,
+            thumbnailLoader: thumbnailLoader,
+            standardFolderAccess: standardFolderAccess,
+            symbolicLinkResolver: symbolicLinkResolver,
+            stagingCleanup: stagingCleanup,
+            scratchCleanup: scratchCleanup
         )
     }
 }

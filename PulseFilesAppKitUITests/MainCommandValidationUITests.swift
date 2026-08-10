@@ -6,7 +6,7 @@ import XCTest
 final class MainCommandValidationUITests: XCTestCase {
     func testEveryMenuCommandValidationMatchesItsRouterRoute() throws {
         let dependencies = MainWindowDependencies.production(accessPolicy: .current)
-        let controller = MainWindowViewController(settings: SettingsService(), accessPolicy: .current, dependencies: dependencies, workflowDependencies: .production(from: dependencies, accessPolicy: .current))
+        let controller = MainWindowViewController(settings: SettingsService(), dependencies: dependencies, workflowDependencies: .production(from: dependencies, accessPolicy: dependencies.accessPolicy))
         controller.loadViewIfNeeded()
         let menu = AppDelegate(launchArguments: ["PulseFiles"]).buildMainMenu()
 
@@ -28,7 +28,7 @@ final class MainCommandValidationUITests: XCTestCase {
 
     func testInitialLastTabAndMissingFocusAreDisabledByAppKitValidation() throws {
         let dependencies = MainWindowDependencies.production(accessPolicy: .current)
-        let controller = MainWindowViewController(settings: SettingsService(), accessPolicy: .current, dependencies: dependencies, workflowDependencies: .production(from: dependencies, accessPolicy: .current))
+        let controller = MainWindowViewController(settings: SettingsService(), dependencies: dependencies, workflowDependencies: .production(from: dependencies, accessPolicy: dependencies.accessPolicy))
         controller.loadViewIfNeeded()
         let menu = AppDelegate(launchArguments: ["PulseFiles"]).buildMainMenu()
 

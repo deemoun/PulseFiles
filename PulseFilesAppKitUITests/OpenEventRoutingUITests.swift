@@ -15,7 +15,7 @@ final class OpenEventRoutingUITests: XCTestCase {
             userDefaults: fixture.defaults,
             accessPolicy: dependencies.policy
         ) {
-            let controller = MainWindowController(
+            let controller = AppDelegate.makeProductionMainWindowController(
                 settings: dependencies.settings,
                 accessPolicy: dependencies.policy,
                 sandboxRootEnsurer: {}
@@ -46,7 +46,7 @@ final class OpenEventRoutingUITests: XCTestCase {
             userDefaults: fixture.defaults,
             accessPolicy: dependencies.policy
         ) {
-            let controller = MainWindowController(
+            let controller = AppDelegate.makeProductionMainWindowController(
                 settings: dependencies.settings,
                 accessPolicy: dependencies.policy,
                 sandboxRootEnsurer: {}

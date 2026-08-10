@@ -35,8 +35,13 @@ metadata preservation, staging, and copy implementations remain internal. When
 that service is extracted, only request/result value types and the minimum
 caller-facing capability protocols may cross its module boundary.
 
-Concrete services are created only at application composition roots. In production,
-`AppDelegate` and `MainWindowController` assemble the object graph; controllers and
+Concrete services and process-wide singletons are selected only at the application
+composition root. In production, `AppDelegate` (through
+`makeProductionMainWindowController`) assembles the complete per-window object graph;
+`MainWindowController` and nested presentation controllers only consume injected
+instances. In particular, every pane, sidebar, terminal, and workflow in a window
+must share that graph's single `SandboxFileAccessPolicy` and folder-grant service.
+Controllers and
 workflow coordinators receive only the narrow capabilities they use through
 `MainWindowDependencies`, `MainWindowWorkflowDependencies`, and their initializers.
 Controllers must not hide fallback production-service construction in stored
@@ -55,8 +60,8 @@ PulseFilesApplication starts AppKit. AppDelegate builds menus and the app icon,
 creates MainWindowController, and terminates the app after the final window closes.
 MainWindowController owns one MainWindowViewController.
 
-MainWindowController is the application composition root for injectable filesystem
-and macOS integration dependencies. MainWindowViewController creates the left and
+AppDelegate is the sole production composition root for injectable filesystem and
+macOS integration dependencies. MainWindowViewController creates the left and
 right FilePaneViewControllers, owns toolbar search and active-pane state, and keeps
 the cross-pane ownership boundary. Focused workflow coordinators under `App/Coordinators` own file transfer and
 clipboard flow, creation naming, descendant search, auxiliary windows, and the
