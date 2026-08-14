@@ -1,22 +1,24 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-enum ViewerContentKind: Equatable {
+package enum ViewerContentKind: Equatable {
     case text(String.Encoding)
     case hex
 }
 
-struct ViewerSnapshot: Equatable {
-    let content: String
-    let kind: ViewerContentKind
-    let bytesRead: Int
-    let isComplete: Bool
-    let isTruncated: Bool
+package struct ViewerSnapshot: Equatable {
+    package let content: String
+    package let kind: ViewerContentKind
+    package let bytesRead: Int
+    package let isComplete: Bool
+    package let isTruncated: Bool
 }
 
 /// Incrementally reads a file while retaining a bounded prefix. The validated
 /// security scope remains active until reading finishes or the stream is cancelled.
-final class ReadOnlyViewerService {
-    struct Limits: Equatable {
+package final class ReadOnlyViewerService {
+    package struct Limits: Equatable {
         var chunkSize = 64 * 1024
         var retainedByteCount = 4 * 1024 * 1024
 
@@ -29,12 +31,12 @@ final class ReadOnlyViewerService {
     private let accessPolicy: SandboxFileAccessPolicy
     private let limits: Limits
 
-    init(accessPolicy: SandboxFileAccessPolicy = .current, limits: Limits = Limits()) {
+    package init(accessPolicy: SandboxFileAccessPolicy = .current, limits: Limits = Limits()) {
         self.accessPolicy = accessPolicy
         self.limits = limits
     }
 
-    func snapshots(for url: URL) -> AsyncThrowingStream<ViewerSnapshot, Error> {
+    package func snapshots(for url: URL) -> AsyncThrowingStream<ViewerSnapshot, Error> {
         AsyncThrowingStream { continuation in
             let task = Task.detached(priority: .userInitiated) { [accessPolicy, limits] in
                 do {
@@ -75,14 +77,14 @@ final class ReadOnlyViewerService {
         }
     }
 
-    static func snapshot(data: Data, bytesRead: Int, isComplete: Bool, isTruncated: Bool) -> ViewerSnapshot {
+    package static func snapshot(data: Data, bytesRead: Int, isComplete: Bool, isTruncated: Bool) -> ViewerSnapshot {
         if let encoding = detectedTextEncoding(in: data), let string = decodedString(data, encoding: encoding) {
             return ViewerSnapshot(content: string, kind: .text(encoding), bytesRead: bytesRead, isComplete: isComplete, isTruncated: isTruncated)
         }
         return ViewerSnapshot(content: hexDump(data), kind: .hex, bytesRead: bytesRead, isComplete: isComplete, isTruncated: isTruncated)
     }
 
-    static func detectedTextEncoding(in data: Data) -> String.Encoding? {
+    package static func detectedTextEncoding(in data: Data) -> String.Encoding? {
         let bytes = [UInt8](data.prefix(4096))
         if bytes.starts(with: [0xEF, 0xBB, 0xBF]) { return .utf8 }
         if bytes.starts(with: [0xFF, 0xFE, 0x00, 0x00]) { return .utf32LittleEndian }
@@ -111,7 +113,7 @@ final class ReadOnlyViewerService {
         return String(data: payload, encoding: encoding)
     }
 
-    static func hexDump(_ data: Data) -> String {
+    package static func hexDump(_ data: Data) -> String {
         let bytes = [UInt8](data)
         return stride(from: 0, to: bytes.count, by: 16).map { offset in
             let line = Array(bytes[offset..<min(offset + 16, bytes.count)])

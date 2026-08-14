@@ -1,12 +1,14 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 #if os(macOS)
 import Darwin
 #endif
 
-final class FileHandleStreamingCopier: FileOperationStreamingCopying {
+package final class FileHandleStreamingCopier: FileOperationStreamingCopying {
     private let chunkSize = 1_048_576
 
-    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+    package func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
         #if os(macOS)
         let parent = try OpenDirectoryCapability(directory: destination.deletingLastPathComponent())
         defer { parent.close() }
@@ -40,7 +42,7 @@ final class FileHandleStreamingCopier: FileOperationStreamingCopying {
     }
 
     #if os(macOS)
-    func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+    package func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
         try parent.revalidate()
         try OpenDirectoryCapability.validateName(name)
         let destinationFD = try parent.openNewRegularFile(named: name)
@@ -61,12 +63,12 @@ final class FileHandleStreamingCopier: FileOperationStreamingCopying {
     #endif
 }
 
-extension FileManager: FileOperationFileManaging {
-    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
+package extension FileManager: FileOperationFileManaging {
+    package func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
         try createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: nil)
     }
 
-    func createEmptyFile(at url: URL) throws {
+    package func createEmptyFile(at url: URL) throws {
         try Data().write(to: url, options: .withoutOverwriting)
     }
 }

@@ -1,12 +1,14 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-final class RecentLocationService {
+package final class RecentLocationService {
     private let defaults: UserDefaults
     private let key = "recentLocations"
     private(set) var locations: [URL] = []
-    var onChange: (([URL]) -> Void)?
+    package var onChange: (([URL]) -> Void)?
 
-    init(defaults: UserDefaults = .standard) {
+    package init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         locations = (defaults.array(forKey: key) ?? [])
             .compactMap { $0 as? String }
@@ -14,7 +16,7 @@ final class RecentLocationService {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    func record(_ url: URL) {
+    package func record(_ url: URL) {
         locations.removeAll { $0 == url }
         locations.insert(url, at: 0)
         locations = Array(locations.prefix(12))

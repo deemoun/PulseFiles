@@ -1,16 +1,17 @@
-import AppKit
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 import UniformTypeIdentifiers
 
-struct DirectoryItemReadFailure {
-    let url: URL
-    let error: Error
+package struct DirectoryItemReadFailure {
+    package let url: URL
+    package let error: Error
 }
 
-struct DirectoryContentsReadError: LocalizedError {
-    let failures: [DirectoryItemReadFailure]
+package struct DirectoryContentsReadError: LocalizedError {
+    package let failures: [DirectoryItemReadFailure]
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         "Could not read metadata for \(failures.count) item(s)."
     }
 }
@@ -18,40 +19,40 @@ struct DirectoryContentsReadError: LocalizedError {
 /// Indicates that a directory read did not finish before the pane's load deadline.
 /// This is intentionally distinct from filesystem errors so callers can offer a
 /// retry without presenting the folder as unreadable.
-struct DirectoryLoadTimeoutError: LocalizedError, Equatable {
-    let timeout: TimeInterval
+package struct DirectoryLoadTimeoutError: LocalizedError, Equatable {
+    package let timeout: TimeInterval
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         "Folder is taking too long to respond. Try again."
     }
 }
 
 /// The outcome of enumerating a directory. Metadata failures are reported rather
 /// than silently removing the affected children from the listing.
-struct DirectoryContentsResult {
-    let items: [FileItem]
-    let itemReadFailures: [DirectoryItemReadFailure]
+package struct DirectoryContentsResult {
+    package let items: [FileItem]
+    package let itemReadFailures: [DirectoryItemReadFailure]
 
-    var isComplete: Bool { itemReadFailures.isEmpty }
+    package var isComplete: Bool { itemReadFailures.isEmpty }
 }
 
-protocol FileSystemServicing: AnyObject {
-    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult
-    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
+package protocol FileSystemServicing: AnyObject {
+    package func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult
+    package func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
 }
 
-final class FileSystemService: FileSystemServicing {
+package final class FileSystemService: FileSystemServicing {
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
     private let scheduler: FileSystemOperationScheduler
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy, scheduler: FileSystemOperationScheduler) {
+    package init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy, scheduler: FileSystemOperationScheduler) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.scheduler = scheduler
     }
 
-    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
+    package func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult {
         // FilePaneViewModel owns the validated operation scope so snapshot
         // metadata and enumeration do not start nested bookmark scopes.
         return try await self.scheduler.submit(priority: .visiblePane) {
@@ -96,7 +97,7 @@ final class FileSystemService: FileSystemServicing {
         }
     }
 
-    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
+    package func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata {
         return try await self.scheduler.submit(priority: .visiblePane) {
                 let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey, .contentModificationDateKey])
                 let identifier = values.fileResourceIdentifier.map { String(describing: $0) }
@@ -230,7 +231,7 @@ final class FileSystemService: FileSystemServicing {
         return 0
     }
 
-    static func sorted(_ items: [FileItem], descriptor: FileSortDescriptor) -> [FileItem] {
+    package static func sorted(_ items: [FileItem], descriptor: FileSortDescriptor) -> [FileItem] {
         items.sorted { lhs, rhs in
             if descriptor.foldersFirst && lhs.isDirectory != rhs.isDirectory {
                 // Keep folders grouped before files regardless of ascending/descending order.

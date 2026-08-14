@@ -1,3 +1,5 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 #if os(macOS)
 import Darwin
@@ -6,53 +8,53 @@ import Darwin
 /// State shared by the operation coordinator and its blocking filesystem
 /// worker. It intentionally records facts rather than attempting to interrupt
 /// FileManager: many network and provider-backed calls are uninterruptible.
-final class FileOperationContext: @unchecked Sendable {
+package final class FileOperationContext: @unchecked Sendable {
     private let lock = NSLock()
     private var storedCurrentItem: URL?
     private var storedLastProgressDate = Date()
     private var storedIsAbandoned = false
 
-    func beginBlockingCall(for item: URL) {
+    package func beginBlockingCall(for item: URL) {
         lock.lock(); defer { lock.unlock() }
         storedCurrentItem = item
     }
 
-    func recordProgress() {
+    package func recordProgress() {
         lock.lock(); defer { lock.unlock() }
         storedLastProgressDate = Date()
     }
 
-    func abandon() {
+    package func abandon() {
         lock.lock(); defer { lock.unlock() }
         storedIsAbandoned = true
     }
 
-    var needsVerification: Bool {
+    package var needsVerification: Bool {
         lock.lock(); defer { lock.unlock() }
         return storedIsAbandoned
     }
 
-    var currentItem: URL? { lock.lock(); defer { lock.unlock() }; return storedCurrentItem }
-    var lastProgressDate: Date { lock.lock(); defer { lock.unlock() }; return storedLastProgressDate }
+    package var currentItem: URL? { lock.lock(); defer { lock.unlock() }; return storedCurrentItem }
+    package var lastProgressDate: Date { lock.lock(); defer { lock.unlock() }; return storedLastProgressDate }
 }
 
-typealias FileOperationProgressHandler = @MainActor (FileOperationProgress) -> Void
-typealias FileConflictHandler = (URL) async -> FileConflictResolution
+package typealias FileOperationProgressHandler = @MainActor (FileOperationProgress) -> Void
+package typealias FileConflictHandler = (URL) async -> FileConflictResolution
 
 /// Requests a local copy of a provider-backed placeholder. `false` retains the
 /// normal safe failure path when a provider cannot perform the download.
 /// Uses macOS ubiquitous-item support and bounds waiting for an unavailable
 /// provider so file operations never mutate an item that remains a placeholder.
-final class MacOSCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @unchecked Sendable {
+package final class MacOSCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @unchecked Sendable {
     private let timeout: TimeInterval
     private let pollInterval: TimeInterval
 
-    init(timeout: TimeInterval = 30, pollInterval: TimeInterval = 0.25) {
+    package init(timeout: TimeInterval = 30, pollInterval: TimeInterval = 0.25) {
         self.timeout = timeout
         self.pollInterval = pollInterval
     }
 
-    func prepareDownload(for url: URL) async throws -> Bool {
+    package func prepareDownload(for url: URL) async throws -> Bool {
         #if os(macOS)
         guard (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true else { return false }
         guard (try? FileManager.default.startDownloadingUbiquitousItem(at: url)) != nil else { return false }
@@ -70,10 +72,10 @@ final class MacOSCloudDownloadPreparer: FileOperationCloudDownloadPreparing, @un
     }
 }
 
-final class FileOperationService: FileOperationServicing, FileOperationArchiveServicing, FileOperationBatchRenameServicing {
+package final class FileOperationService: FileOperationServicing, FileOperationArchiveServicing, FileOperationBatchRenameServicing {
     /// Bounds traversal work independently of filesystem recursion so hostile
     /// or accidentally generated directory trees cannot exhaust the process.
-    struct TraversalLimits: Sendable {
+    package struct TraversalLimits: Sendable {
         let maximumDepth: Int
         let maximumItems: Int
 
@@ -97,7 +99,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
     private let batchRenameAdapter: FileOperationBatchRenameAdapter
     private let undoPlanBuilder = FileOperationUndoPlanBuilder()
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationPreflightValidator.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationPreflightValidator.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationPreflightValidator.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileTransferExecutor.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
+    package init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationPreflightValidator.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationPreflightValidator.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationPreflightValidator.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileTransferExecutor.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.destinationCapacityProvider = destinationCapacityProvider
@@ -115,7 +117,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
     }
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationPreflightValidator.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationPreflightValidator.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationPreflightValidator.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileTransferExecutor.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
+    package init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationPreflightValidator.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationPreflightValidator.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationPreflightValidator.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileTransferExecutor.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
         self.destinationCapacityProvider = destinationCapacityProvider
@@ -133,23 +135,23 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
     }
 
-    func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
+    package func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
         try await archiveAdapter.createArchive(request, progressHandler: progressHandler)
     }
 
-    func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
+    package func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
         try await archiveAdapter.extractArchive(request, conflictHandler: conflictHandler, progressHandler: progressHandler)
     }
 
-    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
+    package func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
         try batchRenameAdapter.planBatchRename(request)
     }
 
-    func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult {
+    package func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult {
         await batchRenameAdapter.batchRename(plan, progressHandler: progressHandler)
     }
 
-    func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {
+    package func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight {
         try preflightValidator.preflightTransferRequest(request, isMove: isMove)
         let hasReplacement = request.sources.contains { fileManager.fileExists(atPath: request.destinationDirectory.appendingPathComponent($0.lastPathComponent).path) }
         let requiresCopy = !isMove || hasReplacement || request.sources.contains { source in
@@ -177,7 +179,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         }
     }
 
-    func copy(
+    package func copy(
         _ request: FileOperationRequest,
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
@@ -219,7 +221,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         }
     }
 
-    func move(
+    package func move(
         _ request: FileOperationRequest,
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler? = nil
@@ -289,7 +291,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         }
     }
 
-    func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+    package func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         try await prepareCloudPlaceholders(for: [source], progressHandler: progressHandler)
         let parentDirectory = source.deletingLastPathComponent()
         try preflightValidator.validateExistingSource(source)
@@ -325,7 +327,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         }
     }
 
-    func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+    package func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         guard recovery.eligibility() == .eligible else { throw FileOperationError.undoUnavailable }
         // Copies are only reversible by removing the exact destination that we
         // created. Never use the source as a precondition: it is expected to
@@ -395,11 +397,11 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         }
     }
 
-    func createFolder(named rawName: String, in directory: URL) async throws -> FileOperationResult {
+    package func createFolder(named rawName: String, in directory: URL) async throws -> FileOperationResult {
         try await createItem(named: rawName, in: directory, isDirectory: true)
     }
 
-    func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult {
+    package func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult {
         try await createItem(named: rawName, in: directory, isDirectory: false)
     }
 
@@ -441,7 +443,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         }
     }
 
-    func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+    package func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Trash operation starting: itemCount=\(urls.count)")
         try await prepareCloudPlaceholders(for: urls, progressHandler: progressHandler)
         do { try preflightValidator.preflightDelete(urls) } catch { logPreflightFailure(operation: "trash", error: error); throw error }
@@ -471,7 +473,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
         return recoverableResult
     }
 
-    func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+    package func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         DiagnosticLogger.log(.info, category: "FileOperation", "Delete operation starting: itemCount=\(urls.count)")
         try await prepareCloudPlaceholders(for: urls, progressHandler: progressHandler)
         do { try preflightValidator.preflightDelete(urls) } catch { logPreflightFailure(operation: "delete", error: error); throw error }
@@ -504,7 +506,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
     /// Directory enumeration and metadata reads can be expensive (and can
     /// block on network volumes), so plan them off the caller's actor.
 
-    static func keepBothDestination(
+    package static func keepBothDestination(
         for destination: URL,
         reservedDestinations: Set<String> = [],
         fileExists: (URL) -> Bool
@@ -558,7 +560,7 @@ final class FileOperationService: FileOperationServicing, FileOperationArchiveSe
 
 
 private extension FileConflictResolution {
-    var logValue: String {
+    package var logValue: String {
         switch self {
         case .replace: return "replace"
         case .skip: return "skip"

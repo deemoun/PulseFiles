@@ -1,6 +1,9 @@
+import PulseFilesUtilities
+import PulseFilesModels
+import PulseFilesServices
 import Foundation
 
-enum MainCommand: CaseIterable, Equatable {
+package enum MainCommand: CaseIterable, Equatable {
     case open
     case viewer
     case openWith
@@ -66,7 +69,7 @@ enum MainCommand: CaseIterable, Equatable {
     case debugLogs
     case exportDiagnostics
 
-    init(commandBarAction: CommandBarAction) {
+    package init(commandBarAction: CommandBarAction) {
         switch commandBarAction {
         case .newFile: self = .newFile
         case .newFolder: self = .newFolder

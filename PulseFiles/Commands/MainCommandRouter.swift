@@ -1,6 +1,9 @@
-import AppKit
+import PulseFilesUtilities
+import PulseFilesModels
+import PulseFilesServices
+import Foundation
 
-enum MainCommandEntrySurface: CaseIterable {
+package enum MainCommandEntrySurface: CaseIterable {
     case menu
     case keyboard
     case commandBar
@@ -8,15 +11,15 @@ enum MainCommandEntrySurface: CaseIterable {
     case paneCallback
 }
 
-struct MainCommandRoutingPane: Equatable {
-    var id: PaneID
-    var currentDirectory: URL
-    var selectedURLs: [URL]
-    var focusedURL: URL?
-    var focusedItemIsSymbolicLink: Bool
-    var tabCount: Int
+package struct MainCommandRoutingPane: Equatable {
+    package var id: PaneID
+    package var currentDirectory: URL
+    package var selectedURLs: [URL]
+    package var focusedURL: URL?
+    package var focusedItemIsSymbolicLink: Bool
+    package var tabCount: Int
 
-    init(id: PaneID, currentDirectory: URL, selectedURLs: [URL] = [], focusedURL: URL? = nil, focusedItemIsSymbolicLink: Bool = false, tabCount: Int = 1) {
+    package init(id: PaneID, currentDirectory: URL, selectedURLs: [URL] = [], focusedURL: URL? = nil, focusedItemIsSymbolicLink: Bool = false, tabCount: Int = 1) {
         self.id = id
         self.currentDirectory = currentDirectory
         self.selectedURLs = selectedURLs
@@ -26,16 +29,16 @@ struct MainCommandRoutingPane: Equatable {
     }
 }
 
-struct MainCommandRoutingState: Equatable {
-    var activePaneID: PaneID
-    var leftPane: MainCommandRoutingPane
-    var rightPane: MainCommandRoutingPane
-    var isSinglePaneMode: Bool
-    var isFileOperationActive: Bool
-    var sandboxAllowsSelectedURLs: Bool
-    var hasUndoRecovery: Bool
+package struct MainCommandRoutingState: Equatable {
+    package var activePaneID: PaneID
+    package var leftPane: MainCommandRoutingPane
+    package var rightPane: MainCommandRoutingPane
+    package var isSinglePaneMode: Bool
+    package var isFileOperationActive: Bool
+    package var sandboxAllowsSelectedURLs: Bool
+    package var hasUndoRecovery: Bool
 
-    init(
+    package init(
         activePaneID: PaneID = .left,
         leftPane: MainCommandRoutingPane,
         rightPane: MainCommandRoutingPane,
@@ -53,16 +56,16 @@ struct MainCommandRoutingState: Equatable {
         self.hasUndoRecovery = hasUndoRecovery
     }
 
-    var activePane: MainCommandRoutingPane {
+    package var activePane: MainCommandRoutingPane {
         activePaneID == .left ? leftPane : rightPane
     }
 
-    var inactivePane: MainCommandRoutingPane {
+    package var inactivePane: MainCommandRoutingPane {
         activePaneID == .left ? rightPane : leftPane
     }
 }
 
-enum MainCommandRoutingDisabledReason: Equatable {
+package enum MainCommandRoutingDisabledReason: Equatable {
     case noSelection
     case noFocusedItem
     case noRealFocusedItem
@@ -75,7 +78,7 @@ enum MainCommandRoutingDisabledReason: Equatable {
     case lastTab
 }
 
-enum MainCommandRoute: Equatable {
+package enum MainCommandRoute: Equatable {
     case activePane(command: MainCommand, pane: PaneID, urls: [URL])
     case crossPane(command: MainCommand, sourcePane: PaneID, destinationPane: PaneID, sourceURLs: [URL], destinationDirectory: URL)
     case switchPane(to: PaneID)
@@ -86,14 +89,14 @@ enum MainCommandRoute: Equatable {
     case disabled(command: MainCommand, reason: MainCommandRoutingDisabledReason)
 }
 
-struct MainCommandRouter {
+package struct MainCommandRouter {
     /// Entry surfaces intentionally share this path so none can acquire its own
     /// availability or target-selection rules.
-    func route(_ command: MainCommand, from _: MainCommandEntrySurface, in state: MainCommandRoutingState) -> MainCommandRoute {
+    package func route(_ command: MainCommand, from _: MainCommandEntrySurface, in state: MainCommandRoutingState) -> MainCommandRoute {
         route(command, in: state)
     }
 
-    func route(_ command: MainCommand, in state: MainCommandRoutingState) -> MainCommandRoute {
+    package func route(_ command: MainCommand, in state: MainCommandRoutingState) -> MainCommandRoute {
         if state.isFileOperationActive, command.conflictsWithFileOperation {
             return .disabled(command: command, reason: .fileOperationInProgress)
         }
@@ -160,45 +163,6 @@ struct MainCommandRouter {
         }
     }
 
-    func commandForKeyDown(
-        keyCode: UInt16,
-        command: Bool = false,
-        shift: Bool = false,
-        option: Bool = false,
-        control: Bool = false,
-        isTextInputFocused: Bool = false
-    ) -> MainCommand? {
-        MainCommandShortcutRegistry.command(
-            forKeyCode: keyCode,
-            modifierFlags: modifierFlags(command: command, shift: shift, option: option, control: control),
-            isTextInputFocused: isTextInputFocused
-        )
-    }
-
-    func commandForKeyDown(_ event: NSEvent, isTextInputFocused: Bool) -> MainCommand? {
-        MainCommandShortcutRegistry.command(
-            forKeyCode: event.keyCode,
-            modifierFlags: event.modifierFlags,
-            isTextInputFocused: isTextInputFocused
-        )
-    }
-
-    func shouldConsumeUnmappedKeyDown(keyCode: UInt16, isTextInputFocused: Bool = false) -> Bool {
-        MainCommandShortcutRegistry.shouldConsumeUnmappedKey(
-            keyCode: keyCode,
-            isTextInputFocused: isTextInputFocused
-        )
-    }
-
-    private func modifierFlags(command: Bool, shift: Bool, option: Bool, control: Bool) -> NSEvent.ModifierFlags {
-        var flags: NSEvent.ModifierFlags = []
-        if command { flags.insert(.command) }
-        if shift { flags.insert(.shift) }
-        if option { flags.insert(.option) }
-        if control { flags.insert(.control) }
-        return flags
-    }
-
     private func selectedRoute(_ command: MainCommand, in state: MainCommandRoutingState, build: () -> MainCommandRoute) -> MainCommandRoute {
         guard !state.activePane.selectedURLs.isEmpty else {
             return .disabled(command: command, reason: .noSelection)
@@ -220,7 +184,7 @@ struct MainCommandRouter {
     }
 }
 
-enum ScratchDirectoryCommandRoute: Equatable {
+package enum ScratchDirectoryCommandRoute: Equatable {
     case promptForConfiguration
     case requestAccess(URL)
     case navigate(URL)
@@ -229,19 +193,19 @@ enum ScratchDirectoryCommandRoute: Equatable {
 
 /// Keeps scratch-location command decisions independent from AppKit prompts so
 /// every non-mutating and recovery outcome can be covered by routing tests.
-struct ScratchDirectoryCommandRouter {
-    func route(configuredDirectory: URL?, canAccess: (URL) -> Bool) -> ScratchDirectoryCommandRoute {
+package struct ScratchDirectoryCommandRouter {
+    package func route(configuredDirectory: URL?, canAccess: (URL) -> Bool) -> ScratchDirectoryCommandRoute {
         guard let configuredDirectory else { return .promptForConfiguration }
         return canAccess(configuredDirectory) ? .navigate(configuredDirectory) : .requestAccess(configuredDirectory)
     }
 
-    func routeAfterAccessRecovery(to directory: URL, wasGranted: Bool) -> ScratchDirectoryCommandRoute {
+    package func routeAfterAccessRecovery(to directory: URL, wasGranted: Bool) -> ScratchDirectoryCommandRoute {
         wasGranted ? .navigate(directory) : .cancelled
     }
 }
 
-extension MainCommand {
-    var conflictsWithFileOperation: Bool {
+package extension MainCommand {
+    package var conflictsWithFileOperation: Bool {
         switch self {
         case .newFile, .newFolder, .rename, .batchRename, .createArchive, .extractArchive, .duplicate, .undo, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
             return true

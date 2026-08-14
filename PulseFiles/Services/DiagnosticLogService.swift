@@ -1,28 +1,30 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-struct DiagnosticLogEntry: Identifiable, Equatable {
-    let id: UUID
-    let timestamp: Date
-    let level: DiagnosticLogLevel
-    let category: String
-    let message: String
+package struct DiagnosticLogEntry: Identifiable, Equatable {
+    package let id: UUID
+    package let timestamp: Date
+    package let level: DiagnosticLogLevel
+    package let category: String
+    package let message: String
 }
 
-enum DiagnosticLogLevel: String, CaseIterable, Comparable {
+package enum DiagnosticLogLevel: String, CaseIterable, Comparable {
     case debug
     case info
     case warning
     case error
 
-    static func < (lhs: DiagnosticLogLevel, rhs: DiagnosticLogLevel) -> Bool {
+    package static func < (lhs: DiagnosticLogLevel, rhs: DiagnosticLogLevel) -> Bool {
         allCases.firstIndex(of: lhs) ?? 0 < allCases.firstIndex(of: rhs) ?? 0
     }
 }
 
 @MainActor
-final class DiagnosticLogService {
-    static let shared = DiagnosticLogService()
-    static let entriesDidChangeNotification = Notification.Name("DiagnosticLogServiceEntriesDidChange")
+package final class DiagnosticLogService {
+    package static let shared = DiagnosticLogService()
+    package static let entriesDidChangeNotification = Notification.Name("DiagnosticLogServiceEntriesDidChange")
 
     private static let maximumMessageLength = 2_000
     private static let redactedValue = "[redacted]"
@@ -43,7 +45,7 @@ final class DiagnosticLogService {
 
     private(set) var entries: [DiagnosticLogEntry] = []
 
-    init(
+    package init(
         maximumEntryCount: Int = 750,
         dateProvider: @escaping () -> Date = Date.init,
         idProvider: @escaping () -> UUID = UUID.init
@@ -53,7 +55,7 @@ final class DiagnosticLogService {
         self.idProvider = idProvider
     }
 
-    func log(_ level: DiagnosticLogLevel, category: String, _ message: String) {
+    package func log(_ level: DiagnosticLogLevel, category: String, _ message: String) {
         let entry = DiagnosticLogEntry(
             id: idProvider(),
             timestamp: dateProvider(),
@@ -66,7 +68,7 @@ final class DiagnosticLogService {
         postEntriesDidChangeNotification()
     }
 
-    func clear() {
+    package func clear() {
         entries.removeAll(keepingCapacity: true)
         postEntriesDidChangeNotification()
     }
@@ -113,14 +115,14 @@ final class DiagnosticLogService {
 }
 
 
-enum DiagnosticLogger {
-    static func log(_ level: DiagnosticLogLevel, category: String, _ message: String) {
+package enum DiagnosticLogger {
+    package static func log(_ level: DiagnosticLogLevel, category: String, _ message: String) {
         Task { @MainActor in
             DiagnosticLogService.shared.log(level, category: category, message)
         }
     }
 
-    static func sanitizedPath(_ url: URL) -> String {
+    package static func sanitizedPath(_ url: URL) -> String {
         let standardizedPath = url.standardizedFileURL.path
         let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         if standardizedPath == homePath {

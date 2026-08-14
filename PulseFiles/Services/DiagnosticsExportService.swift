@@ -1,17 +1,19 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
 /// Creates an on-demand, local-only support bundle. Nothing is collected, retained,
 /// or uploaded until a person explicitly chooses Export Diagnostics.
-struct DiagnosticOperationSummary: Equatable {
-    let operation: String
-    let completedCount: Int
-    let skippedCount: Int
-    let failedCount: Int
-    let cleanupWarningCount: Int
-    let wasCancelled: Bool
-    let needsVerification: Bool
+package struct DiagnosticOperationSummary: Equatable {
+    package let operation: String
+    package let completedCount: Int
+    package let skippedCount: Int
+    package let failedCount: Int
+    package let cleanupWarningCount: Int
+    package let wasCancelled: Bool
+    package let needsVerification: Bool
 
-    init(operation: String, result: FileOperationResult) {
+    package init(operation: String, result: FileOperationResult) {
         self.operation = operation
         completedCount = result.completedItems.count
         skippedCount = result.skippedItems.count
@@ -22,15 +24,15 @@ struct DiagnosticOperationSummary: Equatable {
     }
 }
 
-struct DiagnosticsExportService {
-    struct AppInfo: Equatable {
+package struct DiagnosticsExportService {
+    package struct AppInfo: Equatable {
         let name: String
         let version: String
         let build: String
         let macOSVersion: String
     }
 
-    static let redactionPolicy = """
+    package static let redactionPolicy = """
     Redaction policy
     ================
     This bundle is created only when you choose Export Diagnostics. PulseFiles does not automatically collect or upload diagnostics.
@@ -40,11 +42,11 @@ struct DiagnosticsExportService {
     Diagnostic entries from Terminal, Clipboard, or Bookmark categories are excluded entirely. Other diagnostic text has sensitive key/value values and path-like text replaced with [redacted]. Review this bundle before sharing it.
     """
 
-    let fileManager: FileManager
-    let dateProvider: () -> Date
-    let appInfoProvider: () -> AppInfo
+    package let fileManager: FileManager
+    package let dateProvider: () -> Date
+    package let appInfoProvider: () -> AppInfo
 
-    init(
+    package init(
         fileManager: FileManager = .default,
         dateProvider: @escaping () -> Date = Date.init,
         appInfoProvider: @escaping () -> AppInfo = Self.currentAppInfo
@@ -54,7 +56,7 @@ struct DiagnosticsExportService {
         self.appInfoProvider = appInfoProvider
     }
 
-    func export(to parentDirectory: URL, entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) throws -> URL {
+    package func export(to parentDirectory: URL, entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) throws -> URL {
         let bundleURL = parentDirectory.appendingPathComponent("PulseFiles-Diagnostics-\(Self.timestamp(dateProvider()))", isDirectory: true)
         try fileManager.createDirectory(at: bundleURL, withIntermediateDirectories: false)
         try renderedDiagnostics(entries: entries, operationSummaries: operationSummaries)
@@ -63,7 +65,7 @@ struct DiagnosticsExportService {
         return bundleURL
     }
 
-    func renderedDiagnostics(entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) -> String {
+    package func renderedDiagnostics(entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) -> String {
         let info = appInfoProvider()
         var lines = [
             "PulseFiles Diagnostics",
@@ -109,22 +111,22 @@ struct DiagnosticsExportService {
     }
 }
 
-enum DiagnosticsRedactor {
+package enum DiagnosticsRedactor {
     private static let excludedCategories = ["terminal", "clipboard", "bookmark"]
     private static let sensitiveKeys = ["api_key", "apikey", "authorization", "bearer", "credential", "password", "secret", "token"]
 
-    static func redactCategory(_ category: String) -> String {
+    package static func redactCategory(_ category: String) -> String {
         excludedCategories.contains { category.localizedCaseInsensitiveContains($0) } ? "[redacted category]" : redact(category)
     }
 
-    static func redactEntry(category: String, message: String) -> String {
+    package static func redactEntry(category: String, message: String) -> String {
         guard !excludedCategories.contains(where: { category.localizedCaseInsensitiveContains($0) }) else {
             return "[excluded by redaction policy]"
         }
         return redact(message)
     }
 
-    static func redact(_ value: String) -> String {
+    package static func redact(_ value: String) -> String {
         var result = value
         for line in result.split(separator: "\n", omittingEmptySubsequences: false) {
             guard let separator = line.firstIndex(where: { $0 == "=" || $0 == ":" }) else { continue }

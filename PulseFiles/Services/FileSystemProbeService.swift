@@ -1,29 +1,31 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
 /// A short, cancellable read-only filesystem query.  A missing answer means the
 /// filesystem did not respond before the caller's UI deadline; it is not treated
 /// as a positive result.
-enum FileSystemProbeAnswer<Value: Sendable>: Sendable, Equatable where Value: Equatable {
+package enum FileSystemProbeAnswer<Value: Sendable>: Sendable, Equatable where Value: Equatable {
     case value(Value)
     case unavailable
 }
 
-protocol FileSystemProbing: Sendable {
-    func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
-    func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
-    func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?>
+package protocol FileSystemProbing: Sendable {
+    package func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
+    package func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
+    package func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?>
 }
 
 /// Keeps potentially blocking FileManager and resource-value queries off the
 /// main actor. Network volumes occasionally block these APIs, so callers always
 /// supply a small deadline and treat `.unavailable` conservatively.
-final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
+package final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
     private let existsOperation: @Sendable (URL) -> Bool
     private let directoryOperation: @Sendable (URL) -> Bool
     private let volumeOperation: @Sendable (URL) -> String?
     private let scheduler: FileSystemOperationScheduler
 
-    init(fileManager: FileManager = .default, scheduler: FileSystemOperationScheduler = .shared) {
+    package init(fileManager: FileManager = .default, scheduler: FileSystemOperationScheduler = .shared) {
         self.scheduler = scheduler
         let operations = FileManagerProbeOperations(fileManager: fileManager)
         existsOperation = { operations.exists(at: $0) }
@@ -34,7 +36,7 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
         }
     }
 
-    init(
+    package init(
         existsOperation: @escaping @Sendable (URL) -> Bool,
         directoryOperation: @escaping @Sendable (URL) -> Bool,
         volumeOperation: @escaping @Sendable (URL) -> String?,
@@ -46,15 +48,15 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
         self.volumeOperation = volumeOperation
     }
 
-    func exists(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<Bool> {
+    package func exists(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<Bool> {
         await query(deadline: deadline) { [existsOperation] in .value(existsOperation(url)) }
     }
 
-    func isDirectory(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<Bool> {
+    package func isDirectory(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<Bool> {
         await query(deadline: deadline) { [directoryOperation] in .value(directoryOperation(url)) }
     }
 
-    func volumeIdentifier(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<String?> {
+    package func volumeIdentifier(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<String?> {
         await query(deadline: deadline) { [volumeOperation] in .value(volumeOperation(url)) }
     }
 
@@ -95,15 +97,15 @@ final class FileSystemProbeService: FileSystemProbing, @unchecked Sendable {
 private final class FileManagerProbeOperations: @unchecked Sendable {
     private let fileManager: FileManager
 
-    init(fileManager: FileManager) {
+    package init(fileManager: FileManager) {
         self.fileManager = fileManager
     }
 
-    func exists(at url: URL) -> Bool {
+    package func exists(at url: URL) -> Bool {
         fileManager.fileExists(atPath: url.path)
     }
 
-    func isDirectory(at url: URL) -> Bool {
+    package func isDirectory(at url: URL) -> Bool {
         var isDirectory = ObjCBool(false)
         return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
@@ -114,7 +116,7 @@ private final class ProbeCancellation: @unchecked Sendable {
     private var cancellation: (() -> Void)?
     private var wasCancelled = false
 
-    func set(_ cancellation: @escaping () -> Void) {
+    package func set(_ cancellation: @escaping () -> Void) {
         lock.lock()
         if wasCancelled {
             lock.unlock()
@@ -125,7 +127,7 @@ private final class ProbeCancellation: @unchecked Sendable {
         lock.unlock()
     }
 
-    func cancel() {
+    package func cancel() {
         lock.lock()
         wasCancelled = true
         let cancellation = self.cancellation
@@ -139,11 +141,11 @@ private final class ProbeCompletion<Value: Sendable & Equatable>: @unchecked Sen
     private let lock = NSLock()
     private var continuation: CheckedContinuation<FileSystemProbeAnswer<Value>, Never>?
 
-    init(_ continuation: CheckedContinuation<FileSystemProbeAnswer<Value>, Never>) {
+    package init(_ continuation: CheckedContinuation<FileSystemProbeAnswer<Value>, Never>) {
         self.continuation = continuation
     }
 
-    func finish(_ value: FileSystemProbeAnswer<Value>) {
+    package func finish(_ value: FileSystemProbeAnswer<Value>) {
         lock.lock()
         let continuation = self.continuation
         self.continuation = nil
@@ -155,23 +157,23 @@ private final class ProbeCompletion<Value: Sendable & Equatable>: @unchecked Sen
 // A small main-actor cache lets synchronous AppKit drag callbacks avoid touching
 // a possibly unavailable filesystem. Unknown entries are explicitly pending.
 @MainActor
-final class FileSystemProbeCache {
+package final class FileSystemProbeCache {
     private var existence: [URL: FileSystemProbeAnswer<Bool>] = [:]
     private var directories: [URL: FileSystemProbeAnswer<Bool>] = [:]
     private var volumes: [URL: FileSystemProbeAnswer<String?>] = [:]
     private let probe: any FileSystemProbing
     private let deadline: Duration
 
-    init(probe: any FileSystemProbing = FileSystemProbeService(), deadline: Duration = .milliseconds(150)) {
+    package init(probe: any FileSystemProbing = FileSystemProbeService(), deadline: Duration = .milliseconds(150)) {
         self.probe = probe
         self.deadline = deadline
     }
 
-    func directoryValue(for url: URL) -> Bool? { value(directories[url]) }
-    func volumeIdentifier(for url: URL) -> String? { value(volumes[url]) ?? nil }
-    func hasVolumeIdentifierAnswer(for url: URL) -> Bool { volumes[url] != nil }
+    package func directoryValue(for url: URL) -> Bool? { value(directories[url]) }
+    package func volumeIdentifier(for url: URL) -> String? { value(volumes[url]) ?? nil }
+    package func hasVolumeIdentifierAnswer(for url: URL) -> Bool { volumes[url] != nil }
 
-    func requestDirectory(_ url: URL) {
+    package func requestDirectory(_ url: URL) {
         guard directories[url] == nil else { return }
         Task { [weak self] in
             guard let self else { return }
@@ -181,7 +183,7 @@ final class FileSystemProbeCache {
         }
     }
 
-    func requestVolumeIdentifier(_ url: URL) {
+    package func requestVolumeIdentifier(_ url: URL) {
         guard volumes[url] == nil else { return }
         Task { [weak self] in
             guard let self else { return }

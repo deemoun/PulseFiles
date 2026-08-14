@@ -1,22 +1,24 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
 /// Bridges archive operations into the file-operation facade while retaining
 /// the same sandbox policy instance as every other mutation path.
-final class FileOperationArchiveAdapter: FileOperationArchiveServicing {
+package final class FileOperationArchiveAdapter: FileOperationArchiveServicing {
     private let service: ArchiveOperationService
 
-    init(accessPolicy: SandboxFileAccessPolicy) {
+    package init(accessPolicy: SandboxFileAccessPolicy) {
         service = ArchiveOperationService(accessPolicy: accessPolicy)
     }
 
-    func createArchive(
+    package func createArchive(
         _ request: ArchiveCreateRequest,
         progressHandler: FileOperationProgressHandler?
     ) async throws -> FileOperationResult {
         try await service.create(request, progressHandler: progressHandler)
     }
 
-    func extractArchive(
+    package func extractArchive(
         _ request: ArchiveExtractRequest,
         conflictHandler: @escaping FileConflictHandler,
         progressHandler: FileOperationProgressHandler?
@@ -32,18 +34,18 @@ final class FileOperationArchiveAdapter: FileOperationArchiveServicing {
 /// Bridges batch rename planning and execution into the facade. Keeping the
 /// planner and executor together guarantees execution consumes a validated
 /// plan produced under the shared sandbox boundary.
-final class FileOperationBatchRenameAdapter: FileOperationBatchRenameServicing {
+package final class FileOperationBatchRenameAdapter: FileOperationBatchRenameServicing {
     private let service: BatchRenameService
 
-    init(accessPolicy: SandboxFileAccessPolicy) {
+    package init(accessPolicy: SandboxFileAccessPolicy) {
         service = BatchRenameService(accessPolicy: accessPolicy)
     }
 
-    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
+    package func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
         try service.plan(request)
     }
 
-    func batchRename(
+    package func batchRename(
         _ plan: BatchRenamePlan,
         progressHandler: FileOperationProgressHandler?
     ) async -> FileOperationResult {
@@ -54,10 +56,10 @@ final class FileOperationBatchRenameAdapter: FileOperationBatchRenameServicing {
 /// Executes the common, cancellation-aware loop used by trash and permanent
 /// delete. Validation and the descriptor-relative mutation remain injected by
 /// the facade, so the executor cannot bypass either safety boundary.
-struct FileOperationTrashDeleteExecutor {
-    let fileManager: FileOperationFileManaging
+package struct FileOperationTrashDeleteExecutor {
+    package let fileManager: FileOperationFileManaging
 
-    func execute(
+    package func execute(
         _ urls: [URL],
         progressHandler: FileOperationProgressHandler?,
         validate: (URL) throws -> Void,
@@ -120,23 +122,23 @@ struct FileOperationTrashDeleteExecutor {
 
 /// Centralizes the conditions under which the facade publishes an undo plan.
 /// Partial and identity-less operations intentionally produce no recovery.
-struct FileOperationUndoPlanBuilder {
-    func rename(from source: URL, to destination: URL) -> FileOperationRecovery {
+package struct FileOperationUndoPlanBuilder {
+    package func rename(from source: URL, to destination: URL) -> FileOperationRecovery {
         .init(kind: .rename, items: [.init(originalURL: source, destinationURL: destination)])
     }
 
-    func move(_ pairs: [(source: URL, destination: URL)]) -> FileOperationRecovery {
+    package func move(_ pairs: [(source: URL, destination: URL)]) -> FileOperationRecovery {
         .init(kind: .move, items: pairs.map {
             .init(originalURL: $0.source, destinationURL: $0.destination)
         })
     }
 
-    func copy(_ items: [FileOperationRecovery.Item]) -> FileOperationRecovery? {
+    package func copy(_ items: [FileOperationRecovery.Item]) -> FileOperationRecovery? {
         guard items.allSatisfy({ $0.destinationIdentity != nil }) else { return nil }
         return .init(kind: .copy, items: items)
     }
 
-    func trash(_ items: [FileOperationRecovery.Item], expectedCount: Int) -> FileOperationRecovery? {
+    package func trash(_ items: [FileOperationRecovery.Item], expectedCount: Int) -> FileOperationRecovery? {
         guard items.count == expectedCount else { return nil }
         return .init(kind: .trash, items: items)
     }

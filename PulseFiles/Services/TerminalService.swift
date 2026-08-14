@@ -1,15 +1,17 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-final class TerminalService {
-    var shellPath: String {
+package final class TerminalService {
+    package var shellPath: String {
         ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
     }
 
-    var defaultEnvironment: [String: String] {
+    package var defaultEnvironment: [String: String] {
         sanitizedEnvironment(from: ProcessInfo.processInfo.environment)
     }
 
-    func defaultVisibilityState(settings: SettingsService) -> TerminalVisibilityState {
+    package func defaultVisibilityState(settings: SettingsService) -> TerminalVisibilityState {
         DiagnosticLogger.log(.debug, category: "Terminal", "Resolved terminal visibility defaults: experimentEnabled=\(settings.experimentalTerminalEnabled); visibleByDefault=\(settings.defaultTerminalVisible)")
         return TerminalVisibilityState(
             isExperimentEnabled: settings.experimentalTerminalEnabled,
@@ -17,7 +19,7 @@ final class TerminalService {
         )
     }
 
-    func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy = .current) -> TerminalWarningState {
+    package func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy = .current) -> TerminalWarningState {
         DiagnosticLogger.log(.info, category: "Terminal", "Resolved terminal warning state: acknowledged=\(settings.hasAcknowledgedTerminalWarning); sandboxRestrictionsEnabled=\(accessPolicy.isEnabled)")
         return TerminalWarningState(
             isAcknowledged: settings.hasAcknowledgedTerminalWarning,
@@ -26,16 +28,16 @@ final class TerminalService {
         )
     }
 
-    func acknowledgeFirstUseWarning(settings: SettingsService) {
+    package func acknowledgeFirstUseWarning(settings: SettingsService) {
         DiagnosticLogger.log(.info, category: "Terminal", "Terminal first-use warning acknowledged")
         settings.hasAcknowledgedTerminalWarning = true
     }
 
-    func shouldAcknowledgeFirstUseWarning(response: Int, acknowledgementResponse: Int) -> Bool {
+    package func shouldAcknowledgeFirstUseWarning(response: Int, acknowledgementResponse: Int) -> Bool {
         response == acknowledgementResponse
     }
 
-    func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy = .current) -> URL {
+    package func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy = .current) -> URL {
         guard let activePaneURL else {
             let fallbackDescription = accessPolicy.isEnabled ? "experimental sandbox root" : "default access-policy root"
             DiagnosticLogger.log(.debug, category: "Terminal", "Resolved working directory to \(fallbackDescription) because active pane URL was unavailable")
@@ -46,7 +48,7 @@ final class TerminalService {
         return resolvedURL
     }
 
-    func sanitizedEnvironment(from environment: [String: String]) -> [String: String] {
+    package func sanitizedEnvironment(from environment: [String: String]) -> [String: String] {
         var sanitizedEnvironment = environment
 
         if shouldReplaceTerminalType(sanitizedEnvironment["TERM"]) {
@@ -78,21 +80,21 @@ final class TerminalService {
     }
 }
 
-struct TerminalVisibilityState: Equatable {
-    let isExperimentEnabled: Bool
-    let isVisibleByDefault: Bool
+package struct TerminalVisibilityState: Equatable {
+    package let isExperimentEnabled: Bool
+    package let isVisibleByDefault: Bool
 }
 
-struct TerminalWarningState: Equatable {
-    let isAcknowledged: Bool
-    let areSandboxRestrictionsEnabled: Bool
-    let isDebugBuild: Bool
+package struct TerminalWarningState: Equatable {
+    package let isAcknowledged: Bool
+    package let areSandboxRestrictionsEnabled: Bool
+    package let isDebugBuild: Bool
 
-    var messageText: String {
+    package var messageText: String {
         "Beta Terminal warning".localized
     }
 
-    var informativeText: String {
+    package var informativeText: String {
         "Beta Terminal runs shell commands in the selected folder. Shell commands can modify or delete files and may access any locations macOS has authorized for PulseFiles.".localized
     }
 }

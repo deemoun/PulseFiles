@@ -1,29 +1,31 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-enum StagingOperationState: String, Codable, Sendable {
+package enum StagingOperationState: String, Codable, Sendable {
     case active
     case completed
 }
 
-struct StagingOwnershipRecord: Codable, Equatable, Sendable {
-    let operationID: UUID
-    let stagingURL: URL
-    let createdAt: Date
-    let destinationURL: URL
-    let stagingIdentity: String
-    let destinationIdentity: String
-    var state: StagingOperationState
+package struct StagingOwnershipRecord: Codable, Equatable, Sendable {
+    package let operationID: UUID
+    package let stagingURL: URL
+    package let createdAt: Date
+    package let destinationURL: URL
+    package let stagingIdentity: String
+    package let destinationIdentity: String
+    package var state: StagingOperationState
 }
 
 /// Persists the minimum durable evidence needed to distinguish PulseFiles'
 /// private transfer directories from similarly named user content.
-final class StagingOwnershipRegistry: @unchecked Sendable {
+package final class StagingOwnershipRegistry: @unchecked Sendable {
     private struct Document: Codable {
         var records: [StagingOwnershipRecord] = []
         var didReviewLegacyNames = false
     }
 
-    static var defaultURL: URL {
+    package static var defaultURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
         return support.appendingPathComponent("PulseFiles/StagingOwnership.json")
@@ -33,31 +35,31 @@ final class StagingOwnershipRegistry: @unchecked Sendable {
     private let fileManager: FileManager
     private let lock = NSLock()
 
-    init(url: URL = StagingOwnershipRegistry.defaultURL, fileManager: FileManager = .default) {
+    package init(url: URL = StagingOwnershipRegistry.defaultURL, fileManager: FileManager = .default) {
         self.url = url
         self.fileManager = fileManager
     }
 
-    var records: [StagingOwnershipRecord] { withDocument { $0.records } }
+    package var records: [StagingOwnershipRecord] { withDocument { $0.records } }
 
-    func register(_ record: StagingOwnershipRecord) {
+    package func register(_ record: StagingOwnershipRecord) {
         update { document in
             document.records.removeAll { $0.operationID == record.operationID }
             document.records.append(record)
         }
     }
 
-    func setState(_ state: StagingOperationState, operationID: UUID) {
+    package func setState(_ state: StagingOperationState, operationID: UUID) {
         update { document in
             guard let index = document.records.firstIndex(where: { $0.operationID == operationID }) else { return }
             document.records[index].state = state
         }
     }
 
-    func remove(operationID: UUID) { update { $0.records.removeAll { $0.operationID == operationID } } }
+    package func remove(operationID: UUID) { update { $0.records.removeAll { $0.operationID == operationID } } }
 
     @discardableResult
-    func prune(keeping operationIDs: Set<UUID>) -> Int {
+    package func prune(keeping operationIDs: Set<UUID>) -> Int {
         var removed = 0
         update { document in
             let original = document.records.count
@@ -67,7 +69,7 @@ final class StagingOwnershipRegistry: @unchecked Sendable {
         return removed
     }
 
-    var didReviewLegacyNames: Bool {
+    package var didReviewLegacyNames: Bool {
         get { withDocument { $0.didReviewLegacyNames } }
         set { update { $0.didReviewLegacyNames = newValue } }
     }
@@ -92,29 +94,29 @@ final class StagingOwnershipRegistry: @unchecked Sendable {
     }
 }
 
-struct StagingCleanupCandidate: Equatable, Sendable {
-    let record: StagingOwnershipRecord
-    let byteCount: Int64
+package struct StagingCleanupCandidate: Equatable, Sendable {
+    package let record: StagingOwnershipRecord
+    package let byteCount: Int64
 }
 
-struct StagingCleanupInventory: Equatable, Sendable {
-    let candidates: [StagingCleanupCandidate]
-    let legacyItemsForReview: [URL]
-    var totalByteCount: Int64 { candidates.reduce(0) { $0 + $1.byteCount } }
+package struct StagingCleanupInventory: Equatable, Sendable {
+    package let candidates: [StagingCleanupCandidate]
+    package let legacyItemsForReview: [URL]
+    package var totalByteCount: Int64 { candidates.reduce(0) { $0 + $1.byteCount } }
 }
 
-struct StagingCleanupFailure: Sendable {
-    let url: URL
-    let message: String
+package struct StagingCleanupFailure: Sendable {
+    package let url: URL
+    package let message: String
 }
 
-struct StagingCleanupResult: Sendable {
-    let removed: [URL]
-    let failures: [StagingCleanupFailure]
+package struct StagingCleanupResult: Sendable {
+    package let removed: [URL]
+    package let failures: [StagingCleanupFailure]
 }
 
-final class StagingCleanupService: @unchecked Sendable {
-    static let conservativeAutomaticAge: TimeInterval = 7 * 24 * 60 * 60
+package final class StagingCleanupService: @unchecked Sendable {
+    package static let conservativeAutomaticAge: TimeInterval = 7 * 24 * 60 * 60
 
     private let registry: StagingOwnershipRegistry
     private let fileManager: FileManager
@@ -123,7 +125,7 @@ final class StagingCleanupService: @unchecked Sendable {
     private let remove: (URL) throws -> Void
     private let legacyReviewDirectories: () -> [URL]
 
-    init(
+    package init(
         registry: StagingOwnershipRegistry = StagingOwnershipRegistry(),
         fileManager: FileManager = .default,
         accessPolicy: SandboxFileAccessPolicy = .current,
@@ -139,12 +141,12 @@ final class StagingCleanupService: @unchecked Sendable {
         self.legacyReviewDirectories = legacyReviewDirectories
     }
 
-    static func resourceIdentity(_ url: URL) -> String? {
+    package static func resourceIdentity(_ url: URL) -> String? {
         guard let value = try? url.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else { return nil }
         return String(reflecting: value)
     }
 
-    func inventory(olderThan cutoff: Date? = nil, includeLegacyReview: Bool = true) -> StagingCleanupInventory {
+    package func inventory(olderThan cutoff: Date? = nil, includeLegacyReview: Bool = true) -> StagingCleanupInventory {
         var candidates: [StagingCleanupCandidate] = []
         var retained = Set<UUID>()
         for record in registry.records {
@@ -159,7 +161,7 @@ final class StagingCleanupService: @unchecked Sendable {
         return .init(candidates: candidates, legacyItemsForReview: includeLegacyReview ? legacyItems() : [])
     }
 
-    func cleanup(_ candidates: [StagingCleanupCandidate]) async -> StagingCleanupResult {
+    package func cleanup(_ candidates: [StagingCleanupCandidate]) async -> StagingCleanupResult {
         await Task.detached(priority: .utility) { [self] in
             var removed: [URL] = []
             var failures: [StagingCleanupFailure] = []
@@ -182,7 +184,7 @@ final class StagingCleanupService: @unchecked Sendable {
         }.value
     }
 
-    func cleanupOnStartup(now: Date = Date()) async -> StagingCleanupResult {
+    package func cleanupOnStartup(now: Date = Date()) async -> StagingCleanupResult {
         let inventory = inventory(olderThan: now.addingTimeInterval(-Self.conservativeAutomaticAge), includeLegacyReview: false)
         return await cleanup(inventory.candidates)
     }

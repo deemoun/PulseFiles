@@ -1,4 +1,6 @@
-// Keep the executable's existing source and test imports stable while the
-// low-dependency layers move behind explicit SwiftPM module boundaries.
+// Application sources may use the lower layers without repeating imports in every
+// AppKit file; the layers themselves remain explicit SwiftPM dependencies.
 @_exported import PulseFilesModels
+@_exported import PulseFilesServices
 @_exported import PulseFilesUtilities
+@_exported import PulseFilesWorkflows

@@ -1,3 +1,5 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 #if os(macOS)
 import Darwin
@@ -5,26 +7,26 @@ import Darwin
 
 /// Executes transfers only after the facade has acquired operation-level access
 /// and the preflight validator and planner have approved the request.
-final class FileTransferExecutor {
-    enum TransferKind { case copy, move }
+package final class FileTransferExecutor {
+    package enum TransferKind { case copy, move }
     private struct TransferFailure: Error { let underlyingError: Error; let cleanupWarnings: [FileOperationCleanupWarning] }
-    struct TransferMetadata: Sendable { let itemCount: Int; let byteCount: Int64? }
+    package struct TransferMetadata: Sendable { let itemCount: Int; let byteCount: Int64? }
     /// A policy-validated, same-volume directory owned by one transfer.
-    struct StagingArea {
+    package struct StagingArea {
         let operationID: UUID; let directory: URL; let marker: URL; let stagedItem: URL; let backupItem: URL
         func isOwned(using fileManager: FileOperationFileManaging) -> Bool { fileManager.fileExists(atPath: marker.path) }
     }
     /// Throttles recursive byte/item updates before they reach the main actor.
-    final class RecursiveProgressState {
+    package final class RecursiveProgressState {
         private static let minimumUpdateInterval: TimeInterval = 1.0 / 15.0
         let totalItemCount: Int?; var completedItemCount: Int; let totalByteCount: Int64?; var completedByteCount: Int64
         private var lastProgressUpdate = Date.distantPast
         init(totalItemCount: Int?, completedItemCount: Int, totalByteCount: Int64?, completedByteCount: Int64) { self.totalItemCount=totalItemCount; self.completedItemCount=completedItemCount; self.totalByteCount=totalByteCount; self.completedByteCount=completedByteCount }
         func shouldPublishProgress(force: Bool) -> Bool { let now=Date(); guard force || now.timeIntervalSince(lastProgressUpdate) >= Self.minimumUpdateInterval else { return false }; lastProgressUpdate=now; return true }
     }
-    let fileManager: FileOperationFileManaging
-    let streamingCopier: FileOperationStreamingCopying
-    let descriptorOperator: DescriptorRelativeFileOperator
+    package let fileManager: FileOperationFileManaging
+    package let streamingCopier: FileOperationStreamingCopying
+    package let descriptorOperator: DescriptorRelativeFileOperator
     private let preflightValidator: FileOperationPreflightValidator
     private let metadataPreserver: FileMetadataPreserver
     private let accessPolicy: SandboxFileAccessPolicy
@@ -34,10 +36,10 @@ final class FileTransferExecutor {
     private let stagingRegistry: StagingOwnershipRegistry
     private let undoPlanBuilder = FileOperationUndoPlanBuilder()
 
-    init(fileManager: FileOperationFileManaging, streamingCopier: FileOperationStreamingCopying, descriptorOperator: DescriptorRelativeFileOperator, preflightValidator: FileOperationPreflightValidator, metadataPreserver: FileMetadataPreserver, accessPolicy: SandboxFileAccessPolicy, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState, traversalLimits: FileOperationService.TraversalLimits, replacementDirectoryProvider: @escaping (URL) throws -> URL, stagingRegistry: StagingOwnershipRegistry) {
+    package init(fileManager: FileOperationFileManaging, streamingCopier: FileOperationStreamingCopying, descriptorOperator: DescriptorRelativeFileOperator, preflightValidator: FileOperationPreflightValidator, metadataPreserver: FileMetadataPreserver, accessPolicy: SandboxFileAccessPolicy, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState, traversalLimits: FileOperationService.TraversalLimits, replacementDirectoryProvider: @escaping (URL) throws -> URL, stagingRegistry: StagingOwnershipRegistry) {
         self.fileManager=fileManager; self.streamingCopier=streamingCopier; self.descriptorOperator=descriptorOperator; self.preflightValidator=preflightValidator; self.metadataPreserver=metadataPreserver; self.accessPolicy=accessPolicy; self.pathSafetyStateProvider=pathSafetyStateProvider; self.traversalLimits=traversalLimits; self.replacementDirectoryProvider=replacementDirectoryProvider; self.stagingRegistry=stagingRegistry
     }
-    func performTransfer(
+    package func performTransfer(
         _ plans: [FileTransferPlanner.TransferPlan],
         kind: TransferKind,
         progressHandler: FileOperationProgressHandler?
@@ -347,7 +349,7 @@ final class FileTransferExecutor {
         }
     }
 
-    func calculateTransferMetadata(
+    package func calculateTransferMetadata(
         for urls: [URL],
         preparationProgress: (@Sendable (Int, URL) async -> Void)? = nil
     ) async throws -> TransferMetadata? {
@@ -631,7 +633,7 @@ final class FileTransferExecutor {
         #endif
     }
 
-    static func systemReplacementDirectory(appropriateFor destination: URL) throws -> URL {
+    package static func systemReplacementDirectory(appropriateFor destination: URL) throws -> URL {
         try FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -642,5 +644,5 @@ final class FileTransferExecutor {
 }
 
 private extension FileConflictResolution {
-    var performsTransfer: Bool { self == .replace || self == .keepBoth }
+    package var performsTransfer: Bool { self == .replace || self == .keepBoth }
 }

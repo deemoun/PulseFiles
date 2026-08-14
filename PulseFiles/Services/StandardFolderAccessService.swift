@@ -1,11 +1,13 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-enum StandardFolder: String, CaseIterable {
+package enum StandardFolder: String, CaseIterable {
     case desktop
     case documents
     case downloads
 
-    var searchPathDirectory: FileManager.SearchPathDirectory {
+    package var searchPathDirectory: FileManager.SearchPathDirectory {
         switch self {
         case .desktop: return .desktopDirectory
         case .documents: return .documentDirectory
@@ -13,7 +15,7 @@ enum StandardFolder: String, CaseIterable {
         }
     }
 
-    var title: String {
+    package var title: String {
         switch self {
         case .desktop: return "Desktop".localized
         case .documents: return "Documents".localized
@@ -22,7 +24,7 @@ enum StandardFolder: String, CaseIterable {
     }
 }
 
-enum StandardFolderAccessState: Equatable {
+package enum StandardFolderAccessState: Equatable {
     case accessible
     case deniedOrUnavailable
     case requiresSystemSettingsReview
@@ -32,15 +34,15 @@ enum StandardFolderAccessState: Equatable {
 /// Resolves protected user folders and performs the small read that lets macOS
 /// evaluate Files & Folders consent. It deliberately does not persist a grant:
 /// TCC decisions and security-scoped folder bookmarks are separate capabilities.
-final class StandardFolderAccessService {
-    typealias URLResolver = (FileManager.SearchPathDirectory) -> URL?
-    typealias DirectoryReader = (URL) throws -> Void
+package final class StandardFolderAccessService {
+    package typealias URLResolver = (FileManager.SearchPathDirectory) -> URL?
+    package typealias DirectoryReader = (URL) throws -> Void
 
     private let accessPolicy: SandboxFileAccessPolicy
     private let urlResolver: URLResolver
     private let directoryReader: DirectoryReader
 
-    init(
+    package init(
         accessPolicy: SandboxFileAccessPolicy = .current,
         urlResolver: @escaping URLResolver = { FileManager.default.urls(for: $0, in: .userDomainMask).first },
         directoryReader: @escaping DirectoryReader = { url in
@@ -52,11 +54,11 @@ final class StandardFolderAccessService {
         self.directoryReader = directoryReader
     }
 
-    func url(for folder: StandardFolder) -> URL? {
+    package func url(for folder: StandardFolder) -> URL? {
         urlResolver(folder.searchPathDirectory)?.standardizedFileURL
     }
 
-    func requestAccess(for folder: StandardFolder) -> StandardFolderAccessState {
+    package func requestAccess(for folder: StandardFolder) -> StandardFolderAccessState {
         guard let url = url(for: folder) else { return .deniedOrUnavailable }
         guard accessPolicy.canAttemptProtectedFolderAccess(url) else { return .blockedByExperimentalSandbox }
 
@@ -68,7 +70,7 @@ final class StandardFolderAccessService {
         }
     }
 
-    static func state(for error: Error) -> StandardFolderAccessState {
+    package static func state(for error: Error) -> StandardFolderAccessState {
         let nsError = error as NSError
         if nsError.domain == NSCocoaErrorDomain,
            nsError.code == CocoaError.fileReadNoPermission.rawValue || nsError.code == CocoaError.fileWriteNoPermission.rawValue {

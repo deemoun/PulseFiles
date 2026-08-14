@@ -1,5 +1,6 @@
 import XCTest
-@testable import PulseFiles
+@testable import PulseFilesModels
+@testable import PulseFilesUtilities
 
 final class FileUtilityTests: XCTestCase {
     func testShellEscapingSingleQuotes() {
