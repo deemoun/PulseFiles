@@ -1,45 +1,47 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 import Darwin
 
-protocol DirectoryMonitorSource: AnyObject {
-    func setEventHandler(_ handler: @escaping () -> Void)
-    func setCancelHandler(_ handler: @escaping () -> Void)
-    func resume()
-    func cancel()
+package protocol DirectoryMonitorSource: AnyObject {
+    package func setEventHandler(_ handler: @escaping () -> Void)
+    package func setCancelHandler(_ handler: @escaping () -> Void)
+    package func resume()
+    package func cancel()
 }
 
-struct DirectoryMonitorSourceHandle {
-    let fileDescriptor: CInt
-    let source: DirectoryMonitorSource
+package struct DirectoryMonitorSourceHandle {
+    package let fileDescriptor: CInt
+    package let source: DirectoryMonitorSource
 }
 
-protocol DirectoryMonitorSourceFactory {
-    func makeSource(for url: URL, queue: DispatchQueue) -> DirectoryMonitorSourceHandle?
+package protocol DirectoryMonitorSourceFactory {
+    package func makeSource(for url: URL, queue: DispatchQueue) -> DirectoryMonitorSourceHandle?
 }
 
-protocol DirectoryMonitorDebounceWork: AnyObject {
-    func cancel()
+package protocol DirectoryMonitorDebounceWork: AnyObject {
+    package func cancel()
 }
 
-protocol DirectoryMonitorDebounceScheduling {
-    func schedule(after delay: DispatchTimeInterval, on queue: DispatchQueue, _ action: @escaping () -> Void) -> DirectoryMonitorDebounceWork
+package protocol DirectoryMonitorDebounceScheduling {
+    package func schedule(after delay: DispatchTimeInterval, on queue: DispatchQueue, _ action: @escaping () -> Void) -> DirectoryMonitorDebounceWork
 }
 
 private final class DispatchDirectoryMonitorSource: DirectoryMonitorSource {
     private let source: DispatchSourceFileSystemObject
 
-    init(source: DispatchSourceFileSystemObject) {
+    package init(source: DispatchSourceFileSystemObject) {
         self.source = source
     }
 
-    func setEventHandler(_ handler: @escaping () -> Void) { source.setEventHandler(handler: handler) }
-    func setCancelHandler(_ handler: @escaping () -> Void) { source.setCancelHandler(handler: handler) }
-    func resume() { source.resume() }
-    func cancel() { source.cancel() }
+    package func setEventHandler(_ handler: @escaping () -> Void) { source.setEventHandler(handler: handler) }
+    package func setCancelHandler(_ handler: @escaping () -> Void) { source.setCancelHandler(handler: handler) }
+    package func resume() { source.resume() }
+    package func cancel() { source.cancel() }
 }
 
 private struct SystemDirectoryMonitorSourceFactory: DirectoryMonitorSourceFactory {
-    func makeSource(for url: URL, queue: DispatchQueue) -> DirectoryMonitorSourceHandle? {
+    package func makeSource(for url: URL, queue: DispatchQueue) -> DirectoryMonitorSourceHandle? {
         let descriptor = open(url.path, O_EVTONLY)
         guard descriptor >= 0 else { return nil }
         let source = DispatchSource.makeFileSystemObjectSource(
@@ -55,20 +57,20 @@ private struct SystemDirectoryMonitorSourceFactory: DirectoryMonitorSourceFactor
 private final class DispatchDirectoryMonitorDebounceWork: DirectoryMonitorDebounceWork {
     private let workItem: DispatchWorkItem
 
-    init(workItem: DispatchWorkItem) { self.workItem = workItem }
-    func cancel() { workItem.cancel() }
+    package init(workItem: DispatchWorkItem) { self.workItem = workItem }
+    package func cancel() { workItem.cancel() }
 }
 
 private struct DispatchDirectoryMonitorDebounceScheduler: DirectoryMonitorDebounceScheduling {
-    func schedule(after delay: DispatchTimeInterval, on queue: DispatchQueue, _ action: @escaping () -> Void) -> DirectoryMonitorDebounceWork {
+    package func schedule(after delay: DispatchTimeInterval, on queue: DispatchQueue, _ action: @escaping () -> Void) -> DirectoryMonitorDebounceWork {
         let workItem = DispatchWorkItem(block: action)
         queue.asyncAfter(deadline: .now() + delay, execute: workItem)
         return DispatchDirectoryMonitorDebounceWork(workItem: workItem)
     }
 }
 
-final class DirectoryMonitor {
-    var onChange: (() -> Void)? {
+package final class DirectoryMonitor {
+    package var onChange: (() -> Void)? {
         get { withState { onChangeHandler } }
         set { withState { onChangeHandler = newValue } }
     }
@@ -88,7 +90,7 @@ final class DirectoryMonitor {
     private let sourceFactory: DirectoryMonitorSourceFactory
     private let debounceScheduler: DirectoryMonitorDebounceScheduling
 
-    init(
+    package init(
         sourceFactory: DirectoryMonitorSourceFactory = SystemDirectoryMonitorSourceFactory(),
         debounceScheduler: DirectoryMonitorDebounceScheduling = DispatchDirectoryMonitorDebounceScheduler(),
         queue: DispatchQueue? = nil
@@ -99,7 +101,7 @@ final class DirectoryMonitor {
         stateQueue.setSpecific(key: queueSpecificKey, value: queueIdentity)
     }
 
-    func startMonitoring(_ url: URL) {
+    package func startMonitoring(_ url: URL) {
         let normalizedURL = url.standardizedFileURL.resolvingSymlinksInPath()
         withState {
             guard monitoredURL != normalizedURL || source == nil else { return }
@@ -118,7 +120,7 @@ final class DirectoryMonitor {
         }
     }
 
-    func stop() {
+    package func stop() {
         // Synchronous serialization also establishes an ordering with queued event
         // handlers and invalidates callbacks already waiting on the main queue.
         withState { stopLocked() }

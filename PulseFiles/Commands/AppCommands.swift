@@ -1,6 +1,9 @@
+import PulseFilesUtilities
+import PulseFilesModels
+import PulseFilesServices
 import Foundation
 
-enum CommandBarAction: String, CaseIterable {
+package enum CommandBarAction: String, CaseIterable {
     case rename = "Rename"
     case batchRename = "Batch Rename"
     case createArchive = "Create Archive"
@@ -17,7 +20,7 @@ enum CommandBarAction: String, CaseIterable {
     case nextTab = "Next Tab"
     case previousTab = "Previous Tab"
 
-    var title: String {
+    package var title: String {
         switch self {
         case .rename: return "Rename".localized
         case .batchRename: return "Batch Rename".localized
@@ -37,7 +40,7 @@ enum CommandBarAction: String, CaseIterable {
         }
     }
 
-    var shortcut: String {
+    package var shortcut: String {
         MainCommandShortcutRegistry.descriptor(for: MainCommand(commandBarAction: self)).primaryLabel
     }
 }

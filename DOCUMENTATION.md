@@ -8,32 +8,33 @@ do not introduce a SwiftUI rewrite without an explicit product decision.
 
 ## Dependency policy
 
-Production code is separated one dependency boundary at a time rather than moved
-into a monolithic replacement for the executable target. The allowed direction is:
+Production code is separated into SwiftPM modules that enforce the allowed
+direction at compile time:
 
 ```text
-PulseFilesUtilities → PulseFilesModels → Core/service modules
-    → AppKit presentation → PulseFiles executable composition/lifecycle
+PulseFilesUtilities → PulseFilesModels → PulseFilesServices
+    → PulseFilesWorkflows → PulseFiles (AppKit presentation and composition)
 ```
 
 Arrows mean “may be depended on by.” `PulseFilesUtilities` contains
 Foundation-only, model-independent helpers. `PulseFilesModels` contains shared
 value and state types and may depend on utilities. Utilities must not import
 models, services, or presentation; models must not import services or AppKit.
-Future narrowly scoped service modules may depend on models and utilities,
-presentation may depend on those lower layers, and executable composition may
-depend on every required presentation module. Reverse dependencies are forbidden.
+`PulseFilesServices` owns filesystem access, mutation, policy, and Foundation
+persistence implementations. `PulseFilesWorkflows` owns reusable commands and
+routing decisions. AppKit adapters and composition may depend on every lower
+layer. Reverse dependencies are forbidden and checked by
+`scripts/validate_architecture.sh`.
 
 Cross-target declarations use Swift's `package` access level so they remain
-implementation details rather than public library API. The executable temporarily
-re-exports extracted modules to preserve existing source and test imports during
-the incremental migration.
+implementation details rather than public library API. The executable re-exports
+its package-internal layers only to keep presentation files concise; each lower target declares its own imports and dependencies.
 
-Filesystem mutation currently remains with `FileOperationService` in the
-executable module. Its concrete validators, planners, executors, schedulers,
-metadata preservation, staging, and copy implementations remain internal. When
-that service is extracted, only request/result value types and the minimum
-caller-facing capability protocols may cross its module boundary.
+Filesystem mutation lives in `PulseFilesServices`. Its concrete validators,
+planners, executors, schedulers, metadata preservation, staging, and copy
+implementations remain package-internal. Operation request/result values live in
+`PulseFilesModels`; presentation and workflows cross the service boundary through
+the minimum caller-facing capability protocols.
 
 Concrete services and process-wide singletons are selected only at the application
 composition root. In production, `AppDelegate` (through
@@ -78,11 +79,15 @@ performCommand path. Keep cross-pane behavior here, not in a pane controller.
 | PulseFiles/Sidebar | Locations, mounted devices/recent folders and selection inspector. |
 | PulseFiles/Terminal | Experimental Terminal interface and process adapter; opt-in and disabled by default. |
 | PulseFiles/Settings | Preferences UI. |
-| PulseFiles/Commands | Commands, routing, shortcuts and command bar. |
+| PulseFiles/Commands | AppKit-independent commands and workflow routing. |
 | PulseFiles/Models | Small value models. |
 | PulseFiles/Services | Filesystem, operations, policy, persistence, monitoring and diagnostics. |
-| PulseFiles/Utilities | Formatting, validation, flags, colors/icons, styling and localization. |
-| PulseFilesTests | XCTest tests, fixtures and page-object helpers. |
+| PulseFiles/Utilities | Foundation-only formatting, validation, flags, localization, and path helpers. |
+| PulseFiles/PresentationSupport | AppKit-only icons, colors, shortcuts, pasteboard/macOS adapters, and presentation models split from lower layers. |
+| PulseFilesCoreTests | Focused utility and model tests. |
+| PulseFilesServicesTests | Filesystem, access-policy, and persistence service tests. |
+| PulseFilesTests | Cross-layer workflow and application behavior tests. |
+| PulseFilesAppKitUITests | In-process AppKit wiring and accessibility tests. |
 
 ## Pane browsing lifecycle
 

@@ -1,49 +1,51 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
 /// Bounded, policy-aware recursive search. Symbolic links may be returned but
 /// are never followed.
-struct DescendantSearchItem: Equatable {
-    let url: URL
-    let name: String
-    let pathContext: String
-    let typeDescription: String
-    let isDirectory: Bool
-    let isSymbolicLink: Bool
-    let size: Int64?
-    let modificationDate: Date?
+package struct DescendantSearchItem: Equatable {
+    package let url: URL
+    package let name: String
+    package let pathContext: String
+    package let typeDescription: String
+    package let isDirectory: Bool
+    package let isSymbolicLink: Bool
+    package let size: Int64?
+    package let modificationDate: Date?
 
-    init(url: URL, name: String, pathContext: String, typeDescription: String, isDirectory: Bool, isSymbolicLink: Bool, size: Int64? = nil, modificationDate: Date? = nil) {
+    package init(url: URL, name: String, pathContext: String, typeDescription: String, isDirectory: Bool, isSymbolicLink: Bool, size: Int64? = nil, modificationDate: Date? = nil) {
         self.url = url; self.name = name; self.pathContext = pathContext; self.typeDescription = typeDescription
         self.isDirectory = isDirectory; self.isSymbolicLink = isSymbolicLink; self.size = size; self.modificationDate = modificationDate
     }
 }
 
-struct DescendantSearchQuery: Equatable {
-    enum NameMatcher: Equatable { case glob(String), regularExpression(String) }
-    enum FileKind: Equatable { case file, directory, symbolicLink }
-    struct SizePredicate: Equatable { var minimumBytes: Int64?; var maximumBytes: Int64? }
-    struct DatePredicate: Equatable { var earliest: Date?; var latest: Date? }
-    enum Scope: Equatable { case folder(URL, includeDescendants: Bool) }
+package struct DescendantSearchQuery: Equatable {
+    package enum NameMatcher: Equatable { case glob(String), regularExpression(String) }
+    package enum FileKind: Equatable { case file, directory, symbolicLink }
+    package struct SizePredicate: Equatable { var minimumBytes: Int64?; var maximumBytes: Int64? }
+    package struct DatePredicate: Equatable { var earliest: Date?; var latest: Date? }
+    package enum Scope: Equatable { case folder(URL, includeDescendants: Bool) }
 
-    var nameMatcher: NameMatcher
-    var fileKinds: Set<FileKind> = []
-    var size: SizePredicate?
-    var modificationDate: DatePredicate?
-    var scopes: [Scope]
+    package var nameMatcher: NameMatcher
+    package var fileKinds: Set<FileKind> = []
+    package var size: SizePredicate?
+    package var modificationDate: DatePredicate?
+    package var scopes: [Scope]
 
-    init(nameMatcher: NameMatcher, fileKinds: Set<FileKind> = [], size: SizePredicate? = nil, modificationDate: DatePredicate? = nil, scopes: [Scope]) {
+    package init(nameMatcher: NameMatcher, fileKinds: Set<FileKind> = [], size: SizePredicate? = nil, modificationDate: DatePredicate? = nil, scopes: [Scope]) {
         self.nameMatcher = nameMatcher; self.fileKinds = fileKinds; self.size = size; self.modificationDate = modificationDate; self.scopes = scopes
     }
 }
 
-enum DescendantSearchError: LocalizedError, Equatable {
+package enum DescendantSearchError: LocalizedError, Equatable {
     case emptyPattern
     case malformedRegularExpression(String)
     case invalidSizeRange
     case invalidDateRange
     case noScopes
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .emptyPattern: return "Enter a name pattern."
         case .malformedRegularExpression(let detail): return "Invalid regular expression: \(detail)"
@@ -54,39 +56,39 @@ enum DescendantSearchError: LocalizedError, Equatable {
     }
 }
 
-struct DescendantSearchLimits: Equatable {
-    var maximumItems = 10_000
-    var maximumDepth = 32
-    var timeout: TimeInterval = 10
-    var batchSize = 100
+package struct DescendantSearchLimits: Equatable {
+    package var maximumItems = 10_000
+    package var maximumDepth = 32
+    package var timeout: TimeInterval = 10
+    package var batchSize = 100
 }
 
-struct DescendantSearchResult {
-    let items: [DescendantSearchItem]
-    let wasCancelled: Bool
-    let hitItemLimit: Bool
-    let hitDepthLimit: Bool
-    let timedOut: Bool
-    let inaccessibleURLs: [URL]
-    var isPartial: Bool { wasCancelled || hitItemLimit || hitDepthLimit || timedOut || !inaccessibleURLs.isEmpty }
+package struct DescendantSearchResult {
+    package let items: [DescendantSearchItem]
+    package let wasCancelled: Bool
+    package let hitItemLimit: Bool
+    package let hitDepthLimit: Bool
+    package let timedOut: Bool
+    package let inaccessibleURLs: [URL]
+    package var isPartial: Bool { wasCancelled || hitItemLimit || hitDepthLimit || timedOut || !inaccessibleURLs.isEmpty }
 }
 
-typealias DescendantSearchBatchHandler = @Sendable ([DescendantSearchItem]) async -> Void
+package typealias DescendantSearchBatchHandler = @Sendable ([DescendantSearchItem]) async -> Void
 
-final class DescendantSearchService {
+package final class DescendantSearchService {
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
+    package init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
         self.fileManager = fileManager; self.accessPolicy = accessPolicy
     }
 
     /// Compatibility entry point: a plain string is a case-insensitive glob fragment.
-    func search(query: String, rootURL: URL, limits: DescendantSearchLimits = .init()) async throws -> DescendantSearchResult {
+    package func search(query: String, rootURL: URL, limits: DescendantSearchLimits = .init()) async throws -> DescendantSearchResult {
         try await search(query: .init(nameMatcher: .glob("*\(query.trimmingCharacters(in: .whitespacesAndNewlines))*"), scopes: [.folder(rootURL, includeDescendants: true)]), limits: limits)
     }
 
-    func search(query: DescendantSearchQuery, limits: DescendantSearchLimits = .init(), onBatch: DescendantSearchBatchHandler? = nil) async throws -> DescendantSearchResult {
+    package func search(query: DescendantSearchQuery, limits: DescendantSearchLimits = .init(), onBatch: DescendantSearchBatchHandler? = nil) async throws -> DescendantSearchResult {
         let matcher = try Self.compile(query)
         guard !query.scopes.isEmpty else { throw DescendantSearchError.noScopes }
         let roots = query.scopes.map { scope -> URL in if case .folder(let url, _) = scope { return url }; fatalError() }

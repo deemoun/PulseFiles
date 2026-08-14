@@ -1,3 +1,5 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 #if os(macOS)
 import Darwin
@@ -5,14 +7,14 @@ import Darwin
 
 /// Performs mutations relative to a verified parent directory descriptor on
 /// macOS, preventing path replacement between validation and mutation.
-final class DescriptorRelativeFileOperator {
+package final class DescriptorRelativeFileOperator {
     private let fileManager: FileOperationFileManaging
 
-    init(fileManager: FileOperationFileManaging) {
+    package init(fileManager: FileOperationFileManaging) {
         self.fileManager = fileManager
     }
 
-    func verifyExistingItem(_ url: URL) throws {
+    package func verifyExistingItem(_ url: URL) throws {
         #if os(macOS)
         guard fileManager is FileManager else {
             guard fileManager.fileExists(atPath: url.path) else { throw FileOperationError.sourceMissing(url) }
@@ -27,7 +29,7 @@ final class DescriptorRelativeFileOperator {
         #endif
     }
 
-    func rename(_ source: URL, to destination: URL) throws {
+    package func rename(_ source: URL, to destination: URL) throws {
         #if os(macOS)
         guard fileManager is FileManager else { try fileManager.moveItem(at: source, to: destination); return }
         let sourceParent = try OpenDirectoryCapability(directory: source.deletingLastPathComponent())
@@ -42,7 +44,7 @@ final class DescriptorRelativeFileOperator {
         #endif
     }
 
-    func remove(_ url: URL) throws {
+    package func remove(_ url: URL) throws {
         #if os(macOS)
         guard fileManager is FileManager else { try fileManager.removeItem(at: url); return }
         let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
@@ -53,7 +55,7 @@ final class DescriptorRelativeFileOperator {
         #endif
     }
 
-    func create(_ url: URL, isDirectory: Bool) throws {
+    package func create(_ url: URL, isDirectory: Bool) throws {
         #if os(macOS)
         guard fileManager is FileManager else {
             if isDirectory { try fileManager.createDirectory(at: url, withIntermediateDirectories: false) }
@@ -70,7 +72,7 @@ final class DescriptorRelativeFileOperator {
         #endif
     }
 
-    func createSymbolicLink(at url: URL, destination: String) throws {
+    package func createSymbolicLink(at url: URL, destination: String) throws {
         #if os(macOS)
         guard fileManager is FileManager else { try fileManager.createSymbolicLink(atPath: url.path, withDestinationPath: destination); return }
         let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())

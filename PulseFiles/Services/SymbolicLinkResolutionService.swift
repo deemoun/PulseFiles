@@ -1,16 +1,18 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-protocol SymbolicLinkDestinationReading {
-    func destinationOfSymbolicLink(atPath path: String) throws -> String
-    func fileExists(atPath path: String) -> Bool
+package protocol SymbolicLinkDestinationReading {
+    package func destinationOfSymbolicLink(atPath path: String) throws -> String
+    package func fileExists(atPath path: String) -> Bool
 }
 
-extension FileManager: SymbolicLinkDestinationReading {}
+package extension FileManager: SymbolicLinkDestinationReading {}
 
-enum SymbolicLinkResolutionError: LocalizedError, Equatable {
+package enum SymbolicLinkResolutionError: LocalizedError, Equatable {
     case targetDoesNotExist
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .targetDoesNotExist:
             return "The symbolic link target does not exist.".localized
@@ -21,14 +23,14 @@ enum SymbolicLinkResolutionError: LocalizedError, Equatable {
 /// Resolves exactly the destination stored in a link. It intentionally does
 /// not recursively inspect subsequent links; normal pane navigation decides
 /// how the returned one-hop target is opened.
-struct SymbolicLinkResolutionService {
+package struct SymbolicLinkResolutionService {
     private let fileManager: SymbolicLinkDestinationReading
 
-    init(fileManager: SymbolicLinkDestinationReading = FileManager.default) {
+    package init(fileManager: SymbolicLinkDestinationReading = FileManager.default) {
         self.fileManager = fileManager
     }
 
-    func resolveOneHop(_ linkURL: URL) throws -> URL {
+    package func resolveOneHop(_ linkURL: URL) throws -> URL {
         let storedDestination = try fileManager.destinationOfSymbolicLink(atPath: linkURL.path)
         let target: URL
         if storedDestination.hasPrefix("/") {

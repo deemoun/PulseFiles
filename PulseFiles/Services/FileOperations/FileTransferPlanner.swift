@@ -1,16 +1,18 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
 /// Owns conflict and naming decisions; it never mutates the filesystem.
-final class FileTransferPlanner {
+package final class FileTransferPlanner {
     private let fileManager: FileOperationFileManaging
     private let accessPolicy: SandboxFileAccessPolicy
 
-    init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy) {
+    package init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
     }
 
-    static func keepBothDestination(for destination: URL, reservedDestinations: Set<String> = [], fileExists: (URL) -> Bool) -> URL {
+    package static func keepBothDestination(for destination: URL, reservedDestinations: Set<String> = [], fileExists: (URL) -> Bool) -> URL {
         let ext = destination.pathExtension
         let base = ext.isEmpty ? destination.lastPathComponent : destination.deletingPathExtension().lastPathComponent
         var index = 1
@@ -23,19 +25,19 @@ final class FileTransferPlanner {
         }
     }
 
-    func validateDestination(_ destination: URL) throws {
+    package func validateDestination(_ destination: URL) throws {
         try accessPolicy.validateDestinationAccess(to: destination)
         _ = fileManager.fileExists(atPath: destination.path)
     }
 
-    struct TransferPlan {
+    package struct TransferPlan {
         let source: URL
         let destination: URL
         let conflictResolution: FileConflictResolution
         let replacesExistingDestination: Bool
     }
 
-    func resolveTransferPlans(
+    package func resolveTransferPlans(
         for request: FileOperationRequest,
         conflictHandler: FileConflictHandler,
         conflictResolutionHandler: (URL, FileConflictResolution) -> Void
@@ -98,7 +100,7 @@ final class FileTransferPlanner {
 }
 
 private extension FileConflictResolution {
-    var resolutionAppliedToRemainingConflicts: FileConflictResolution? {
+    package var resolutionAppliedToRemainingConflicts: FileConflictResolution? {
         switch self { case .applyToRemainingReplace: return .replace; case .applyToRemainingSkip: return .skip; case .applyToRemainingKeepBoth: return .keepBoth; default: return nil }
     }
 

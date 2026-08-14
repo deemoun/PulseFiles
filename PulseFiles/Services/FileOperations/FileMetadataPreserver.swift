@@ -1,3 +1,5 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 #if os(macOS)
 import Darwin
@@ -5,11 +7,11 @@ import Darwin
 
 /// Preserves timestamps, Finder labels/tags, extended attributes, and ACLs
 /// after content transfer. Metadata loss is returned as a cleanup warning.
-final class FileMetadataPreserver {
+package final class FileMetadataPreserver {
     private let attributes: (String) throws -> [FileAttributeKey: Any]
     private let setAttributes: ([FileAttributeKey: Any], String) throws -> Void
 
-    init(
+    package init(
         fileManager: FileOperationFileManaging,
         attributes: @escaping (String) throws -> [FileAttributeKey: Any] = FileManager.default.attributesOfItem,
         setAttributes: @escaping ([FileAttributeKey: Any], String) throws -> Void = { try FileManager.default.setAttributes($0, ofItemAtPath: $1) }
@@ -19,7 +21,7 @@ final class FileMetadataPreserver {
         self.setAttributes = setAttributes
     }
 
-    func preserve(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
+    package func preserve(from source: URL, to destination: URL) -> [FileOperationCleanupWarning] {
         var warnings: [FileOperationCleanupWarning] = []
         do {
             let selected = try attributes(source.path).filter { [.posixPermissions, .ownerAccountID, .groupOwnerAccountID, .creationDate, .modificationDate].contains($0.key) }
@@ -39,7 +41,7 @@ final class FileMetadataPreserver {
         return warnings
     }
 
-    func warning(for url: URL, error: Error) -> FileOperationCleanupWarning {
+    package func warning(for url: URL, error: Error) -> FileOperationCleanupWarning {
         FileOperationCleanupWarning(url: url, message: "PulseFiles copied item contents but could not preserve all metadata at %@: %@".localized(with: url.path, error.localizedDescription))
     }
 

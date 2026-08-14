@@ -1,13 +1,15 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-enum BatchRenameError: LocalizedError, Equatable {
+package enum BatchRenameError: LocalizedError, Equatable {
     case countMismatch
     case differentDirectories
     case duplicateSource(URL)
     case duplicateDestination(URL)
     case destinationCollision(URL)
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .countMismatch: return "Every selected item must have a previewed destination name.".localized
         case .differentDirectories: return "Batch rename requires items from one folder.".localized
@@ -22,15 +24,15 @@ enum BatchRenameError: LocalizedError, Equatable {
 /// Once phase one starts, any cancellation/failure triggers best-effort rollback
 /// to the original names. Rollback failures are reported as cleanup warnings and
 /// the result is partial; PulseFiles never claims atomicity from FileManager.
-final class BatchRenameService {
+package final class BatchRenameService {
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
+    package init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
         self.fileManager = fileManager; self.accessPolicy = accessPolicy
     }
 
-    func plan(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
+    package func plan(_ request: BatchRenameRequest) throws -> BatchRenamePlan {
         guard !request.sources.isEmpty else { throw FileOperationError.emptySelection }
         guard request.sources.count == request.proposedNames.count else { throw BatchRenameError.countMismatch }
         let sources = request.sources.map { $0.standardizedFileURL }
@@ -57,7 +59,7 @@ final class BatchRenameService {
         return BatchRenamePlan(items: items)
     }
 
-    func execute(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler? = nil) async -> FileOperationResult {
+    package func execute(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler? = nil) async -> FileOperationResult {
         if Task.isCancelled { return .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true) }
         let changing = plan.items.filter { $0.sourceURL != $0.destinationURL }
         guard !changing.isEmpty else { return .init(completedItems: plan.items.map(\.destinationURL), skippedItems: [], failedItems: [], wasCancelled: false) }

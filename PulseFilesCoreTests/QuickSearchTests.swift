@@ -1,5 +1,6 @@
 import XCTest
-@testable import PulseFiles
+@testable import PulseFilesModels
+@testable import PulseFilesUtilities
 
 final class QuickSearchTests: XCTestCase {
     func testContainsReturnsOriginalStringRange() {

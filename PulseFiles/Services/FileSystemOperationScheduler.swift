@@ -1,16 +1,18 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
 /// Coordinates blocking filesystem calls so an unresponsive volume cannot create
 /// an unlimited number of threads. Directory loads are dispatched before optional
 /// probes; timed-out/cancelled calls continue to occupy a slot until their
 /// underlying synchronous API actually returns.
-actor FileSystemOperationScheduler {
+package actor FileSystemOperationScheduler {
   enum Priority: Int, Sendable, Comparable {
     case probe
     case backgroundPane
     case visiblePane
 
-    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+    package static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
   }
 
   enum Rejection: Error, Equatable, Sendable {
@@ -19,11 +21,11 @@ actor FileSystemOperationScheduler {
   }
 
   struct Configuration: Sendable {
-    let maximumConcurrentOperations: Int
-    let maximumQueuedOperations: Int
-    let maximumAbandonedOperations: Int
+    package let maximumConcurrentOperations: Int
+    package let maximumQueuedOperations: Int
+    package let maximumAbandonedOperations: Int
 
-    init(
+    package init(
       maximumConcurrentOperations: Int = 2, maximumQueuedOperations: Int = 32,
       maximumAbandonedOperations: Int = 2
     ) {
@@ -37,19 +39,19 @@ actor FileSystemOperationScheduler {
   }
 
   struct Statistics: Sendable, Equatable {
-    let running: Int
-    let queued: Int
-    let abandoned: Int
-    let staleOperations: Int
+    package let running: Int
+    package let queued: Int
+    package let abandoned: Int
+    package let staleOperations: Int
   }
 
   static let shared = FileSystemOperationScheduler()
 
   private struct Work {
-    let id: UInt64
-    let priority: Priority
-    let operation: @Sendable () throws -> AnySendable
-    let resume: @Sendable (Result<AnySendable, Error>) -> Void
+    package let id: UInt64
+    package let priority: Priority
+    package let operation: @Sendable () throws -> AnySendable
+    package let resume: @Sendable (Result<AnySendable, Error>) -> Void
   }
 
   private let configuration: Configuration
@@ -70,7 +72,7 @@ actor FileSystemOperationScheduler {
   func submit<Value: Sendable>(
     priority: Priority, operation: @escaping @Sendable () throws -> Value
   ) async throws -> Value {
-    let id = nextID
+    package let id = nextID
     nextID &+= 1
     return try await withTaskCancellationHandler(
       operation: {

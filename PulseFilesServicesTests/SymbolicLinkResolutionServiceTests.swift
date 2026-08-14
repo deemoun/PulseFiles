@@ -1,6 +1,8 @@
 import Foundation
 import XCTest
-@testable import PulseFiles
+@testable import PulseFilesServices
+@testable import PulseFilesModels
+@testable import PulseFilesUtilities
 
 final class SymbolicLinkResolutionServiceTests: XCTestCase {
     func testResolvesAbsoluteAndRelativeTargetsOneHop() throws {

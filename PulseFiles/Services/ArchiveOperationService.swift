@@ -1,6 +1,8 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-enum ArchiveOperationError: LocalizedError, Equatable {
+package enum ArchiveOperationError: LocalizedError, Equatable {
     case unsupportedFormat
     case malformedArchive
     case unsafePath(String)
@@ -10,7 +12,7 @@ enum ArchiveOperationError: LocalizedError, Equatable {
     case expandedByteLimitExceeded(Int64)
     case nestingLimitExceeded(String)
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .unsupportedFormat: return "This archive format or compression method is not supported safely.".localized
         case .malformedArchive: return "The archive is damaged or incomplete.".localized
@@ -26,16 +28,16 @@ enum ArchiveOperationError: LocalizedError, Equatable {
 
 /// Minimal, audited ZIP reader/writer. Creation uses ZIP's stored method;
 /// extraction accepts stored entries only. No process or shell is launched.
-final class ArchiveOperationService {
+package final class ArchiveOperationService {
     private struct Entry { let path: String; let dataOffset: Int; let size: Int; let crc: UInt32; let isDirectory: Bool }
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
 
-    init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
+    package init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current) {
         self.fileManager = fileManager; self.accessPolicy = accessPolicy
     }
 
-    func create(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+    package func create(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         guard !request.sources.isEmpty else { throw FileOperationError.emptySelection }
         guard request.format == .zip else { throw ArchiveOperationError.unsupportedFormat }
         try accessPolicy.validateDestinationAccess(to: request.destinationURL)
@@ -76,7 +78,7 @@ final class ArchiveOperationService {
         }
     }
 
-    func extract(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
+    package func extract(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler? = nil) async throws -> FileOperationResult {
         try accessPolicy.validateAccess(to: request.archiveURL); try accessPolicy.validateAccess(to: request.destinationDirectory)
         let data = try Data(contentsOf: request.archiveURL, options: .mappedIfSafe)
         let entries = try parse(data, limits: request.limits)
@@ -203,7 +205,7 @@ final class ArchiveOperationService {
 private extension Data {
     mutating func le16(_ value: UInt16) { append(UInt8(value & 255)); append(UInt8(value >> 8)) }
     mutating func le32(_ value: UInt32) { le16(UInt16(value & 0xffff)); le16(UInt16(value >> 16)) }
-    func valid(_ offset: Int, _ length: Int) -> Bool { offset >= 0 && length >= 0 && offset <= count && length <= count - offset }
-    func u16(_ offset: Int) -> UInt16 { guard valid(offset, 2) else { return 0 }; return UInt16(self[offset]) | UInt16(self[offset + 1]) << 8 }
-    func u32(_ offset: Int) -> UInt32 { UInt32(u16(offset)) | UInt32(u16(offset + 2)) << 16 }
+    package func valid(_ offset: Int, _ length: Int) -> Bool { offset >= 0 && length >= 0 && offset <= count && length <= count - offset }
+    package func u16(_ offset: Int) -> UInt16 { guard valid(offset, 2) else { return 0 }; return UInt16(self[offset]) | UInt16(self[offset + 1]) << 8 }
+    package func u32(_ offset: Int) -> UInt32 { UInt32(u16(offset)) | UInt32(u16(offset + 2)) << 16 }
 }

@@ -1,13 +1,15 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 import Darwin
 
 /// Measures logical file content using POSIX filesystem calls rather than the
 /// directory listing cache. Symbolic links are measured as links and never
 /// followed while walking a directory.
-struct SystemFileSizeService {
+package struct SystemFileSizeService {
     /// Returns the logical size in bytes of a file, or the combined logical
     /// size of every entry contained by a directory.
-    func size(of url: URL) throws -> Int64 {
+    package func size(of url: URL) throws -> Int64 {
         try size(atPath: url.path)
     }
 

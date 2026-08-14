@@ -1,31 +1,33 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-enum ScratchFolderCleanupAction: Equatable, Sendable {
+package enum ScratchFolderCleanupAction: Equatable, Sendable {
     case moveToTrash
     case permanentlyDelete
 }
 
-struct ScratchFolderSelection: Equatable, Sendable {
-    let directory: URL
-    let identity: String
-    let resolvedPath: String
+package struct ScratchFolderSelection: Equatable, Sendable {
+    package let directory: URL
+    package let identity: String
+    package let resolvedPath: String
 }
 
-struct ScratchFolderInventory: Sendable {
-    let selection: ScratchFolderSelection
-    let deletionURLs: [URL]
-    let itemCount: Int
-    let allocatedByteCount: Int64
+package struct ScratchFolderInventory: Sendable {
+    package let selection: ScratchFolderSelection
+    package let deletionURLs: [URL]
+    package let itemCount: Int
+    package let allocatedByteCount: Int64
 }
 
-enum ScratchFolderCleanupError: LocalizedError, Equatable {
+package enum ScratchFolderCleanupError: LocalizedError, Equatable {
     case notDirectory(URL)
     case inaccessible(URL)
     case unsafeLocation(URL)
     case symbolicLink(URL)
     case uncertainTarget(URL)
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .notDirectory: return "The scratch folder is missing or is not a directory.".localized
         case .inaccessible: return "The scratch folder could not be read.".localized
@@ -35,7 +37,7 @@ enum ScratchFolderCleanupError: LocalizedError, Equatable {
         }
     }
 
-    var failureReason: String? {
+    package var failureReason: String? {
         switch self {
         case .notDirectory(let url), .inaccessible(let url), .unsafeLocation(let url),
              .symbolicLink(let url), .uncertainTarget(let url):
@@ -46,14 +48,14 @@ enum ScratchFolderCleanupError: LocalizedError, Equatable {
 
 /// Explicitly inventories and cleans a user-owned scratch folder. This is
 /// intentionally unrelated to PulseFiles' privately owned transfer staging.
-final class ScratchFolderCleanupService: @unchecked Sendable {
+package final class ScratchFolderCleanupService: @unchecked Sendable {
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
     private let fileOperations: FileOperationServicing
     private let activePaneRoots: () -> [URL]
     private let identity: (URL) -> String?
 
-    init(
+    package init(
         fileManager: FileManager = .default,
         accessPolicy: SandboxFileAccessPolicy = .current,
         fileOperations: FileOperationServicing? = nil,
@@ -67,13 +69,13 @@ final class ScratchFolderCleanupService: @unchecked Sendable {
         self.identity = identity
     }
 
-    func captureSelection(for directory: URL) throws -> ScratchFolderSelection {
+    package func captureSelection(for directory: URL) throws -> ScratchFolderSelection {
         try validateDirectory(directory, expectedSelection: nil)
         guard let identity = identity(directory) else { throw ScratchFolderCleanupError.uncertainTarget(directory) }
         return .init(directory: directory.standardizedFileURL, identity: identity, resolvedPath: directory.resolvingSymlinksInPath().standardizedFileURL.path)
     }
 
-    func inventory(for selection: ScratchFolderSelection) throws -> ScratchFolderInventory {
+    package func inventory(for selection: ScratchFolderSelection) throws -> ScratchFolderInventory {
         try validateDirectory(selection.directory, expectedSelection: selection)
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
         let deletionURLs: [URL]
@@ -93,7 +95,7 @@ final class ScratchFolderCleanupService: @unchecked Sendable {
         return .init(selection: selection, deletionURLs: deletionURLs, itemCount: itemCount, allocatedByteCount: allocatedByteCount)
     }
 
-    func cleanup(_ inventory: ScratchFolderInventory, action: ScratchFolderCleanupAction?) async throws -> FileOperationResult {
+    package func cleanup(_ inventory: ScratchFolderInventory, action: ScratchFolderCleanupAction?) async throws -> FileOperationResult {
         guard let action else {
             return .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true)
         }

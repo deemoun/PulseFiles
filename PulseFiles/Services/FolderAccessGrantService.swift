@@ -1,47 +1,49 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
-struct FolderAccessGrant: Codable, Equatable {
-    let url: URL
-    let bookmarkData: Data
+package struct FolderAccessGrant: Codable, Equatable {
+    package let url: URL
+    package let bookmarkData: Data
 }
 
-struct FolderAccessScope {
+package struct FolderAccessScope {
     fileprivate let urls: [URL]
 
-    var isActive: Bool {
+    package var isActive: Bool {
         !urls.isEmpty
     }
 }
 
 /// The usable state of a persisted folder capability for a requested path.
-enum FolderAccessGrantStatus: Equatable {
+package enum FolderAccessGrantStatus: Equatable {
     case noMatchingGrant
     case staleOrUnavailable
     case available
     case inaccessible
 }
 
-protocol FolderAccessBookmarkResolving {
-    func makeBookmarkData(for url: URL) throws -> Data
-    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool)
+package protocol FolderAccessBookmarkResolving {
+    package func makeBookmarkData(for url: URL) throws -> Data
+    package func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool)
 }
 
-struct SystemFolderAccessBookmarkResolver: FolderAccessBookmarkResolving {
-    func makeBookmarkData(for url: URL) throws -> Data {
+package struct SystemFolderAccessBookmarkResolver: FolderAccessBookmarkResolving {
+    package func makeBookmarkData(for url: URL) throws -> Data {
         try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
     }
 
-    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool) {
+    package func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool) {
         var isStale = false
         let url = try URL(resolvingBookmarkData: data, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &isStale)
         return (url, isStale)
     }
 }
 
-final class FolderAccessGrantService {
-    static let shared = FolderAccessGrantService()
+package final class FolderAccessGrantService {
+    package static let shared = FolderAccessGrantService()
 
-    static let defaultsKey = "folderAccessGrants"
+    package static let defaultsKey = "folderAccessGrants"
 
     private let defaults: UserDefaults
     private let resolver: FolderAccessBookmarkResolving
@@ -51,7 +53,7 @@ final class FolderAccessGrantService {
     private var resolvedGrants: [String: URL] = [:]
     private(set) var staleGrantURLs: [URL] = []
 
-    init(
+    package init(
         defaults: UserDefaults = .standard,
         resolver: FolderAccessBookmarkResolving = SystemFolderAccessBookmarkResolver(),
         fileManager: FileManager = .default,
@@ -66,7 +68,7 @@ final class FolderAccessGrantService {
         resolveStoredBookmarks()
     }
 
-    var grants: [FolderAccessGrant] {
+    package var grants: [FolderAccessGrant] {
         get {
             guard let data = defaults.data(forKey: Self.defaultsKey),
                   let grants = try? JSONDecoder().decode([FolderAccessGrant].self, from: data) else { return [] }
@@ -78,7 +80,7 @@ final class FolderAccessGrantService {
     }
 
     @discardableResult
-    func grantAccess(to directory: URL) throws -> FolderAccessGrant {
+    package func grantAccess(to directory: URL) throws -> FolderAccessGrant {
         var isDirectory = ObjCBool(false)
         guard fileManager.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw CocoaError(.fileNoSuchFile)
@@ -95,7 +97,7 @@ final class FolderAccessGrantService {
         return grant
     }
 
-    func resolveStoredBookmarks() {
+    package func resolveStoredBookmarks() {
         resolvedGrants.removeAll()
         staleGrantURLs.removeAll()
         var resolvedStoredGrants: [FolderAccessGrant] = []
@@ -140,13 +142,13 @@ final class FolderAccessGrantService {
     }
 
     /// Refreshes bookmark resolution after folders have moved, become available, or been reauthorized.
-    func refreshResolvedGrants() {
+    package func refreshResolvedGrants() {
         resolveStoredBookmarks()
     }
 
     /// Removes the persisted capability for a folder and immediately refreshes the resolved state.
     @discardableResult
-    func removeGrant(for directory: URL) -> Bool {
+    package func removeGrant(for directory: URL) -> Bool {
         let path = normalizedPath(directory)
         let stored = grants
         let remaining = stored.filter { normalizedPath($0.url) != path }
@@ -155,14 +157,14 @@ final class FolderAccessGrantService {
         return true
     }
 
-    func hasGrant(containing url: URL) -> Bool {
+    package func hasGrant(containing url: URL) -> Bool {
         resolvedGrant(containing: url) != nil
     }
 
     /// Checks a matching bookmark without leaving a security-scoped resource active.
     /// `canRead` and `canWrite` are deliberately injected so this decision is testable
     /// and can use the caller's filesystem access policy.
-    func grantStatus(
+    package func grantStatus(
         containing url: URL,
         requireWritable: Bool = false,
         canRead: (String) -> Bool,
@@ -180,23 +182,23 @@ final class FolderAccessGrantService {
         return .available
     }
 
-    func withSecurityScopedAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
+    package func withSecurityScopedAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
         let scope = beginSecurityScopedAccess(to: urls)
         defer { endSecurityScopedAccess(scope) }
         return try body()
     }
 
-    func withSecurityScopedAccess<T>(to urls: [URL], _ body: () async throws -> T) async rethrows -> T {
+    package func withSecurityScopedAccess<T>(to urls: [URL], _ body: () async throws -> T) async rethrows -> T {
         let scope = beginSecurityScopedAccess(to: urls)
         defer { endSecurityScopedAccess(scope) }
         return try await body()
     }
 
-    func beginSecurityScopedAccess(to urls: [URL]) -> FolderAccessScope {
+    package func beginSecurityScopedAccess(to urls: [URL]) -> FolderAccessScope {
         FolderAccessScope(urls: startAccessing(urls))
     }
 
-    func endSecurityScopedAccess(_ scope: FolderAccessScope) {
+    package func endSecurityScopedAccess(_ scope: FolderAccessScope) {
         stopAccessing(scope.urls)
     }
 

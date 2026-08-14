@@ -1,13 +1,15 @@
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 #if os(macOS)
 import Darwin
 #endif
 
-enum SandboxAccessError: LocalizedError, Equatable {
+package enum SandboxAccessError: LocalizedError, Equatable {
     case outsideExperimentalSandbox(URL)
     case unauthorized(URL)
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .outsideExperimentalSandbox:
             return "Experimental sandbox mode is enabled.".localized
@@ -16,7 +18,7 @@ enum SandboxAccessError: LocalizedError, Equatable {
         }
     }
 
-    var failureReason: String? {
+    package var failureReason: String? {
         switch self {
         case .outsideExperimentalSandbox(let url):
             return "%@ is outside the PulseFiles experimental sandbox.".localized(with: url.path)
@@ -26,8 +28,8 @@ enum SandboxAccessError: LocalizedError, Equatable {
     }
 }
 
-struct SandboxFileAccessPolicy {
-    struct AccessProbe {
+package struct SandboxFileAccessPolicy {
+    package struct AccessProbe {
         let fileExists: (String) -> Bool
         let isReadableFile: (String) -> Bool
         let isWritableFile: (String) -> Bool
@@ -42,13 +44,13 @@ struct SandboxFileAccessPolicy {
     private let isEnabledOverride: Bool?
     private let grantService: FolderAccessGrantService
     private let accessProbe: AccessProbe
-    let rootURL: URL
+    package let rootURL: URL
 
-    static let current = SandboxFileAccessPolicy(
+    package static let current = SandboxFileAccessPolicy(
         rootURL: ExperimentalFlags.appSandboxRoot
     )
 
-    init(
+    package init(
         isEnabled: Bool? = nil,
         rootURL: URL,
         grantService: FolderAccessGrantService = .shared,
@@ -60,11 +62,11 @@ struct SandboxFileAccessPolicy {
         self.accessProbe = accessProbe
     }
 
-    var isEnabled: Bool {
+    package var isEnabled: Bool {
         isEnabledOverride ?? ExperimentalFlags.restrictFileAccessToAppSandboxRoot
     }
 
-    func canAccess(_ url: URL, logDecision shouldLogDecision: Bool = true) -> Bool {
+    package func canAccess(_ url: URL, logDecision shouldLogDecision: Bool = true) -> Bool {
         let allowed: Bool
         let reason: String
         if isEnabled {
@@ -88,7 +90,7 @@ struct SandboxFileAccessPolicy {
         return allowed
     }
 
-    func validateAccess(to url: URL) throws {
+    package func validateAccess(to url: URL) throws {
         guard canAccess(url) else {
             let reason = isEnabled ? "outside sandbox root" : "not readable or not authorized"
             DiagnosticLogger.log(.warning, category: "Sandbox", "Denied access validation: path=\(DiagnosticLogger.sanitizedPath(url)); reason=\(reason)")
@@ -99,12 +101,12 @@ struct SandboxFileAccessPolicy {
     /// Determines whether a protected-folder consent read may be attempted.
     /// Normal mode leaves the actual decision to macOS/TCC; experimental sandbox
     /// mode must still reject paths outside its root unless separately granted.
-    func canAttemptProtectedFolderAccess(_ url: URL) -> Bool {
+    package func canAttemptProtectedFolderAccess(_ url: URL) -> Bool {
         guard isEnabled else { return true }
         return canAccess(url)
     }
 
-    func validateDestinationAccess(to destination: URL) throws {
+    package func validateDestinationAccess(to destination: URL) throws {
         let parentDirectory = destination.deletingLastPathComponent()
         let allowed: Bool
         let reason: String
@@ -137,14 +139,14 @@ struct SandboxFileAccessPolicy {
     /// folder. Authorize them only as an implementation detail of a writable,
     /// already-authorized destination. The caller additionally verifies
     /// operation ownership before removing anything in the directory.
-    func validateManagedStagingArea(_ stagingURL: URL, appropriateFor destination: URL) throws {
+    package func validateManagedStagingArea(_ stagingURL: URL, appropriateFor destination: URL) throws {
         try validateDestinationAccess(to: destination)
         guard hasProcessAccess(to: stagingURL.deletingLastPathComponent(), requireWritable: true) else {
             throw isEnabled ? SandboxAccessError.outsideExperimentalSandbox(stagingURL) : SandboxAccessError.unauthorized(stagingURL)
         }
     }
 
-    func validatedDirectory(_ url: URL, fallback: URL? = nil) -> URL {
+    package func validatedDirectory(_ url: URL, fallback: URL? = nil) -> URL {
         if canAccess(url) {
             return url
         }
@@ -166,7 +168,7 @@ struct SandboxFileAccessPolicy {
     /// Completes a folder-picker decision. Kept separate from AppKit so the
     /// containment and post-grant validation are testable.
     @discardableResult
-    func grantSelectedFolder(_ selectedFolder: URL, for requestedDirectory: URL) -> Bool {
+    package func grantSelectedFolder(_ selectedFolder: URL, for requestedDirectory: URL) -> Bool {
         do {
             let grant = try grantService.grantAccess(to: selectedFolder)
             guard contains(requestedDirectory, within: grant.url), canAccess(requestedDirectory) else {
@@ -183,22 +185,22 @@ struct SandboxFileAccessPolicy {
     /// active for the complete filesystem operation.  Use this rather than
     /// separating `validateAccess` from a later read: a bookmark scope opened
     /// merely for validation is intentionally closed before validation returns.
-    func withValidatedAccess<T>(to url: URL, _ body: () throws -> T) throws -> T {
+    package func withValidatedAccess<T>(to url: URL, _ body: () throws -> T) throws -> T {
         try withValidatedAccess(to: [url], body)
     }
 
-    func withValidatedAccess<T>(to urls: [URL], _ body: () throws -> T) throws -> T {
+    package func withValidatedAccess<T>(to urls: [URL], _ body: () throws -> T) throws -> T {
         for url in urls {
             try validateAccess(to: url)
         }
         return try grantService.withSecurityScopedAccess(to: urls, body)
     }
 
-    func withValidatedAccess<T>(to url: URL, _ body: () async throws -> T) async throws -> T {
+    package func withValidatedAccess<T>(to url: URL, _ body: () async throws -> T) async throws -> T {
         try await withValidatedAccess(to: [url], body)
     }
 
-    func withValidatedAccess<T>(to urls: [URL], _ body: () async throws -> T) async throws -> T {
+    package func withValidatedAccess<T>(to urls: [URL], _ body: () async throws -> T) async throws -> T {
         for url in urls {
             try validateAccess(to: url)
         }
@@ -207,19 +209,19 @@ struct SandboxFileAccessPolicy {
 
     /// Opens scopes without validation for mutation code that has already
     /// completed its preflight. Read paths should use `withValidatedAccess`.
-    func withAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
+    package func withAccess<T>(to urls: [URL], _ body: () throws -> T) rethrows -> T {
         try grantService.withSecurityScopedAccess(to: urls, body)
     }
 
-    func withAccess<T>(to urls: [URL], _ body: () async throws -> T) async rethrows -> T {
+    package func withAccess<T>(to urls: [URL], _ body: () async throws -> T) async rethrows -> T {
         try await grantService.withSecurityScopedAccess(to: urls, body)
     }
 
-    func beginAccess(to urls: [URL]) -> FolderAccessScope {
+    package func beginAccess(to urls: [URL]) -> FolderAccessScope {
         grantService.beginSecurityScopedAccess(to: urls)
     }
 
-    func endAccess(_ scope: FolderAccessScope) {
+    package func endAccess(_ scope: FolderAccessScope) {
         grantService.endSecurityScopedAccess(scope)
     }
 
@@ -273,19 +275,19 @@ struct SandboxFileAccessPolicy {
 /// opened component-by-component without following links; callers must use
 /// `*at` APIs with its descriptor rather than reconstructing an absolute path.
 #if os(macOS)
-struct OpenDirectoryCapability {
-    struct Identity: Equatable {
+package struct OpenDirectoryCapability {
+    package struct Identity: Equatable {
         let device: dev_t
         let inode: ino_t
     }
 
-    let fileDescriptor: Int32
-    let identity: Identity
+    package let fileDescriptor: Int32
+    package let identity: Identity
     /// Retained only for diagnostics and test-copier compatibility. Mutation
     /// callers must use `fileDescriptor` with an `*at` syscall.
-    let directoryURL: URL
+    package let directoryURL: URL
 
-    init(directory url: URL) throws {
+    package init(directory url: URL) throws {
         let components = url.standardizedFileURL.pathComponents
         var descriptor = Darwin.open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -311,7 +313,7 @@ struct OpenDirectoryCapability {
         }
     }
 
-    func revalidate() throws {
+    package func revalidate() throws {
         var status = stat()
         guard Darwin.fstat(fileDescriptor, &status) == 0,
               status.st_dev == identity.device, status.st_ino == identity.inode,
@@ -320,7 +322,7 @@ struct OpenDirectoryCapability {
         }
     }
 
-    func itemIdentity(named name: String) throws -> Identity {
+    package func itemIdentity(named name: String) throws -> Identity {
         try Self.validateName(name)
         var status = stat()
         guard name.withCString({ Darwin.fstatat(fileDescriptor, $0, &status, AT_SYMLINK_NOFOLLOW) }) == 0 else {
@@ -330,40 +332,40 @@ struct OpenDirectoryCapability {
         return Identity(device: status.st_dev, inode: status.st_ino)
     }
 
-    func requireItem(named name: String, identity expected: Identity? = nil) throws {
+    package func requireItem(named name: String, identity expected: Identity? = nil) throws {
         try revalidate()
         let actual = try itemIdentity(named: name)
         guard expected == nil || actual == expected else { throw POSIXError(.ESTALE) }
     }
 
-    static func validateName(_ name: String) throws {
+    package static func validateName(_ name: String) throws {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else { throw CocoaError(.fileReadInvalidFileName) }
     }
 
-    func close() { Darwin.close(fileDescriptor) }
+    package func close() { Darwin.close(fileDescriptor) }
 
-    func createDirectory(named name: String, mode: mode_t = 0o755) throws {
+    package func createDirectory(named name: String, mode: mode_t = 0o755) throws {
         try revalidate(); try Self.validateName(name)
         guard name.withCString({ Darwin.mkdirat(fileDescriptor, $0, mode) }) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 
-    func createSymbolicLink(named name: String, destination: String) throws {
+    package func createSymbolicLink(named name: String, destination: String) throws {
         try revalidate(); try Self.validateName(name)
         guard name.withCString({ namePointer in destination.withCString { Darwin.symlinkat($0, fileDescriptor, namePointer) } }) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 
-    func openNewRegularFile(named name: String, mode: mode_t = 0o644) throws -> Int32 {
+    package func openNewRegularFile(named name: String, mode: mode_t = 0o644) throws -> Int32 {
         try revalidate(); try Self.validateName(name)
         let descriptor = name.withCString { Darwin.openat(fileDescriptor, $0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode) }
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         return descriptor
     }
 
-    func renameItem(named name: String, to destination: OpenDirectoryCapability, named destinationName: String) throws {
+    package func renameItem(named name: String, to destination: OpenDirectoryCapability, named destinationName: String) throws {
         try requireItem(named: name)
         try destination.revalidate(); try Self.validateName(destinationName)
         guard name.withCString({ source in destinationName.withCString { Darwin.renameat(fileDescriptor, source, destination.fileDescriptor, $0) } }) == 0 else {
@@ -371,7 +373,7 @@ struct OpenDirectoryCapability {
         }
     }
 
-    func removeItem(named name: String) throws {
+    package func removeItem(named name: String) throws {
         // `fstatat(..., AT_SYMLINK_NOFOLLOW)` deliberately inspects the link
         // object. A staged copy may itself be a symlink, which must be
         // removable without resolving its target.
