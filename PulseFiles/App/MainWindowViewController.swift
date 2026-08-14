@@ -72,7 +72,7 @@ struct RenamePaneRefreshPlan {
     }
 }
 
-final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflowPresenting, WorkflowPresentationCallbacks {
+final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflowPresenting, WorkflowPresentationCallbacks, MainCommandHandling {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220
         static let maxWidth: CGFloat = 340
@@ -139,7 +139,16 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     } onStopWaiting: { [weak self] in
         self?.detachActiveFileOperation()
     }
-    private lazy var clipboardSession = ClipboardSessionCoordinator(transfer: workflows.fileTransfer)
+    private lazy var clipboardSession = ClipboardDropWorkflowCoordinator(
+        transfer: workflows.fileTransfer,
+        onCutURLsChanged: { [weak self] urls in
+            guard let self else { return }
+            self.leftPane.setDimmedFileURLs([])
+            self.rightPane.setDimmedFileURLs([])
+            if !urls.isEmpty { self.targetPane().setDimmedFileURLs(urls) }
+        },
+        onFeedbackExpired: { [weak self] in self?.clearClipboardFeedback() }
+    )
     private let applicationOpener: any ApplicationOpening
     private lazy var openFileCoordinator = OpenFileCoordinator(accessPolicy: accessPolicy) { [weak self] fileURL, applicationURL in
         if let applicationURL {
@@ -160,6 +169,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private let scratchCleanupFactory: (@escaping () -> [URL]) -> ScratchFolderCleanupService
     /// The sole authority for command availability and target resolution.
     private let commandRouter = MainCommandRouter()
+    private lazy var commandDispatchCoordinator = MainCommandDispatchCoordinator(router: commandRouter, handler: self)
     private lazy var previewCoordinator = PreviewCoordinator(accessPolicy: accessPolicy, probe: fileSystemProbe)
     private lazy var navigationCoordinator = NavigationCoordinator(probe: fileSystemProbe)
 
@@ -446,7 +456,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private func performCommand(_ command: MainCommand, from pane: PaneID? = nil, entrySurface: MainCommandEntrySurface = .menu) {
         if let pane { activePaneID = pane }
         DiagnosticLogger.log(.info, category: "MainWindow", "Command execution requested: command=\(command); activePane=\(String(describing: activePaneID))")
-        execute(commandRouter.route(command, from: entrySurface, in: currentRoutingState()))
+        commandDispatchCoordinator.dispatch(command, from: entrySurface, state: currentRoutingState())
     }
 
     private func performRoutedPaneCallback(_ command: MainCommand, from pane: PaneID, action: () -> Void) {
@@ -459,29 +469,29 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         }
     }
 
-    private func execute(_ route: MainCommandRoute) {
+    func handle(_ route: MainCommandRoute) {
         switch route {
         case let .disabled(command, reason):
             presentDisabledCommandFeedback(command: command, reason: reason)
             return
         case let .activePane(command, pane, _), let .focusedItem(command, pane, _), let .symbolicLink(command, pane, _):
             activePaneID = pane
-            executeEnabledCommand(command)
+            dispatchTypedUIEvent(command)
         case let .crossPane(command, sourcePane, _, _, _):
             activePaneID = sourcePane
-            executeEnabledCommand(command)
+            dispatchTypedUIEvent(command)
         case let .switchPane(pane):
             activePaneID = pane
             if isSinglePaneMode { rebuildPaneArrangement(); updateActivePane() }
         case let .dualPane(command, activePane, _):
             activePaneID = activePane
-            executeEnabledCommand(command)
+            dispatchTypedUIEvent(command)
         case let .enabled(command):
-            executeEnabledCommand(command)
+            dispatchTypedUIEvent(command)
         }
     }
 
-    private func executeEnabledCommand(_ command: MainCommand) {
+    private func dispatchTypedUIEvent(_ command: MainCommand) {
         switch command {
         case .open:
             targetPane().openFocusedItem()
@@ -1010,19 +1020,19 @@ extension MainWindowViewController {
     }
 
     @objc private func toolbarBack(_ sender: Any?) {
-        performCommand(.back)
+        performCommand(.back, entrySurface: .toolbar)
     }
 
     @objc private func toolbarForward(_ sender: Any?) {
-        performCommand(.forward)
+        performCommand(.forward, entrySurface: .toolbar)
     }
 
     @objc private func toolbarToggleTerminal(_ sender: Any?) {
-        performCommand(.toggleTerminal)
+        performCommand(.toggleTerminal, entrySurface: .toolbar)
     }
 
     @objc private func toolbarToggleSidebar(_ sender: Any?) {
-        performCommand(.toggleSidebar)
+        performCommand(.toggleSidebar, entrySurface: .toolbar)
     }
 
     @objc func toolbarSettings(_ sender: Any?) {
@@ -1579,10 +1589,8 @@ extension MainWindowViewController {
             return
         }
         do {
-            try clipboardSession.write(sources, operation: operation) { [weak self] in self?.clearClipboardFeedback() }
+            try clipboardSession.write(sources, operation: operation)
             showClipboardFeedback(for: operation, itemCount: sources.count)
-            updateCutItemMarkers(operation: operation, urls: sources, sourcePane: targetPane())
-            beginClipboardChangeMonitoring()
         } catch {
             showError(message: "Could Not Use Clipboard".localized, detail: error.localizedDescription)
         }
@@ -1610,17 +1618,6 @@ extension MainWindowViewController {
         commandBar.setTransientStatus("%@ %d %@".localized(with: verb, itemCount, itemLabel))
     }
 
-    private func updateCutItemMarkers(operation: FileClipboard.Operation, urls: [URL], sourcePane: FilePaneViewController) {
-        leftPane.setDimmedFileURLs([])
-        rightPane.setDimmedFileURLs([])
-        guard operation == .move else { return }
-        sourcePane.setDimmedFileURLs(urls)
-    }
-
-    private func beginClipboardChangeMonitoring() {
-        // ClipboardSessionCoordinator owns pasteboard change monitoring.
-    }
-
     private func clearClipboardFeedback() {
         clipboardSession.clear()
         leftPane.setDimmedFileURLs([])
@@ -1640,8 +1637,8 @@ extension MainWindowViewController {
         Task { [weak self, fileSystemProbe] in
             guard let self else { return }
             do {
-                let generation = try await self.workflows.fileTransfer.validateDrop(sources: urls, destination: destinationDirectory, probe: fileSystemProbe)
-                guard self.workflows.fileTransfer.isCurrentDrop(generation: generation) else { return }
+                let generation = try await self.clipboardSession.validateDrop(sources: urls, destination: destinationDirectory, probe: fileSystemProbe)
+                guard self.clipboardSession.isCurrentDrop(generation: generation) else { return }
                 self.beginDroppedItemTransfer(urls, destinationDirectory: destinationDirectory, copy: copy)
             } catch { self.showError(message: "Could Not Accept Drop".localized, detail: error.localizedDescription) }
         }

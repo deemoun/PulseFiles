@@ -5,6 +5,7 @@ import Foundation
 
 package enum MainCommandEntrySurface: CaseIterable {
     case menu
+    case toolbar
     case keyboard
     case commandBar
     case contextMenu

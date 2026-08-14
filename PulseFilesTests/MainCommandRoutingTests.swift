@@ -605,6 +605,10 @@ extension MainCommandRoutingTests {
     }
 
     func testEveryEntrySurfaceUsesIdenticalAvailabilityAndTargetResolution() {
+        XCTAssertEqual(
+            Set(MainCommandEntrySurface.allCases.map { String(describing: $0) }),
+            Set(["menu", "toolbar", "keyboard", "commandBar", "contextMenu", "paneCallback"])
+        )
         let selected = URL(fileURLWithPath: "/sandbox/right/item.txt")
         let state = makeState(activePaneID: .right, rightSelection: [selected])
         for command in MainCommand.allCases {
