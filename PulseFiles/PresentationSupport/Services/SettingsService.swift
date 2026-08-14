@@ -1,59 +1,58 @@
 import AppKit
+import PulseFilesModels
+import PulseFilesServices
+import PulseFilesUtilities
 
-enum StartupDirectorySource: Equatable {
-    case `default`
-    case lastVisited
-    case userSelected
+protocol SettingsPreferences: AnyObject {
+    var appLanguage: AppLanguage { get set }
+    var defaultSidebarVisible: Bool { get set }
+    var liquidGlassEnabled: Bool { get set }
+    var experimentalTerminalEnabled: Bool { get set }
+    var hasAcknowledgedTerminalWarning: Bool { get set }
+    var defaultTerminalVisible: Bool { get set }
+    var defaultSinglePaneMode: Bool { get set }
+    var showHiddenFilesByDefault: Bool { get set }
+    var quickSearchMatchMode: QuickSearchMatchMode { get set }
+    var quickSearchPresentation: QuickSearchPresentation { get set }
+    var confirmCopyOperations: Bool { get set }
+    var confirmMoveOperations: Bool { get set }
+    var confirmDeleteOperations: Bool { get set }
+    var permanentlyDeleteInsteadOfTrash: Bool { get set }
+    var preferredSidebarWidth: Double { get set }
 }
 
-/// The startup target is resolved before a pane starts loading. This avoids
-/// probing a privacy-protected saved folder until the user deliberately grants
-/// access to it again.
-struct StartupDirectoryResolution {
-    let directory: URL
-    let requestedDirectory: URL
-    let source: StartupDirectorySource
-    let needsAccessRecovery: Bool
-
-    static func resolve(
-        requestedDirectory: URL,
-        fallbackDirectory: URL,
-        source: StartupDirectorySource,
-        accessPolicy: SandboxFileAccessPolicy
-    ) -> Self {
-        guard !accessPolicy.canAccess(requestedDirectory) else {
-            return Self(directory: requestedDirectory, requestedDirectory: requestedDirectory, source: source, needsAccessRecovery: false)
-        }
-
-        return Self(
-            directory: accessPolicy.validatedDirectory(fallbackDirectory),
-            requestedDirectory: requestedDirectory,
-            source: source,
-            needsAccessRecovery: source == .userSelected
-        )
-    }
+protocol AppearanceSettingsProviding: AnyObject {
+    var defaultSidebarVisible: Bool { get set }; var defaultSinglePaneMode: Bool { get set }
+    var liquidGlassEnabled: Bool { get set }; var preferredSidebarWidth: Double { get set }
+    var fileColorScheme: FileColorScheme { get set }; func resetFileColorScheme()
+}
+protocol GeneralSettingsProviding: AnyObject {
+    var appLanguage: AppLanguage { get set }; var confirmCopyOperations: Bool { get set }
+    var confirmMoveOperations: Bool { get set }; var confirmDeleteOperations: Bool { get set }
+    var permanentlyDeleteInsteadOfTrash: Bool { get set }
+}
+protocol NavigationSettingsProviding: AnyObject {
+    var lastLeftDirectory: URL { get }; var lastRightDirectory: URL { get }
+    var startupLeftDirectory: URL? { get set }; var startupRightDirectory: URL? { get set }
+    var scratchDirectory: URL? { get set }; var scratchFolderSelection: ScratchFolderSelection? { get set }
+    var showHiddenFilesByDefault: Bool { get set }; var quickSearchMatchMode: QuickSearchMatchMode { get set }
+    var quickSearchPresentation: QuickSearchPresentation { get set }
+}
+protocol ExperimentalSettingsProviding: AnyObject {
+    var experimentalTerminalEnabled: Bool { get set }; var defaultTerminalVisible: Bool { get set }
+    var experimentalSandboxEnabled: Bool { get set }
 }
 
-final class SettingsService {
-    static let appLanguageDefaultsKey = "appLanguage"
-    static var jsonSettingsURL: URL {
-        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
-        return baseURL
-            .appendingPathComponent("PulseFiles", isDirectory: true)
-            .appendingPathComponent("Settings.json")
-    }
+/// Presentation adapter for typed preferences. Persistence and launch navigation
+/// are delegated to services that can be tested without loading AppKit.
+final class SettingsService: SettingsPreferences, AppearanceSettingsProviding, GeneralSettingsProviding, NavigationSettingsProviding, ExperimentalSettingsProviding {
+    static let appLanguageDefaultsKey = SettingsRepository.appLanguageDefaultsKey
+    static var jsonSettingsURL: URL { SettingsRepository.defaultJSONURL }
 
-    private let defaults: UserDefaults
-    private let syncsJSON: Bool
-    private let jsonSettingsURLProvider: () -> URL
-    private let accessPolicyOverride: SandboxFileAccessPolicy?
+    private let repository: SettingsPersisting
+    private let startupNavigation: StartupNavigationService
     private let grantService: FolderAccessGrantService
-    private let homeDirectoryProvider: () -> URL
-    private let documentsDirectoryProvider: () -> URL
-    private let applicationSupportDirectoryProvider: () -> URL
-    private var isSyncingJSON = false
-    private var runtimeTerminalVisible: Bool?
+    private let sessionState: WindowSessionState
 
     init(
         defaults: UserDefaults = .standard,
@@ -61,612 +60,90 @@ final class SettingsService {
         folderAccessBookmarkResolver: FolderAccessBookmarkResolving = SystemFolderAccessBookmarkResolver(),
         jsonSettingsURLProvider: (() -> URL)? = nil,
         homeDirectoryProvider: @escaping () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        documentsDirectoryProvider: @escaping () -> URL = {
-            FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents", isDirectory: true)
-        },
-        applicationSupportDirectoryProvider: @escaping () -> URL = {
-            let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
-            return baseURL.appendingPathComponent("PulseFiles", isDirectory: true)
-        }
+        documentsDirectoryProvider: @escaping () -> URL = { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents", isDirectory: true) },
+        applicationSupportDirectoryProvider: @escaping () -> URL = { SettingsRepository.defaultJSONURL.deletingLastPathComponent() },
+        sessionState: WindowSessionState = WindowSessionState()
     ) {
-        self.defaults = defaults
-        self.syncsJSON = defaults === UserDefaults.standard || jsonSettingsURLProvider != nil
-        self.jsonSettingsURLProvider = jsonSettingsURLProvider ?? { Self.jsonSettingsURL }
-        self.grantService = FolderAccessGrantService(defaults: defaults, resolver: folderAccessBookmarkResolver)
-        self.accessPolicyOverride = accessPolicy
-        self.homeDirectoryProvider = homeDirectoryProvider
-        self.documentsDirectoryProvider = documentsDirectoryProvider
-        self.applicationSupportDirectoryProvider = applicationSupportDirectoryProvider
-        if syncsJSON {
-            importJSONIfChanged()
-            writeSettingsJSONIfNeeded()
-        }
+        let repository = SettingsRepository(defaults: defaults, jsonURLProvider: jsonSettingsURLProvider)
+        let grants = FolderAccessGrantService(defaults: defaults, resolver: folderAccessBookmarkResolver)
+        self.repository = repository
+        grantService = grants
+        self.sessionState = sessionState
+        startupNavigation = StartupNavigationService(settings: repository, accessPolicy: accessPolicy, grantService: grants, homeDirectoryProvider: homeDirectoryProvider, documentsDirectoryProvider: documentsDirectoryProvider, applicationSupportDirectoryProvider: applicationSupportDirectoryProvider)
     }
 
-    var lastLeftDirectory: URL {
-        get { directory(forKey: "lastLeftDirectory", fallback: defaultLeftDirectory) }
-        set { set(newValue, forKey: "lastLeftDirectory") }
-    }
+    private var snapshot: SettingsSnapshot { repository.snapshot }
+    private func change(_ mutation: @escaping (inout SettingsSnapshot) -> Void) { repository.update(mutation) }
+    private func url(_ path: String?) -> URL? { path.map { URL(fileURLWithPath: $0, isDirectory: true) } }
 
-    var lastRightDirectory: URL {
-        get { directory(forKey: "lastRightDirectory", fallback: defaultRightDirectory) }
-        set { set(newValue, forKey: "lastRightDirectory") }
-    }
-
-    var leftPaneTabRestoration: PaneRestorationState? {
-        get { paneRestoration(forKey: "leftPaneTabRestoration") }
-        set { setPaneRestoration(newValue, forKey: "leftPaneTabRestoration") }
-    }
-
-    var rightPaneTabRestoration: PaneRestorationState? {
-        get { paneRestoration(forKey: "rightPaneTabRestoration") }
-        set { setPaneRestoration(newValue, forKey: "rightPaneTabRestoration") }
-    }
-
-    func paneTabRestoration(for pane: PaneID) -> PaneRestorationState? {
-        pane == .left ? leftPaneTabRestoration : rightPaneTabRestoration
-    }
-
-    func setPaneTabRestoration(_ restoration: PaneRestorationState?, for pane: PaneID) {
-        if pane == .left { leftPaneTabRestoration = restoration } else { rightPaneTabRestoration = restoration }
-    }
-
-    private func paneRestoration(forKey key: String) -> PaneRestorationState? {
-        guard let data = defaults.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(PaneRestorationState.self, from: data)
-    }
-
-    private func setPaneRestoration(_ restoration: PaneRestorationState?, forKey key: String) {
-        defaults.set(restoration.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
-        writeSettingsJSONIfNeeded()
-    }
-
+    var lastLeftDirectory: URL { get { startupNavigation.validatedSavedDirectory(path: snapshot.lastLeftDirectory, fallback: startupDirectoryResolution(for: .left).directory) } set { change { $0.lastLeftDirectory = newValue.path } } }
+    var lastRightDirectory: URL { get { startupNavigation.validatedSavedDirectory(path: snapshot.lastRightDirectory, fallback: startupDirectoryResolution(for: .right).directory) } set { change { $0.lastRightDirectory = newValue.path } } }
+    var startupLeftDirectory: URL? { get { url(snapshot.startupLeftDirectory) } set { change { $0.startupLeftDirectory = newValue?.path } } }
+    var startupRightDirectory: URL? { get { url(snapshot.startupRightDirectory) } set { change { $0.startupRightDirectory = newValue?.path } } }
     var launchLeftDirectory: URL { startupDirectoryResolution(for: .left).directory }
     var launchRightDirectory: URL { startupDirectoryResolution(for: .right).directory }
+    func startupDirectoryResolution(for pane: PaneID) -> StartupDirectoryResolution { startupNavigation.resolution(for: pane) }
 
-    func startupDirectoryResolution(for pane: PaneID) -> StartupDirectoryResolution {
-        let startupKey = pane == .left ? "startupLeftDirectory" : "startupRightDirectory"
-        let lastKey = pane == .left ? "lastLeftDirectory" : "lastRightDirectory"
-        let fallback = pane == .left ? defaultLeftDirectory : defaultRightDirectory
+    var leftPaneTabRestoration: PaneRestorationState? { get { snapshot.leftPaneTabRestoration } set { change { $0.leftPaneTabRestoration = newValue } } }
+    var rightPaneTabRestoration: PaneRestorationState? { get { snapshot.rightPaneTabRestoration } set { change { $0.rightPaneTabRestoration = newValue } } }
+    func paneTabRestoration(for pane: PaneID) -> PaneRestorationState? { pane == .left ? leftPaneTabRestoration : rightPaneTabRestoration }
+    func setPaneTabRestoration(_ value: PaneRestorationState?, for pane: PaneID) { if pane == .left { leftPaneTabRestoration = value } else { rightPaneTabRestoration = value } }
 
-        if let startupDirectory = defaults.url(forKey: startupKey) {
-            return .resolve(
-                requestedDirectory: startupDirectory,
-                fallbackDirectory: fallback,
-                source: .userSelected,
-                accessPolicy: accessPolicy
-            )
-        }
-        if let lastDirectory = defaults.url(forKey: lastKey) {
-            return .resolve(
-                requestedDirectory: lastDirectory,
-                fallbackDirectory: fallback,
-                source: .lastVisited,
-                accessPolicy: accessPolicy
-            )
-        }
-        return .resolve(
-            requestedDirectory: fallback,
-            fallbackDirectory: fallback,
-            source: .default,
-            accessPolicy: accessPolicy
-        )
-    }
-
-    var startupLeftDirectory: URL? {
-        get { defaults.url(forKey: "startupLeftDirectory") }
-        set { setOptionalDirectory(newValue, forKey: "startupLeftDirectory") }
-    }
-
-    var startupRightDirectory: URL? {
-        get { defaults.url(forKey: "startupRightDirectory") }
-        set { setOptionalDirectory(newValue, forKey: "startupRightDirectory") }
-    }
-
-    /// A user-selected workspace shown in Settings and the sidebar. This is
-    /// deliberately independent of file-operation staging locations.
-    var scratchDirectory: URL? {
-        get { defaults.url(forKey: "scratchDirectory") }
-        set {
-            setOptionalDirectory(newValue, forKey: "scratchDirectory")
-            if newValue == nil { scratchFolderSelection = nil }
-        }
-    }
-
+    var scratchDirectory: URL? { get { url(snapshot.scratchDirectory) } set { change { s in s.scratchDirectory = newValue?.path; if newValue == nil { s.scratchDirectoryIdentity = nil; s.scratchDirectoryResolvedPath = nil } } } }
     var scratchFolderSelection: ScratchFolderSelection? {
-        get {
-            guard let directory = scratchDirectory,
-                  let identity = defaults.string(forKey: "scratchDirectoryIdentity"),
-                  let resolvedPath = defaults.string(forKey: "scratchDirectoryResolvedPath") else { return nil }
-            return .init(directory: directory, identity: identity, resolvedPath: resolvedPath)
-        }
-        set {
-            defaults.set(newValue?.identity, forKey: "scratchDirectoryIdentity")
-            defaults.set(newValue?.resolvedPath, forKey: "scratchDirectoryResolvedPath")
-        }
+        get { guard let directory = scratchDirectory, let identity = snapshot.scratchDirectoryIdentity, let path = snapshot.scratchDirectoryResolvedPath else { return nil }; return .init(directory: directory, identity: identity, resolvedPath: path) }
+        set { change { $0.scratchDirectoryIdentity = newValue?.identity; $0.scratchDirectoryResolvedPath = newValue?.resolvedPath } }
     }
 
-    var defaultSidebarVisible: Bool {
-        get { defaults.object(forKey: "defaultSidebarVisible") as? Bool ?? defaults.object(forKey: "isSidebarVisible") as? Bool ?? true }
-        set { set(newValue, forKey: "defaultSidebarVisible") }
-    }
-
-    var appLanguage: AppLanguage {
-        get { AppLanguage(rawValue: defaults.string(forKey: Self.appLanguageDefaultsKey) ?? "") ?? .english }
-        set {
-            defaults.set(newValue.rawValue, forKey: Self.appLanguageDefaultsKey)
-            writeSettingsJSONIfNeeded()
-        }
-    }
-
-    var liquidGlassEnabled: Bool {
-        get { defaults.object(forKey: LiquidGlassStyle.preferenceKey) as? Bool ?? false }
-        set { set(newValue, forKey: LiquidGlassStyle.preferenceKey) }
-    }
-
-    var experimentalTerminalEnabled: Bool {
-        get { defaults.object(forKey: "experimentalTerminalEnabled") as? Bool ?? false }
-        set { set(newValue, forKey: "experimentalTerminalEnabled") }
-    }
-
-    var hasAcknowledgedTerminalWarning: Bool {
-        get { defaults.object(forKey: "hasAcknowledgedTerminalWarning") as? Bool ?? false }
-        set { set(newValue, forKey: "hasAcknowledgedTerminalWarning") }
-    }
-
-    var defaultTerminalVisible: Bool {
-        get {
-            guard experimentalTerminalEnabled else { return false }
-            return defaults.object(forKey: "defaultTerminalVisible") as? Bool ?? false
-        }
-        set { set(experimentalTerminalEnabled && newValue, forKey: "defaultTerminalVisible") }
-    }
-
-    var defaultSinglePaneMode: Bool {
-        get { defaults.object(forKey: "defaultSinglePaneMode") as? Bool ?? false }
-        set { set(newValue, forKey: "defaultSinglePaneMode") }
-    }
-
-    var showHiddenFilesByDefault: Bool {
-        get { defaults.object(forKey: "showHiddenFilesByDefault") as? Bool ?? false }
-        set { set(newValue, forKey: "showHiddenFilesByDefault") }
-    }
-
-    var defaultPanePresentationMode: PanePresentationMode {
-        get { PanePresentationMode(rawValue: defaults.string(forKey: "defaultPanePresentationMode") ?? "") ?? .list }
-        set { defaults.set(newValue.rawValue, forKey: "defaultPanePresentationMode"); writeSettingsJSONIfNeeded() }
-    }
-
-    var leftPanePresentationMode: PanePresentationMode {
-        get { presentationMode(forKey: "leftPanePresentationMode") }
-        set { setPresentationMode(newValue, forKey: "leftPanePresentationMode") }
-    }
-
-    var rightPanePresentationMode: PanePresentationMode {
-        get { presentationMode(forKey: "rightPanePresentationMode") }
-        set { setPresentationMode(newValue, forKey: "rightPanePresentationMode") }
-    }
-
-    func presentationMode(for pane: PaneID) -> PanePresentationMode {
-        pane == .left ? leftPanePresentationMode : rightPanePresentationMode
-    }
-
-    func setPresentationMode(_ mode: PanePresentationMode, for pane: PaneID) {
-        if pane == .left { leftPanePresentationMode = mode } else { rightPanePresentationMode = mode }
-    }
-
-    private func presentationMode(forKey key: String) -> PanePresentationMode {
-        guard let value = defaults.string(forKey: key) else { return defaultPanePresentationMode }
-        return PanePresentationMode(rawValue: value) ?? defaultPanePresentationMode
-    }
-
-    private func setPresentationMode(_ mode: PanePresentationMode, forKey key: String) {
-        defaults.set(mode.rawValue, forKey: key)
-        writeSettingsJSONIfNeeded()
-    }
-
-    var quickSearchMatchMode: QuickSearchMatchMode {
-        get { QuickSearchMatchMode(rawValue: defaults.string(forKey: "quickSearchMatchMode") ?? "") ?? .contains }
-        set { defaults.set(newValue.rawValue, forKey: "quickSearchMatchMode"); writeSettingsJSONIfNeeded() }
-    }
-
-    var quickSearchPresentation: QuickSearchPresentation {
-        get { QuickSearchPresentation(rawValue: defaults.string(forKey: "quickSearchPresentation") ?? "") ?? .filterMatches }
-        set { defaults.set(newValue.rawValue, forKey: "quickSearchPresentation"); writeSettingsJSONIfNeeded() }
-    }
-
-    var confirmCopyOperations: Bool {
-        get { defaults.object(forKey: "confirmCopyOperations") as? Bool ?? true }
-        set { set(newValue, forKey: "confirmCopyOperations") }
-    }
-
-    var confirmMoveOperations: Bool {
-        get { defaults.object(forKey: "confirmMoveOperations") as? Bool ?? true }
-        set { set(newValue, forKey: "confirmMoveOperations") }
-    }
-
-    var confirmDeleteOperations: Bool {
-        get { defaults.object(forKey: "confirmDeleteOperations") as? Bool ?? true }
-        set { set(newValue, forKey: "confirmDeleteOperations") }
-    }
-
-    var permanentlyDeleteInsteadOfTrash: Bool {
-        get { defaults.object(forKey: "permanentlyDeleteInsteadOfTrash") as? Bool ?? false }
-        set { set(newValue, forKey: "permanentlyDeleteInsteadOfTrash") }
-    }
-
-    #if DEBUG
+    var defaultSidebarVisible: Bool { get { snapshot.defaultSidebarVisible ?? true } set { change { $0.defaultSidebarVisible = newValue } } }
+    var appLanguage: AppLanguage { get { AppLanguage(rawValue: snapshot.appLanguage ?? "") ?? .english } set { change { $0.appLanguage = newValue.rawValue } } }
+    var liquidGlassEnabled: Bool { get { snapshot.liquidGlassEnabled ?? false } set { change { $0.liquidGlassEnabled = newValue } } }
+    var experimentalTerminalEnabled: Bool { get { snapshot.experimentalTerminalEnabled ?? false } set { change { $0.experimentalTerminalEnabled = newValue; if !newValue { $0.defaultTerminalVisible = false } } } }
+    var hasAcknowledgedTerminalWarning: Bool { get { snapshot.hasAcknowledgedTerminalWarning ?? false } set { change { $0.hasAcknowledgedTerminalWarning = newValue } } }
+    var defaultTerminalVisible: Bool { get { experimentalTerminalEnabled && (snapshot.defaultTerminalVisible ?? false) } set { change { $0.defaultTerminalVisible = experimentalTerminalEnabled && newValue } } }
+    var defaultSinglePaneMode: Bool { get { snapshot.defaultSinglePaneMode ?? false } set { change { $0.defaultSinglePaneMode = newValue } } }
+    var showHiddenFilesByDefault: Bool { get { snapshot.showHiddenFilesByDefault ?? false } set { change { $0.showHiddenFilesByDefault = newValue } } }
+    var defaultPanePresentationMode: PanePresentationMode { get { snapshot.defaultPanePresentationMode ?? .list } set { change { $0.defaultPanePresentationMode = newValue } } }
+    var leftPanePresentationMode: PanePresentationMode { get { snapshot.leftPanePresentationMode ?? defaultPanePresentationMode } set { change { $0.leftPanePresentationMode = newValue } } }
+    var rightPanePresentationMode: PanePresentationMode { get { snapshot.rightPanePresentationMode ?? defaultPanePresentationMode } set { change { $0.rightPanePresentationMode = newValue } } }
+    func presentationMode(for pane: PaneID) -> PanePresentationMode { pane == .left ? leftPanePresentationMode : rightPanePresentationMode }
+    func setPresentationMode(_ value: PanePresentationMode, for pane: PaneID) { if pane == .left { leftPanePresentationMode = value } else { rightPanePresentationMode = value } }
+    var quickSearchMatchMode: QuickSearchMatchMode { get { snapshot.quickSearchMatchMode ?? .contains } set { change { $0.quickSearchMatchMode = newValue } } }
+    var quickSearchPresentation: QuickSearchPresentation { get { snapshot.quickSearchPresentation ?? .filterMatches } set { change { $0.quickSearchPresentation = newValue } } }
+    var confirmCopyOperations: Bool { get { snapshot.confirmCopyOperations ?? true } set { change { $0.confirmCopyOperations = newValue } } }
+    var confirmMoveOperations: Bool { get { snapshot.confirmMoveOperations ?? true } set { change { $0.confirmMoveOperations = newValue } } }
+    var confirmDeleteOperations: Bool { get { snapshot.confirmDeleteOperations ?? true } set { change { $0.confirmDeleteOperations = newValue } } }
+    var permanentlyDeleteInsteadOfTrash: Bool { get { snapshot.permanentlyDeleteInsteadOfTrash ?? false } set { change { $0.permanentlyDeleteInsteadOfTrash = newValue } } }
     var experimentalSandboxEnabled: Bool {
-        get { ExperimentalFlags.isSandboxRestrictionEnabled(defaults: defaults) }
-        set { set(newValue, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
-    }
-    #else
-    var experimentalSandboxEnabled: Bool {
-        get { false }
+        get {
+#if DEBUG
+            snapshot.experimentalSandboxEnabled ?? false
+#else
+            false
+#endif
+        }
         set {
-            defaults.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
-            writeSettingsJSONIfNeeded()
+#if DEBUG
+            change { $0.experimentalSandboxEnabled = newValue }
+#else
+            change { $0.experimentalSandboxEnabled = nil }
+#endif
         }
     }
-    #endif
 
     var fileColorScheme: FileColorScheme {
-        get {
-            guard let data = defaults.data(forKey: "fileColorScheme"),
-                  let storedColors = try? JSONDecoder().decode([String: StoredColor].self, from: data) else {
-                return .default
-            }
-
-            let colors = storedColors.reduce(into: [FileVisualCategory: NSColor]()) { partialResult, entry in
-                guard let category = FileVisualCategory(rawValue: entry.key) else { return }
-                partialResult[category] = entry.value.color
-            }
-            return FileColorScheme(colors: colors)
-        }
-        set {
-            let storedColors = newValue.colors.reduce(into: [String: StoredColor]()) { partialResult, entry in
-                partialResult[entry.key.rawValue] = StoredColor(color: entry.value)
-            }
-            guard let data = try? JSONEncoder().encode(storedColors) else { return }
-            defaults.set(data, forKey: "fileColorScheme")
-            writeSettingsJSONIfNeeded()
-        }
+        get { guard let values = snapshot.fileColorScheme else { return .default }; return FileColorScheme(colors: values.reduce(into: [:]) { result, entry in if let category = FileVisualCategory(rawValue: entry.key) { result[category] = StoredColorAppKitAdapter.color(from: entry.value) } }) }
+        set { change { $0.fileColorScheme = newValue.colors.reduce(into: [:]) { $0[$1.key.rawValue] = StoredColorAppKitAdapter.rgba(from: $1.value) } } }
     }
-
-    func resetFileColorScheme() {
-        defaults.removeObject(forKey: "fileColorScheme")
-        writeSettingsJSONIfNeeded()
-    }
-
-    var folderAccessGrants: [FolderAccessGrant] {
-        get { grantService.grants }
-        set {
-            grantService.grants = newValue
-            writeSettingsJSONIfNeeded()
-        }
-    }
-
-    var defaultSortDescriptor: FileSortDescriptor {
-        get { sortDescriptor(forKey: "defaultSortDescriptor", fallback: FileSortDescriptor()) }
-        set { setSortDescriptor(newValue, forKey: "defaultSortDescriptor") }
-    }
-
-    /// Pane-specific descriptors fall back to the legacy/default preference until
-    /// that pane is changed, preserving existing installations' behavior.
-    func sortDescriptor(for pane: PaneID) -> FileSortDescriptor {
-        sortDescriptor(forKey: pane == .left ? "leftPaneSortDescriptor" : "rightPaneSortDescriptor", fallback: defaultSortDescriptor)
-    }
-
-    func setSortDescriptor(_ descriptor: FileSortDescriptor, for pane: PaneID) {
-        setSortDescriptor(descriptor, forKey: pane == .left ? "leftPaneSortDescriptor" : "rightPaneSortDescriptor")
-    }
-
-    var preferredSidebarWidth: Double {
-        get { defaults.object(forKey: "preferredSidebarWidth") as? Double ?? defaults.object(forKey: "sidebarWidth") as? Double ?? 260 }
-        set { set(min(max(newValue, 220), 340), forKey: "preferredSidebarWidth") }
-    }
-
-    var isSidebarVisible: Bool {
-        get { defaultSidebarVisible }
-        set { defaultSidebarVisible = newValue }
-    }
-
-    var sidebarWidth: Double {
-        get { preferredSidebarWidth }
-        set { preferredSidebarWidth = newValue }
-    }
-
-    var isTerminalVisible: Bool {
-        get {
-            guard experimentalTerminalEnabled else { return false }
-            return runtimeTerminalVisible ?? defaultTerminalVisible
-        }
-        set { runtimeTerminalVisible = experimentalTerminalEnabled && newValue }
-    }
-
-    private var accessPolicy: SandboxFileAccessPolicy {
-        accessPolicyOverride ?? SandboxFileAccessPolicy(
-            isEnabled: experimentalSandboxEnabled,
-            rootURL: ExperimentalFlags.appSandboxRoot,
-            grantService: grantService
-        )
-    }
-
-    private var defaultLeftDirectory: URL {
-        if experimentalSandboxEnabled {
-            return accessPolicy.validatedDirectory(ExperimentalFlags.appSandboxRoot.appendingPathComponent("Left Pane", isDirectory: true))
-        }
-
-        return firstAccessibleDirectory(from: [
-            homeDirectoryProvider(),
-            documentsDirectoryProvider()
-        ])
-    }
-
-    private var defaultRightDirectory: URL {
-        if experimentalSandboxEnabled {
-            return accessPolicy.validatedDirectory(ExperimentalFlags.appSandboxRoot.appendingPathComponent("Right Pane", isDirectory: true))
-        }
-
-        // Do not enumerate Downloads at first launch: macOS may protect it
-        // until the person has explicitly selected it for PulseFiles.
-        return firstAccessibleDirectory(from: [homeDirectoryProvider()])
-    }
-
-    private func directory(forKey key: String, fallback: URL) -> URL {
-        let url = defaults.url(forKey: key) ?? fallback
-        return accessPolicy.validatedDirectory(url, fallback: fallback)
-    }
-
-    private func firstAccessibleDirectory(from preferredDirectories: [URL]) -> URL {
-        for directory in preferredDirectories where accessPolicy.canAccess(directory) {
-            return directory
-        }
-
-        let applicationSupportDirectory = applicationSupportDirectoryProvider()
-        try? FileManager.default.createDirectory(at: applicationSupportDirectory, withIntermediateDirectories: true)
-        if accessPolicy.canAccess(applicationSupportDirectory) {
-            return applicationSupportDirectory
-        }
-
-        return accessPolicy.validatedDirectory(applicationSupportDirectory)
-    }
-
-    private func setOptionalDirectory(_ url: URL?, forKey key: String) {
-        if let url {
-            defaults.set(url, forKey: key)
-        } else {
-            defaults.removeObject(forKey: key)
-        }
-        writeSettingsJSONIfNeeded()
-    }
-
-    private func sortDescriptor(forKey key: String, fallback: FileSortDescriptor) -> FileSortDescriptor {
-        guard let data = defaults.data(forKey: key),
-              let descriptor = try? JSONDecoder().decode(FileSortDescriptor.self, from: data) else {
-            return fallback
-        }
-        return descriptor
-    }
-
-    private func setSortDescriptor(_ descriptor: FileSortDescriptor, forKey key: String) {
-        guard let data = try? JSONEncoder().encode(descriptor) else { return }
-        defaults.set(data, forKey: key)
-        writeSettingsJSONIfNeeded()
-    }
-
-    private func set(_ value: Bool, forKey key: String) {
-        defaults.set(value, forKey: key)
-        writeSettingsJSONIfNeeded()
-    }
-
-    private func set(_ value: Double, forKey key: String) {
-        defaults.set(value, forKey: key)
-        writeSettingsJSONIfNeeded()
-    }
-
-    private func set(_ value: URL, forKey key: String) {
-        defaults.set(value, forKey: key)
-        writeSettingsJSONIfNeeded()
-    }
-
-    func importJSONIfChanged() {
-        guard syncsJSON else { return }
-        let url = jsonSettingsURLProvider()
-        guard FileManager.default.fileExists(atPath: url.path),
-              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let modificationDate = attributes[.modificationDate] as? Date else { return }
-        let lastImport = defaults.object(forKey: "settingsJSONLastImportedModificationTime") as? Double ?? 0
-        guard modificationDate.timeIntervalSince1970 > lastImport else { return }
-        guard let data = try? Data(contentsOf: url),
-              let document = try? JSONDecoder().decode(SettingsJSONDocument.self, from: data) else { return }
-        applyJSON(document.settings)
-        defaults.set(modificationDate.timeIntervalSince1970, forKey: "settingsJSONLastImportedModificationTime")
-        writeSettingsJSONIfNeeded()
-    }
-
-    @discardableResult
-    func writeSettingsJSON() throws -> URL {
-        let url = jsonSettingsURLProvider()
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let document = SettingsJSONDocument(version: 1, settings: makeJSONSettings())
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(document)
-        try data.write(to: url, options: .atomic)
-        if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-           let modificationDate = attributes[.modificationDate] as? Date {
-            defaults.set(modificationDate.timeIntervalSince1970, forKey: "settingsJSONLastImportedModificationTime")
-        }
-        return url
-    }
-
-    private func writeSettingsJSONIfNeeded() {
-        guard syncsJSON, !isSyncingJSON else { return }
-        _ = try? writeSettingsJSON()
-    }
-
-    private var jsonExperimentalSandboxEnabled: Bool? {
-        #if DEBUG
-        experimentalSandboxEnabled
-        #else
-        nil
-        #endif
-    }
-
-    private func makeJSONSettings() -> SettingsJSON {
-        SettingsJSON(
-            appLanguage: appLanguage.rawValue,
-            defaultSidebarVisible: defaultSidebarVisible,
-            liquidGlassEnabled: liquidGlassEnabled,
-            experimentalTerminalEnabled: experimentalTerminalEnabled,
-            hasAcknowledgedTerminalWarning: hasAcknowledgedTerminalWarning,
-            defaultTerminalVisible: defaultTerminalVisible,
-            defaultSinglePaneMode: defaultSinglePaneMode,
-            showHiddenFilesByDefault: showHiddenFilesByDefault,
-            quickSearchMatchMode: quickSearchMatchMode,
-            quickSearchPresentation: quickSearchPresentation,
-            confirmCopyOperations: confirmCopyOperations,
-            confirmMoveOperations: confirmMoveOperations,
-            confirmDeleteOperations: confirmDeleteOperations,
-            permanentlyDeleteInsteadOfTrash: permanentlyDeleteInsteadOfTrash,
-            experimentalSandboxEnabled: jsonExperimentalSandboxEnabled,
-            preferredSidebarWidth: preferredSidebarWidth,
-            lastLeftDirectory: lastLeftDirectory.path,
-            lastRightDirectory: lastRightDirectory.path,
-            startupLeftDirectory: startupLeftDirectory?.path,
-            startupRightDirectory: startupRightDirectory?.path,
-            scratchDirectory: scratchDirectory?.path,
-            defaultSortDescriptor: defaultSortDescriptor,
-            leftPaneSortDescriptor: sortDescriptor(for: .left),
-            rightPaneSortDescriptor: sortDescriptor(for: .right),
-            fileColorScheme: fileColorScheme.colors.reduce(into: [String: StoredColor]()) { partialResult, entry in
-                partialResult[entry.key.rawValue] = StoredColor(color: entry.value)
-            }
-        )
-    }
-
-    private func applyJSON(_ settings: SettingsJSON) {
-        isSyncingJSON = true
-        defer { isSyncingJSON = false }
-
-        defaults.set(AppLanguage(rawValue: settings.appLanguage ?? "")?.rawValue ?? AppLanguage.english.rawValue, forKey: Self.appLanguageDefaultsKey)
-        if let value = settings.defaultSidebarVisible { defaults.set(value, forKey: "defaultSidebarVisible") }
-        if let value = settings.liquidGlassEnabled { defaults.set(value, forKey: LiquidGlassStyle.preferenceKey) }
-        if let value = settings.experimentalTerminalEnabled { defaults.set(value, forKey: "experimentalTerminalEnabled") }
-        if let value = settings.hasAcknowledgedTerminalWarning { defaults.set(value, forKey: "hasAcknowledgedTerminalWarning") }
-        if let value = settings.defaultTerminalVisible { defaults.set(value, forKey: "defaultTerminalVisible") }
-        if let value = settings.defaultSinglePaneMode { defaults.set(value, forKey: "defaultSinglePaneMode") }
-        if let value = settings.showHiddenFilesByDefault { defaults.set(value, forKey: "showHiddenFilesByDefault") }
-        if let value = settings.quickSearchMatchMode { defaults.set(value.rawValue, forKey: "quickSearchMatchMode") }
-        if let value = settings.quickSearchPresentation { defaults.set(value.rawValue, forKey: "quickSearchPresentation") }
-        if let value = settings.confirmCopyOperations { defaults.set(value, forKey: "confirmCopyOperations") }
-        if let value = settings.confirmMoveOperations { defaults.set(value, forKey: "confirmMoveOperations") }
-        if let value = settings.confirmDeleteOperations { defaults.set(value, forKey: "confirmDeleteOperations") }
-        if let value = settings.permanentlyDeleteInsteadOfTrash { defaults.set(value, forKey: "permanentlyDeleteInsteadOfTrash") }
-        #if DEBUG
-        if let value = settings.experimentalSandboxEnabled { defaults.set(value, forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey) }
-        #else
-        if settings.experimentalSandboxEnabled != nil {
-            defaults.removeObject(forKey: ExperimentalFlags.restrictFileAccessUserDefaultsKey)
-        }
-        #endif
-        if let value = settings.preferredSidebarWidth { defaults.set(min(max(value, 220), 340), forKey: "preferredSidebarWidth") }
-        if let value = settings.lastLeftDirectory { defaults.set(URL(fileURLWithPath: value, isDirectory: true), forKey: "lastLeftDirectory") }
-        if let value = settings.lastRightDirectory { defaults.set(URL(fileURLWithPath: value, isDirectory: true), forKey: "lastRightDirectory") }
-        applyOptionalDirectory(settings.startupLeftDirectory, forKey: "startupLeftDirectory")
-        applyOptionalDirectory(settings.startupRightDirectory, forKey: "startupRightDirectory")
-        applyOptionalDirectory(settings.scratchDirectory, forKey: "scratchDirectory")
-        if let value = settings.defaultSortDescriptor { setSortDescriptor(value, forKey: "defaultSortDescriptor") }
-        if let value = settings.leftPaneSortDescriptor { setSortDescriptor(value, forKey: "leftPaneSortDescriptor") }
-        if let value = settings.rightPaneSortDescriptor { setSortDescriptor(value, forKey: "rightPaneSortDescriptor") }
-        if let storedColors = settings.fileColorScheme {
-            let colors = storedColors.reduce(into: [FileVisualCategory: NSColor]()) { partialResult, entry in
-                guard let category = FileVisualCategory(rawValue: entry.key) else { return }
-                partialResult[category] = entry.value.color
-            }
-            fileColorScheme = FileColorScheme(colors: colors)
-        }
-    }
-
-    private func applyOptionalDirectory(_ path: String?, forKey key: String) {
-        guard let path else { return }
-        if path.isEmpty {
-            defaults.removeObject(forKey: key)
-        } else {
-            defaults.set(URL(fileURLWithPath: path, isDirectory: true), forKey: key)
-        }
-    }
-}
-
-
-private struct SettingsJSONDocument: Codable {
-    let version: Int
-    let settings: SettingsJSON
-}
-
-private struct SettingsJSON: Codable {
-    var appLanguage: String?
-    var defaultSidebarVisible: Bool?
-    var liquidGlassEnabled: Bool?
-    var experimentalTerminalEnabled: Bool?
-    var hasAcknowledgedTerminalWarning: Bool?
-    var defaultTerminalVisible: Bool?
-    var defaultSinglePaneMode: Bool?
-    var showHiddenFilesByDefault: Bool?
-    var quickSearchMatchMode: QuickSearchMatchMode?
-    var quickSearchPresentation: QuickSearchPresentation?
-    var confirmCopyOperations: Bool?
-    var confirmMoveOperations: Bool?
-    var confirmDeleteOperations: Bool?
-    var permanentlyDeleteInsteadOfTrash: Bool?
-    var experimentalSandboxEnabled: Bool?
-    var preferredSidebarWidth: Double?
-    var lastLeftDirectory: String?
-    var lastRightDirectory: String?
-    var startupLeftDirectory: String?
-    var startupRightDirectory: String?
-    var scratchDirectory: String?
-    var defaultSortDescriptor: FileSortDescriptor?
-    var leftPaneSortDescriptor: FileSortDescriptor?
-    var rightPaneSortDescriptor: FileSortDescriptor?
-    var fileColorScheme: [String: StoredColor]?
-}
-
-private struct StoredColor: Codable {
-    let red: Double
-    let green: Double
-    let blue: Double
-    let alpha: Double
-
-    init(red: Double, green: Double, blue: Double, alpha: Double) {
-        self.red = red
-        self.green = green
-        self.blue = blue
-        self.alpha = alpha
-    }
-
-    init(color: NSColor) {
-        let converted: NSColor?
-        if let appearance = NSAppearance(named: .aqua) {
-            var colorInAquaAppearance: NSColor?
-            appearance.performAsCurrentDrawingAppearance {
-                colorInAquaAppearance = color.usingColorSpace(NSColorSpace.deviceRGB)
-            }
-            converted = colorInAquaAppearance
-        } else {
-            converted = color.usingColorSpace(NSColorSpace.deviceRGB)
-        }
-        let rgbColor = converted ?? NSColor.labelColor.usingColorSpace(NSColorSpace.deviceRGB) ?? NSColor(deviceWhite: 0, alpha: 1)
-        red = Double(rgbColor.redComponent)
-        green = Double(rgbColor.greenComponent)
-        blue = Double(rgbColor.blueComponent)
-        alpha = Double(rgbColor.alphaComponent)
-    }
-
-    var color: NSColor {
-        NSColor(deviceRed: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: CGFloat(alpha))
-    }
+    func resetFileColorScheme() { change { $0.fileColorScheme = nil } }
+    var folderAccessGrants: [FolderAccessGrant] { get { grantService.grants } set { grantService.grants = newValue; try? repository.writeSettingsJSON() } }
+    var defaultSortDescriptor: FileSortDescriptor { get { snapshot.defaultSortDescriptor ?? FileSortDescriptor() } set { change { $0.defaultSortDescriptor = newValue } } }
+    func sortDescriptor(for pane: PaneID) -> FileSortDescriptor { pane == .left ? (snapshot.leftPaneSortDescriptor ?? defaultSortDescriptor) : (snapshot.rightPaneSortDescriptor ?? defaultSortDescriptor) }
+    func setSortDescriptor(_ value: FileSortDescriptor, for pane: PaneID) { change { if pane == .left { $0.leftPaneSortDescriptor = value } else { $0.rightPaneSortDescriptor = value } } }
+    var preferredSidebarWidth: Double { get { snapshot.preferredSidebarWidth ?? 260 } set { change { $0.preferredSidebarWidth = min(max(newValue, 220), 340) } } }
+    var isSidebarVisible: Bool { get { defaultSidebarVisible } set { defaultSidebarVisible = newValue } }
+    var sidebarWidth: Double { get { preferredSidebarWidth } set { preferredSidebarWidth = newValue } }
+    var isTerminalVisible: Bool { get { experimentalTerminalEnabled && (sessionState.runtimeTerminalVisible ?? defaultTerminalVisible) } set { sessionState.runtimeTerminalVisible = experimentalTerminalEnabled && newValue } }
+    func importJSONIfChanged() { repository.importJSONIfChanged() }
+    @discardableResult func writeSettingsJSON() throws -> URL { try repository.writeSettingsJSON() }
 }

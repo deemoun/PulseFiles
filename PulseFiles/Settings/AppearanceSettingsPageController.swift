@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class AppearanceSettingsPageController: SettingsPageControllerBase {
-    private let settings: SettingsService
+    private let settings: AppearanceSettingsProviding
     private let liquidGlass = NSButton(checkboxWithTitle: "Enable liquid glass interface".localized, target: nil, action: nil)
     private let sidebar = NSButton(checkboxWithTitle: "Show sidebar by default".localized, target: nil, action: nil)
     private let singlePane = NSButton(checkboxWithTitle: "Use single pane by default".localized, target: nil, action: nil)
@@ -10,7 +10,7 @@ final class AppearanceSettingsPageController: SettingsPageControllerBase {
     private let widthLabel = NSTextField(labelWithString: "260 pt")
     private var wells: [FileVisualCategory: NSColorWell] = [:]
 
-    init(settings: SettingsService) {
+    init(settings: AppearanceSettingsProviding) {
         self.settings = settings
         super.init()
         [liquidGlass, sidebar, singlePane].forEach { $0.target = self; $0.action = #selector(changed(_:)) }

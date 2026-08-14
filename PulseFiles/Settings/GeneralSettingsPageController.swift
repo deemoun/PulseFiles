@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class GeneralSettingsPageController: SettingsPageControllerBase {
-    private let settings: SettingsService
+    private let settings: GeneralSettingsProviding
     private let languageSelector = NSPopUpButton()
     private let confirmCopy = NSButton(checkboxWithTitle: "Confirm copy operations".localized, target: nil, action: nil)
     private let confirmMove = NSButton(checkboxWithTitle: "Confirm move operations".localized, target: nil, action: nil)
@@ -12,7 +12,7 @@ final class GeneralSettingsPageController: SettingsPageControllerBase {
     private lazy var cleanupButton = NSButton(title: "Clear Incomplete Transfers…".localized, target: self, action: #selector(cleanup(_:)))
     var onMaintenanceCleanup: (() -> Void)?
 
-    init(settings: SettingsService, stagingCleanupService: StagingCleanupService) {
+    init(settings: GeneralSettingsProviding, stagingCleanupService: StagingCleanupService) {
         self.settings = settings
         self.stagingCleanupService = stagingCleanupService
         super.init()

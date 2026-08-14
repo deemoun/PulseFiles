@@ -146,6 +146,20 @@ final class FolderAccessGrantServiceTests: XCTestCase {
         XCTAssertEqual(stops, 1)
     }
 
+    func testResolvedBookmarkWhoseSecurityScopeCannotStartIsInaccessible() throws {
+        let folder = try temporaryDirectory.folder("DeniedBookmark")
+        let writer = FolderAccessGrantService(defaults: fixture.defaults, resolver: FakeFolderAccessBookmarkResolver())
+        try writer.grantAccess(to: folder)
+        let reloaded = FolderAccessGrantService(
+            defaults: fixture.defaults,
+            resolver: FakeFolderAccessBookmarkResolver(),
+            startSecurityScopedAccess: { _ in false }
+        )
+
+        XCTAssertEqual(reloaded.grantStatus(containing: folder, canRead: { _ in true }), .inaccessible)
+        XCTAssertTrue(reloaded.hasGrant(containing: folder), "The persisted grant remains available for reauthorization")
+    }
+
     func testGrantAccessCompactsDescendantGrantsWhenParentIsGranted() throws {
         let parent = try temporaryDirectory.folder("CompactParent")
         let child = try temporaryDirectory.folder("CompactParent/Child")

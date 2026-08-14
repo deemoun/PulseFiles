@@ -256,6 +256,39 @@ final class SettingsServiceTests: XCTestCase {
         XCTAssertEqual(makeSettings().appLanguage, .english)
     }
 
+    func testV1PartialJSONMigratesWithoutDiscardingExistingPreferences() throws {
+        settings.confirmDeleteOperations = false
+        settings.preferredSidebarWidth = 312
+        try writeSettingsJSON(settings: ["defaultSidebarVisible": false])
+        fixture.defaults.removeObject(forKey: "settingsJSONLastImportedModificationTime")
+
+        let migrated = makeSettings()
+
+        XCTAssertFalse(migrated.defaultSidebarVisible)
+        XCTAssertFalse(migrated.confirmDeleteOperations)
+        XCTAssertEqual(migrated.preferredSidebarWidth, 312)
+    }
+
+    func testCorruptJSONDoesNotReplaceKnownGoodDefaults() throws {
+        settings.confirmMoveOperations = false
+        try Data("{ definitely-not-json".utf8).write(to: settingsJSONURL, options: .atomic)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: settingsJSONURL.path)
+        fixture.defaults.removeObject(forKey: "settingsJSONLastImportedModificationTime")
+
+        XCTAssertFalse(makeSettings().confirmMoveOperations)
+    }
+
+    func testSettingsJSONWriteAtomicallyReplacesExistingDocument() throws {
+        try Data("old".utf8).write(to: settingsJSONURL)
+        settings.confirmCopyOperations = false
+
+        let writtenURL = try settings.writeSettingsJSON()
+        let document = try decodedSettingsJSONDocument(at: writtenURL)
+
+        XCTAssertEqual(document["settings"]?["confirmCopyOperations"] as? Bool, false)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(at: writtenURL.deletingLastPathComponent(), includingPropertiesForKeys: nil).map(\.lastPathComponent), ["Settings.json"])
+    }
+
     func testTerminalVisibilityAndExperimentalEnablementDefaultAndRoundTrip() {
         XCTAssertFalse(settings.experimentalTerminalEnabled)
         XCTAssertFalse(settings.defaultTerminalVisible)
