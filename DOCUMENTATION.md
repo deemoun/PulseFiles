@@ -212,7 +212,9 @@ Limits that must remain visible in code and UI:
 | FileClipboard | Pasteboard URLs and copy/cut marker. |
 | DirectoryMonitor | Watches a folder and asks the view model to reload. |
 | BookmarkService / RecentLocationService | Persist favorites and bounded, de-duplicated recents. |
-| SettingsService | Typed UserDefaults facade and settings JSON import/export; do not scatter raw keys. |
+| SettingsSnapshot / SettingsRepository | AppKit-free value snapshot plus the sole owner of v1 UserDefaults keys, JSON migration, and atomic import/export. |
+| StartupNavigationService | Resolves saved/startup directories, folder grants, access-policy validation, and safe fallbacks. |
+| SettingsService / WindowSessionState | Narrow presentation adapter (including RGBA/NSColor conversion) and per-window, non-persistent UI state. |
 | TerminalService | Computes Experimental Terminal visibility/warning state; never enables it by default. |
 | VolumeDiscoveryService / VolumeChangeMonitor | Mounted-volume snapshots and Workspace mount/unmount updates on main actor. |
 | DiagnosticLogService / DiagnosticLogger | Bounded in-memory log; sanitizes paths, redacts common secrets and truncates messages. |
@@ -267,10 +269,11 @@ TerminalViewController follows an authorized active-pane directory where possibl
 the access scope for command lifetime, reports launch/non-zero-exit errors, and can
 best-effort stop a running process; it cannot undo shell changes.
 
-SettingsService owns startup/last directories, sidebar/terminal visibility,
-single-pane mode, hidden/sort defaults, confirmation/permanent-delete options,
-experimental sandbox preferences, sidebar width and file colors. Apply changes to
-existing UI. Favorites and recents belong to their services. Localized UI text uses
+SettingsRepository owns durable preferences and the compatible v1 JSON document;
+StartupNavigationService owns launch-folder resolution and authorization. SettingsService
+adapts those value types for focused settings-page interfaces, while WindowSessionState
+owns manual terminal visibility for one window only. Apply changes to existing UI.
+Favorites and recents belong to their services. Localized UI text uses
 String.localized and Resources/en.lproj/Localizable.strings.
 
 ## Testing, builds and agent checklist

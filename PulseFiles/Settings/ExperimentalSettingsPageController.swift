@@ -2,13 +2,13 @@ import AppKit
 
 @MainActor
 final class ExperimentalSettingsPageController: SettingsPageControllerBase {
-    private let settings: SettingsService
+    private let settings: ExperimentalSettingsProviding
     private let terminalEnabled = NSButton(checkboxWithTitle: "Enable Beta Terminal".localized, target: nil, action: nil)
     private let terminalVisible = NSButton(checkboxWithTitle: "Show Beta Terminal by default".localized, target: nil, action: nil)
 #if DEBUG
     private let sandbox = NSButton(checkboxWithTitle: "Restrict browsing and file operations to the experimental sandbox".localized, target: nil, action: nil)
 #endif
-    init(settings: SettingsService) {
+    init(settings: ExperimentalSettingsProviding) {
         self.settings = settings; super.init()
         var controls = [terminalEnabled, terminalVisible]
 #if DEBUG

@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class NavigationSettingsPageController: SettingsPageControllerBase {
-    private let settings: SettingsService
+    private let settings: NavigationSettingsProviding
     private let accessPolicy: SandboxFileAccessPolicy
     private let folderSelection: AuthorizedFolderSelectionCoordinator
     private let scratchCleanupService: ScratchFolderCleanupService
@@ -12,7 +12,7 @@ final class NavigationSettingsPageController: SettingsPageControllerBase {
     var onOpenScratchDirectory: ((URL) -> Void)?
     var onScratchCleanupResult: ((FileOperationResult, String) -> Void)?
 
-    init(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, scratchCleanupService: ScratchFolderCleanupService) {
+    init(settings: NavigationSettingsProviding, accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, scratchCleanupService: ScratchFolderCleanupService) {
         self.settings = settings; self.accessPolicy = accessPolicy; self.scratchCleanupService = scratchCleanupService
         self.folderSelection = AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: accessGrantService)
         super.init()
