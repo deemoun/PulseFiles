@@ -2,6 +2,45 @@ import XCTest
 @testable import PulseFiles
 
 final class MainWindowCoordinatorTests: XCTestCase {
+    @MainActor
+    func testCommandDispatchCoordinatorSendsEveryEntrySurfaceThroughOneTypedHandler() {
+        let handler = RecordingMainCommandHandler()
+        let coordinator = MainCommandDispatchCoordinator(handler: handler)
+        let selected = URL(fileURLWithPath: "/sandbox/left/report.txt")
+        let state = MainCommandRoutingState(
+            leftPane: .init(id: .left, currentDirectory: URL(fileURLWithPath: "/sandbox/left"), selectedURLs: [selected]),
+            rightPane: .init(id: .right, currentDirectory: URL(fileURLWithPath: "/sandbox/right"))
+        )
+
+        for surface in MainCommandEntrySurface.allCases {
+            coordinator.dispatch(.copy, from: surface, state: state)
+        }
+
+        XCTAssertEqual(handler.routes.count, MainCommandEntrySurface.allCases.count)
+        XCTAssertTrue(handler.routes.allSatisfy { $0 == handler.routes.first })
+    }
+
+    @MainActor
+    func testCommandDispatchCoordinatorPreservesRouterSafetyRejection() {
+        let handler = RecordingMainCommandHandler()
+        let coordinator = MainCommandDispatchCoordinator(handler: handler)
+        let outside = URL(fileURLWithPath: "/outside/secret")
+        let state = MainCommandRoutingState(
+            leftPane: .init(id: .left, currentDirectory: URL(fileURLWithPath: "/sandbox/left"), selectedURLs: [outside]),
+            rightPane: .init(id: .right, currentDirectory: URL(fileURLWithPath: "/sandbox/right")),
+            sandboxAllowsSelectedURLs: false
+        )
+
+        for surface in MainCommandEntrySurface.allCases {
+            coordinator.dispatch(.move, from: surface, state: state)
+        }
+
+        XCTAssertEqual(
+            handler.routes,
+            Array(repeating: .disabled(command: .move, reason: .sandboxRejectedSelection), count: MainCommandEntrySurface.allCases.count)
+        )
+    }
+
     func testMainCommandRouterReturnsTypedCrossPaneTarget() {
         let state = MainCommandRoutingState(
             leftPane: .init(id: .left, currentDirectory: URL(fileURLWithPath: "/left"), selectedURLs: [URL(fileURLWithPath: "/left/a")]),
@@ -105,6 +144,12 @@ final class MainWindowCoordinatorTests: XCTestCase {
             XCTFail("Expected an empty-name validation error")
         } catch { XCTAssertTrue(error is FileNameValidator.ValidationError) }
     }
+}
+
+@MainActor
+private final class RecordingMainCommandHandler: MainCommandHandling {
+    var routes: [MainCommandRoute] = []
+    func handle(_ route: MainCommandRoute) { routes.append(route) }
 }
 
 private struct NeverCalledFileSystemProbe: FileSystemProbing {
