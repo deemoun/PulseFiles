@@ -228,6 +228,7 @@ final class ControllerWiringUITests: XCTestCase {
 
             try app.postKey(keyCode: 125)
             XCTAssertEqual(pane.viewModel.focusedURL, urls[1], "Down must advance exactly one row")
+            XCTAssertTrue(app.window.firstResponder === pane.tableView, "Vertical navigation must restore the active table as first responder")
             XCTAssertEqual(pane.currentDirectory, directory)
             XCTAssertEqual(pane.selectedItems.map(\.url), marks)
             XCTAssertTrue(pane.tableView.accessibilityFocused())

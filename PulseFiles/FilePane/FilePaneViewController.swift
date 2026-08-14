@@ -963,6 +963,11 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             displayed: displayedDestinations,
             delta: delta
         ), let destinationRow = row(for: destination) else { return }
+        // The window-level shortcut path can deliver an arrow while focus is
+        // sitting on pane chrome (or nowhere at all). Once vertical navigation
+        // begins, restore the table as first responder so key repeat and the
+        // next arrow stay on AppKit's normal, predictable responder path.
+        view.window?.makeFirstResponder(tableView)
         setFocusedDestination(destination)
         tableView.scrollRowToVisible(destinationRow)
         tableView.setAccessibilityFocused(true)
