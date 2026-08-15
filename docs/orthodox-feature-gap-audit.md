@@ -65,6 +65,9 @@ feature as absent.
 These gates determine whether PulseFiles can be represented as production-ready;
 they are not competitive feature requests:
 
+The ordered execution plan and per-phase exit criteria live in
+[`v1-release-plan.md`](v1-release-plan.md).
+
 1. Complete signed-app release validation and retain the required evidence from
    the release checklist.
 2. Complete the storage-provider compatibility matrix for iCloud/cloud-provider
