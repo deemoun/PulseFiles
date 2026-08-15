@@ -132,7 +132,10 @@ PulseFiles is a Swift Package Manager executable organized by responsibility: `A
 
 ## Roadmap
 
-The [orthodox file-manager feature-gap audit](docs/orthodox-feature-gap-audit.md) tracks implemented behaviors, remaining V1 gaps, future directions, and explicitly deferred work.
+The [V1 completion plan](docs/v1-release-plan.md) orders the remaining release
+work and defines its exit criteria. The [orthodox file-manager feature-gap
+audit](docs/orthodox-feature-gap-audit.md) tracks implemented behaviors, future
+directions, and explicitly deferred work.
 
 ## Contributing, testing, and project policies
 
