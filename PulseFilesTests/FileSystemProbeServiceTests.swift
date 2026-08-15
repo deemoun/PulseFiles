@@ -53,6 +53,47 @@ private struct DelayedProbe: FileSystemProbing {
 }
 
 final class FileSystemOperationSchedulerTests: XCTestCase {
+    func testInspectionConcurrencyIsBoundedIndependently() async {
+        let scheduler = FileSystemOperationScheduler(configuration: .init(
+            maximumConcurrentOperations: 3, maximumQueuedOperations: 4,
+            maximumAbandonedOperations: 1, maximumConcurrentInspections: 1,
+            maximumQueuedInspections: 2
+        ))
+        let gate = DispatchSemaphore(value: 0)
+        let active = LockedCounter()
+        let first = Task { try? await scheduler.submitInspection { _ in active.increment(); gate.wait(); return 1 } }
+        while active.value == 0 { await Task.yield() }
+        let second = Task { try? await scheduler.submitInspection { _ in active.increment(); return 2 } }
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(active.value, 1)
+        gate.signal()
+        _ = await first.value
+        _ = await second.value
+        XCTAssertEqual(active.value, 2)
+    }
+
+    func testInspectionQueueHasItsOwnSaturationLimit() async {
+        let scheduler = FileSystemOperationScheduler(configuration: .init(
+            maximumConcurrentOperations: 2, maximumQueuedOperations: 8,
+            maximumAbandonedOperations: 1, maximumConcurrentInspections: 1,
+            maximumQueuedInspections: 1
+        ))
+        let gate = DispatchSemaphore(value: 0)
+        let first = Task { try? await scheduler.submitInspection { _ in gate.wait(); return 1 } }
+        try? await Task.sleep(for: .milliseconds(10))
+        let queued = Task { try? await scheduler.submitInspection { _ in 2 } }
+        try? await Task.sleep(for: .milliseconds(10))
+        do {
+            _ = try await scheduler.submitInspection { _ in 3 }
+            XCTFail("Expected inspection queue saturation")
+        } catch let rejection as FileSystemOperationScheduler.Rejection {
+            XCTAssertEqual(rejection, .inspectionQueueFull)
+        } catch { XCTFail("Unexpected error: \(error)") }
+        gate.signal()
+        _ = await first.value
+        _ = await queued.value
+    }
+
     func testRepeatedTimedOutProbesStopStartingAfterAbandonedLimit() async {
         let scheduler = FileSystemOperationScheduler(configuration: .init(maximumConcurrentOperations: 2, maximumQueuedOperations: 4, maximumAbandonedOperations: 2))
         let probe = FileSystemProbeService(

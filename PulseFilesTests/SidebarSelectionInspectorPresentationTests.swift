@@ -53,40 +53,33 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         XCTAssertNil(SelectionInspectorPresentation.make(for: []))
     }
 
-    func testTotalSizeReturnsFallbackWhenAccessPolicyDeniesDirectory() async throws {
-        let deniedDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let sandboxRoot = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    func testSizingServiceRejectsDirectoryOutsidePolicy() async throws {
+        let deniedDirectory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sandboxRoot = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: deniedDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: sandboxRoot, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: deniedDirectory)
-            try? FileManager.default.removeItem(at: sandboxRoot)
+        defer { try? FileManager.default.removeItem(at: deniedDirectory); try? FileManager.default.removeItem(at: sandboxRoot) }
+
+        let service = DirectorySizingService(accessPolicy: SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxRoot))
+        do {
+            _ = try await service.size(of: deniedDirectory)
+            XCTFail("Expected policy rejection")
+        } catch let error as SandboxAccessError {
+            XCTAssertEqual(error, .outsideExperimentalSandbox(deniedDirectory))
         }
-
-        let child = deniedDirectory.appendingPathComponent("secret.txt")
-        try Data(repeating: 1, count: 128).write(to: child)
-        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxRoot)
-
-        let size = await SidebarViewController.totalSize(for: deniedDirectory, fallback: 42, accessPolicy: policy)
-
-        XCTAssertEqual(size, 42)
     }
 
-    func testTotalSizeEnumeratesAllowedDirectory() async throws {
-        let sandboxRoot = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    func testSizingServiceEnumeratesAllowedDirectory() async throws {
+        let sandboxRoot = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: sandboxRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: sandboxRoot) }
-
         try Data(repeating: 1, count: 128).write(to: sandboxRoot.appendingPathComponent("first.txt"))
         try Data(repeating: 1, count: 64).write(to: sandboxRoot.appendingPathComponent("second.txt"))
-        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxRoot)
 
-        let size = await SidebarViewController.totalSize(for: sandboxRoot, fallback: 42, accessPolicy: policy)
+        let service = DirectorySizingService(accessPolicy: SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxRoot))
+        let result = try await service.size(of: sandboxRoot)
 
-        XCTAssertEqual(size, 192)
+        XCTAssertEqual(result, DirectorySizeResult(bytes: 192, completeness: .complete))
     }
 
     @MainActor
@@ -128,6 +121,36 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
 
         XCTAssertFalse(updates.contains { $0.1 == "first location" })
+    }
+
+    @MainActor
+    func testStaleSelectionDoesNotReceiveLateSizeResult() async {
+        let sizing = ControlledSidebarSizing()
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let sidebar = SidebarViewController(
+            recentLocations: RecentLocationService(defaults: defaults),
+            bookmarkService: BookmarkService(defaults: defaults),
+            settings: SettingsService(defaults: defaults),
+            accessPolicy: .current,
+            volumeDiscovery: VolumeDiscoveryService(),
+            directorySizing: sizing
+        )
+        var totalUpdates = [String]()
+        sidebar.onInspectorDetailUpdate = { identifier, value in
+            if identifier == "total-size" { totalUpdates.append(value) }
+        }
+        _ = sidebar.view
+
+        sidebar.showSelection([fileItem("first", type: .folder, isDirectory: true, size: 0)])
+        await sizing.waitUntilRequested("first")
+        sidebar.showSelection([fileItem("second", type: .folder, isDirectory: true, size: 0)])
+        await sizing.waitUntilRequested("second")
+        sizing.finish("second", bytes: 2)
+        try? await Task.sleep(for: .milliseconds(30))
+        sizing.finish("first", bytes: 1)
+        try? await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(totalUpdates, [FileSizeFormatter.string(fromByteCount: 2)])
     }
 
     @MainActor
@@ -189,5 +212,29 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
 
     private enum MetadataReaderError: Error {
         case failed
+    }
+}
+
+private final class ControlledSidebarSizing: SidebarDirectorySizing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [String: CheckedContinuation<DirectorySizeResult, Error>] = [:]
+
+    func size(of root: URL) async throws -> DirectorySizeResult {
+        try await withCheckedThrowingContinuation { continuation in
+            lock.lock(); continuations[root.lastPathComponent] = continuation; lock.unlock()
+        }
+    }
+
+    func waitUntilRequested(_ name: String) async {
+        while true {
+            lock.lock(); let requested = continuations[name] != nil; lock.unlock()
+            if requested { return }
+            await Task.yield()
+        }
+    }
+
+    func finish(_ name: String, bytes: Int64) {
+        lock.lock(); let continuation = continuations.removeValue(forKey: name); lock.unlock()
+        continuation?.resume(returning: DirectorySizeResult(bytes: bytes, completeness: .complete))
     }
 }
