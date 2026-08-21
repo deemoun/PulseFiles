@@ -425,3 +425,5 @@
 "%@ already exists and is not part of this rename." = "%@ уже существует и не участвует в этом переименовании.";
 "Enter a base name. PulseFiles will preview every destination before changing files." = "Введите основное имя. Перед изменением файлов PulseFiles покажет все новые имена для проверки.";
 "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision." = "Содержимое архива будет проверено на безопасность и извлечено в текущую папку. При совпадении с существующими объектами потребуется выбрать способ разрешения конфликта.";
+"%@ is a Finder alias and cannot be changed in PulseFiles." = "%@ — это псевдоним Finder, который нельзя изменить в PulseFiles.";
+"Use Finder to manage %@, or select its original item. PulseFiles did not change the alias or its target." = "Используйте Finder для управления %@ или выберите исходный объект. PulseFiles не изменил псевдоним или его цель.";

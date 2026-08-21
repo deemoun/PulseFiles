@@ -18,6 +18,7 @@ package enum FileOperationError: LocalizedError, Equatable {
     case temporarySiblingUnavailable(destination: URL, prefix: String)
     case insufficientDestinationCapacity(required: Int64, available: Int64)
     case iCloudItemNotDownloaded(URL)
+    case finderAliasMutationUnsupported(URL)
     case readOnlyVolume(URL)
     case volumeUnavailable(URL)
     case traversalLimitExceeded(URL, maximumDepth: Int, maximumItems: Int)
@@ -53,6 +54,8 @@ package enum FileOperationError: LocalizedError, Equatable {
             return "The destination does not have enough available space.".localized
         case .iCloudItemNotDownloaded(let url):
             return "%@ is stored in iCloud and has not finished downloading.".localized(with: url.lastPathComponent)
+        case .finderAliasMutationUnsupported(let url):
+            return "%@ is a Finder alias and cannot be changed in PulseFiles.".localized(with: url.lastPathComponent)
         case .readOnlyVolume(let url):
             return "%@ is on a read-only volume.".localized(with: url.lastPathComponent)
         case .volumeUnavailable(let url):
@@ -98,6 +101,8 @@ package enum FileOperationError: LocalizedError, Equatable {
             return "This operation requires %@, but the destination volume has only %@ available.".localized(with: Self.formattedByteCount(required), Self.formattedByteCount(available))
         case .iCloudItemNotDownloaded(let url):
             return "Download %@ in Finder, then try again. PulseFiles did not change any files.".localized(with: url.path)
+        case .finderAliasMutationUnsupported(let url):
+            return "Use Finder to manage %@, or select its original item. PulseFiles did not change the alias or its target.".localized(with: url.path)
         case .readOnlyVolume(let url):
             return "Choose a writable destination or eject the read-only media before modifying %@.".localized(with: url.path)
         case .volumeUnavailable(let url):
@@ -117,8 +122,8 @@ package struct FileOperationPathSafetyState: Equatable {
     package var isAvailable = true
     package var isReadOnlyVolume = false
     package var isICloudPlaceholder = false
-    /// Finder aliases are not symbolic links. Operations preserve the alias
-    /// object and never resolve its target.
+    /// Finder aliases are not symbolic links. Mutations reject the alias
+    /// object before resolving or changing it or its target.
     package var isFinderAlias = false
 }
 

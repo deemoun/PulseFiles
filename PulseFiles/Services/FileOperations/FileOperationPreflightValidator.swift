@@ -108,6 +108,7 @@ package final class FileOperationPreflightValidator {
         for url in urls {
             try validateExistingSource(url)
             try validateAvailableSource(url)
+            try validateMutationSupported(url)
             try validateSourceAccess(url)
             guard normalizedSources.insert(FilePathComparison.normalizedPath(url)).inserted else {
                 throw FileOperationError.duplicateSource(url)
@@ -138,6 +139,12 @@ package final class FileOperationPreflightValidator {
         guard allowingPlaceholder || !state.isICloudPlaceholder else { throw FileOperationError.iCloudItemNotDownloaded(url) }
     }
 
+    package func validateMutationSupported(_ url: URL) throws {
+        if case .finderAlias = try sourceItemKind(at: url) {
+            throw FileOperationError.finderAliasMutationUnsupported(url)
+        }
+    }
+
     package func validateWritableMutationTarget(_ url: URL) throws {
         let state = pathSafetyStateProvider(url)
         guard state.isAvailable else { throw FileOperationError.volumeUnavailable(url) }
@@ -148,10 +155,6 @@ package final class FileOperationPreflightValidator {
         if case .symbolicLink = try sourceItemKind(at: source) {
             // Access to the link is governed by its containing directory. Do
             // not resolve its target: the copy policy above never traverses it.
-            try accessPolicy.validateAccess(to: source.deletingLastPathComponent())
-        } else if case .finderAlias = try sourceItemKind(at: source) {
-            // An alias target may be outside the selected tree; access applies
-            // to the opaque alias object in its containing directory.
             try accessPolicy.validateAccess(to: source.deletingLastPathComponent())
         } else {
             try accessPolicy.validateAccess(to: source)
