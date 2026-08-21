@@ -295,6 +295,7 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
         try await prepareCloudPlaceholders(for: [source], progressHandler: progressHandler)
         let parentDirectory = source.deletingLastPathComponent()
         try preflightValidator.validateExistingSource(source)
+        try preflightValidator.validateMutationSupported(source)
         try preflightValidator.validateSourceAccess(source)
         try accessPolicy.validateAccess(to: parentDirectory)
         try preflightValidator.validateExistingDirectory(parentDirectory)

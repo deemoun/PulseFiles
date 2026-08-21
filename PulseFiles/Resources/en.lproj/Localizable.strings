@@ -425,3 +425,5 @@
 "%@ already exists and is not part of this rename." = "%@ already exists and is not part of this rename.";
 "Enter a base name. PulseFiles will preview every destination before changing files." = "Enter a base name. PulseFiles will preview every destination before changing files.";
 "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision." = "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision.";
+"%@ is a Finder alias and cannot be changed in PulseFiles." = "%@ is a Finder alias and cannot be changed in PulseFiles.";
+"Use Finder to manage %@, or select its original item. PulseFiles did not change the alias or its target." = "Use Finder to manage %@, or select its original item. PulseFiles did not change the alias or its target.";
