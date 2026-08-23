@@ -30,6 +30,11 @@ package enum ArchiveOperationError: LocalizedError, Equatable {
 /// extraction accepts stored entries only. No process or shell is launched.
 package final class ArchiveOperationService {
     private struct Entry { let path: String; let dataOffset: Int; let size: Int; let crc: UInt32; let isDirectory: Bool }
+    private struct PublishedOutput {
+        let destination: URL
+        let staged: URL
+        let identity: AnyHashable
+    }
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
 
@@ -86,6 +91,7 @@ package final class ArchiveOperationService {
         try accessPolicy.validateDestinationAccess(to: staging)
         var completed: [URL] = [], skipped: [URL] = []
         var backups: [(destination: URL, backup: URL)] = []
+        var published: [PublishedOutput] = []
         do {
             try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
             for (index, entry) in entries.enumerated() {
@@ -102,6 +108,7 @@ package final class ArchiveOperationService {
             }
             // Preflight every top-level conflict before moving any staged output.
             let children = try fileManager.contentsOfDirectory(at: staging, includingPropertiesForKeys: nil)
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
             var decisions: [(URL, URL, FileConflictResolution)] = []
             for child in children {
                 let destination = request.destinationDirectory.appendingPathComponent(child.lastPathComponent)
@@ -122,27 +129,78 @@ package final class ArchiveOperationService {
                     try fileManager.moveItem(at: destination, to: backup)
                     backups.append((destination, backup))
                 }
-                do { try fileManager.moveItem(at: child, to: destination); completed.append(destination) }
-                catch {
-                    if let backup = backups.last, backup.destination == destination {
-                        try? fileManager.moveItem(at: backup.backup, to: destination); backups.removeLast()
-                    }
-                    throw error
-                }
+                let identity = try publishedIdentity(at: child)
+                try fileManager.moveItem(at: child, to: destination)
+                published.append(.init(destination: destination, staged: child, identity: identity))
+                completed.append(destination)
             }
             try fileManager.removeItem(at: staging)
             return .init(completedItems: completed, skippedItems: skipped, failedItems: [], wasCancelled: false)
         } catch {
-            // No incomplete replacement is published: move new outputs back to
-            // staging and restore every original destination before cleanup.
-            for backup in backups.reversed() {
-                if fileManager.fileExists(atPath: backup.destination.path) { try? fileManager.removeItem(at: backup.destination) }
-                try? fileManager.moveItem(at: backup.backup, to: backup.destination)
+            var warnings: [FileOperationCleanupWarning] = []
+
+            // Only reclaim an output if it is still the exact filesystem item
+            // this extraction published. A path may have been independently
+            // replaced while extraction was running and must never be deleted.
+            for output in published.reversed() {
+                do {
+                    guard fileManager.fileExists(atPath: output.destination.path) else {
+                        throw CocoaError(.fileNoSuchFile)
+                    }
+                    guard try publishedIdentity(at: output.destination) == output.identity else {
+                        completed.removeAll { $0.standardizedFileURL == output.destination.standardizedFileURL }
+                        throw CocoaError(.fileWriteFileExists)
+                    }
+                    try fileManager.moveItem(at: output.destination, to: output.staged)
+                    completed.removeAll { $0.standardizedFileURL == output.destination.standardizedFileURL }
+                } catch {
+                    warnings.append(.init(
+                        url: output.destination,
+                        message: "Could not safely return the published archive output to staging: \(error.localizedDescription)"
+                    ))
+                }
             }
-            try? fileManager.removeItem(at: staging)
-            if error is CancellationError { return .init(completedItems: completed, skippedItems: skipped, failedItems: [], wasCancelled: true) }
+
+            for backup in backups.reversed() {
+                guard fileManager.fileExists(atPath: backup.backup.path) else { continue }
+                do {
+                    guard !fileManager.fileExists(atPath: backup.destination.path) else {
+                        throw CocoaError(.fileWriteFileExists)
+                    }
+                    try fileManager.moveItem(at: backup.backup, to: backup.destination)
+                } catch {
+                    warnings.append(.init(
+                        url: backup.backup,
+                        message: "Could not restore the original destination item: \(error.localizedDescription)"
+                    ))
+                }
+            }
+
+            if warnings.isEmpty {
+                do { try fileManager.removeItem(at: staging) }
+                catch {
+                    warnings.append(.init(url: staging, message: "Could not remove extraction staging: \(error.localizedDescription)"))
+                }
+            }
+            if !warnings.isEmpty {
+                return .init(
+                    completedItems: completed,
+                    skippedItems: skipped,
+                    failedItems: [.init(url: request.archiveURL, error: error)],
+                    cleanupWarnings: warnings,
+                    wasCancelled: error is CancellationError
+                )
+            }
+            if error is CancellationError { return .init(completedItems: [], skippedItems: skipped, failedItems: [], wasCancelled: true) }
             throw error
         }
+    }
+
+    private func publishedIdentity(at url: URL) throws -> AnyHashable {
+        guard let identity = try url.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return identity
     }
 
     private func collect(_ url: URL, relative: String, limits: ArchiveSafetyLimits, records: inout [(String, Data, Bool, UInt32, UInt32)], bytes: inout Int64) throws {
