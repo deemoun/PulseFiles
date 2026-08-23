@@ -183,11 +183,21 @@ package struct FileOperationProgress {
 package struct FileOperationItemFailure {
     package let url: URL
     package let error: Error
+
+    package init(url: URL, error: Error) {
+        self.url = url
+        self.error = error
+    }
 }
 
 package struct FileOperationCleanupWarning {
     package let url: URL
     package let message: String
+
+    package init(url: URL, message: String) {
+        self.url = url
+        self.message = message
+    }
 }
 
 package struct FileOperationResult {

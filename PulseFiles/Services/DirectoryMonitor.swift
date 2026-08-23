@@ -4,10 +4,10 @@ import Foundation
 import Darwin
 
 package protocol DirectoryMonitorSource: AnyObject {
-    package func setEventHandler(_ handler: @escaping () -> Void)
-    package func setCancelHandler(_ handler: @escaping () -> Void)
-    package func resume()
-    package func cancel()
+    func setEventHandler(_ handler: @escaping () -> Void)
+    func setCancelHandler(_ handler: @escaping () -> Void)
+    func resume()
+    func cancel()
 }
 
 package struct DirectoryMonitorSourceHandle {
@@ -16,15 +16,15 @@ package struct DirectoryMonitorSourceHandle {
 }
 
 package protocol DirectoryMonitorSourceFactory {
-    package func makeSource(for url: URL, queue: DispatchQueue) -> DirectoryMonitorSourceHandle?
+    func makeSource(for url: URL, queue: DispatchQueue) -> DirectoryMonitorSourceHandle?
 }
 
 package protocol DirectoryMonitorDebounceWork: AnyObject {
-    package func cancel()
+    func cancel()
 }
 
 package protocol DirectoryMonitorDebounceScheduling {
-    package func schedule(after delay: DispatchTimeInterval, on queue: DispatchQueue, _ action: @escaping () -> Void) -> DirectoryMonitorDebounceWork
+    func schedule(after delay: DispatchTimeInterval, on queue: DispatchQueue, _ action: @escaping () -> Void) -> DirectoryMonitorDebounceWork
 }
 
 private final class DispatchDirectoryMonitorSource: DirectoryMonitorSource {

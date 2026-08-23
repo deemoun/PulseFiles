@@ -660,5 +660,5 @@ package final class FileTransferExecutor {
 }
 
 private extension FileConflictResolution {
-    package var performsTransfer: Bool { self == .replace || self == .keepBoth }
+    var performsTransfer: Bool { self == .replace || self == .keepBoth }
 }

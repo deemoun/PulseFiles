@@ -24,8 +24,8 @@ package enum FolderAccessGrantStatus: Equatable {
 }
 
 package protocol FolderAccessBookmarkResolving {
-    package func makeBookmarkData(for url: URL) throws -> Data
-    package func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool)
+    func makeBookmarkData(for url: URL) throws -> Data
+    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool)
 }
 
 package struct SystemFolderAccessBookmarkResolver: FolderAccessBookmarkResolving {

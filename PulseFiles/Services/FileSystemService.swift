@@ -37,8 +37,8 @@ package struct DirectoryContentsResult {
 }
 
 package protocol FileSystemServicing: AnyObject {
-    package func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult
-    package func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
+    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult
+    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
 }
 
 package final class FileSystemService: FileSystemServicing {

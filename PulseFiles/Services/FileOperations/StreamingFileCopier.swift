@@ -63,7 +63,7 @@ package final class FileHandleStreamingCopier: FileOperationStreamingCopying {
     #endif
 }
 
-package extension FileManager: FileOperationFileManaging {
+extension FileManager: FileOperationFileManaging {
     package func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool) throws {
         try createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: nil)
     }

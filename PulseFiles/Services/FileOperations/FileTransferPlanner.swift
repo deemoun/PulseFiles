@@ -100,7 +100,7 @@ package final class FileTransferPlanner {
 }
 
 private extension FileConflictResolution {
-    package var resolutionAppliedToRemainingConflicts: FileConflictResolution? {
+    var resolutionAppliedToRemainingConflicts: FileConflictResolution? {
         switch self { case .applyToRemainingReplace: return .replace; case .applyToRemainingSkip: return .skip; case .applyToRemainingKeepBoth: return .keepBoth; default: return nil }
     }
 

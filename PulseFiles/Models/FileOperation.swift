@@ -50,12 +50,21 @@ package struct ArchiveExtractRequest: Equatable {
 package struct BatchRenameItem: Equatable {
     package let sourceURL: URL
     package let destinationURL: URL
+
+    package init(sourceURL: URL, destinationURL: URL) {
+        self.sourceURL = sourceURL
+        self.destinationURL = destinationURL
+    }
 }
 
 /// Immutable preview. Execution accepts only this complete preflight product,
 /// so the UI cannot rename an unpreviewed path.
 package struct BatchRenamePlan: Equatable {
     package let items: [BatchRenameItem]
+
+    package init(items: [BatchRenameItem]) {
+        self.items = items
+    }
 }
 
 package struct BatchRenameRequest: Equatable {

@@ -30,7 +30,7 @@ package final class ArchiveOperationService {
     private struct Source { let url: URL; let path: String; let size: UInt64; let isDirectory: Bool }
     private struct Central { let path: String; let size: UInt32; let crc: UInt32; let offset: UInt32; let isDirectory: Bool }
     private struct Entry { let path: String; let dataOffset: UInt64; let size: UInt64; let crc: UInt32; let isDirectory: Bool }
-    private struct PublishedOutput { let destination: URL; let staged: URL; let identity: AnyHashable }
+    private struct PublishedOutput { let destination: URL; let staged: URL; let identity: NSObjectProtocol }
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
     private let bufferSize: Int
@@ -167,7 +167,7 @@ package final class ArchiveOperationService {
             for output in published.reversed() {
                 do {
                     guard fileManager.fileExists(atPath: output.destination.path) else { throw CocoaError(.fileNoSuchFile) }
-                    guard try publishedIdentity(at: output.destination) == output.identity else { completed.removeAll { $0.standardizedFileURL == output.destination.standardizedFileURL }; throw CocoaError(.fileWriteFileExists) }
+                    guard try publishedIdentity(at: output.destination).isEqual(output.identity) else { completed.removeAll { $0.standardizedFileURL == output.destination.standardizedFileURL }; throw CocoaError(.fileWriteFileExists) }
                     try fileManager.moveItem(at: output.destination, to: output.staged); completed.removeAll { $0.standardizedFileURL == output.destination.standardizedFileURL }
                 } catch { warnings.append(.init(url: output.destination, message: "Could not safely return the published archive output to staging: \(error.localizedDescription)")) }
             }
@@ -251,7 +251,7 @@ package final class ArchiveOperationService {
     private func add(_ lhs: UInt64, _ rhs: UInt64) throws -> UInt64 { let (value, overflow) = lhs.addingReportingOverflow(rhs); guard !overflow else { throw ArchiveOperationError.malformedArchive }; return value }
     private func zip32(_ value: UInt64) throws -> UInt32 { guard value <= UInt64(UInt32.max) else { throw ArchiveOperationError.unsupportedFormat }; return UInt32(value) }
     private func int64(_ value: UInt64) throws -> Int64 { guard value <= UInt64(Int64.max) else { throw ArchiveOperationError.unsupportedFormat }; return Int64(value) }
-    private func publishedIdentity(at url: URL) throws -> AnyHashable { guard let value = try url.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else { throw CocoaError(.fileReadUnknown) }; return value }
+    private func publishedIdentity(at url: URL) throws -> NSObjectProtocol { guard let value = try url.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else { throw CocoaError(.fileReadUnknown) }; return value }
 }
 
 private struct CRC32 {
