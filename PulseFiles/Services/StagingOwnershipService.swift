@@ -1,6 +1,25 @@
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
+#if os(macOS)
+import Darwin
+#endif
+
+package enum StagingOwnershipRegistryError: LocalizedError {
+    case unreadable(underlying: Error)
+    case malformed(underlying: Error)
+    case encoding(underlying: Error)
+    case persistence(underlying: Error)
+
+    package var errorDescription: String? {
+        switch self {
+        case .unreadable: return "PulseFiles could not read its staging recovery metadata."
+        case .malformed: return "PulseFiles found damaged staging recovery metadata and left it unchanged for recovery."
+        case .encoding: return "PulseFiles could not encode staging recovery metadata."
+        case .persistence: return "PulseFiles could not durably save staging recovery metadata."
+        }
+    }
+}
 
 package enum StagingOperationState: String, Codable, Sendable {
     case active
@@ -32,36 +51,56 @@ package final class StagingOwnershipRegistry: @unchecked Sendable {
     }
 
     private let url: URL
-    private let fileManager: FileManager
+    private let readData: () throws -> Data?
+    private let encode: (Document) throws -> Data
+    private let persist: (Data) throws -> Void
     private let lock = NSLock()
 
-    package init(url: URL = StagingOwnershipRegistry.defaultURL, fileManager: FileManager = .default) {
+    package init(
+        url: URL = StagingOwnershipRegistry.defaultURL,
+        fileManager: FileManager = .default,
+        readData: (() throws -> Data?)? = nil,
+        encode: ((StagingOwnershipRecord) throws -> Void)? = nil,
+        persist: ((Data) throws -> Void)? = nil
+    ) {
         self.url = url
-        self.fileManager = fileManager
+        self.readData = readData ?? {
+            guard fileManager.fileExists(atPath: url.path) else { return nil }
+            return try Data(contentsOf: url)
+        }
+        self.encode = { document in
+            // The record hook permits deterministic encoder-failure coverage
+            // without exposing the private on-disk document type.
+            for record in document.records { try encode?(record) }
+            return try JSONEncoder().encode(document)
+        }
+        self.persist = persist ?? { data in
+            try Self.persistAtomicallyAndDurably(data, to: url, fileManager: fileManager)
+        }
     }
 
-    package var records: [StagingOwnershipRecord] { withDocument { $0.records } }
+    package var records: [StagingOwnershipRecord] { get throws { try withDocument { $0.records } } }
 
-    package func register(_ record: StagingOwnershipRecord) {
-        update { document in
+    package func register(_ record: StagingOwnershipRecord) throws {
+        try update { document in
             document.records.removeAll { $0.operationID == record.operationID }
             document.records.append(record)
         }
     }
 
-    package func setState(_ state: StagingOperationState, operationID: UUID) {
-        update { document in
+    package func setState(_ state: StagingOperationState, operationID: UUID) throws {
+        try update { document in
             guard let index = document.records.firstIndex(where: { $0.operationID == operationID }) else { return }
             document.records[index].state = state
         }
     }
 
-    package func remove(operationID: UUID) { update { $0.records.removeAll { $0.operationID == operationID } } }
+    package func remove(operationID: UUID) throws { try update { $0.records.removeAll { $0.operationID == operationID } } }
 
     @discardableResult
-    package func prune(keeping operationIDs: Set<UUID>) -> Int {
+    package func prune(keeping operationIDs: Set<UUID>) throws -> Int {
         var removed = 0
-        update { document in
+        try update { document in
             let original = document.records.count
             document.records.removeAll { !operationIDs.contains($0.operationID) }
             removed = original - document.records.count
@@ -69,28 +108,59 @@ package final class StagingOwnershipRegistry: @unchecked Sendable {
         return removed
     }
 
-    package var didReviewLegacyNames: Bool {
-        get { withDocument { $0.didReviewLegacyNames } }
-        set { update { $0.didReviewLegacyNames = newValue } }
+    package func hasReviewedLegacyNames() throws -> Bool { try withDocument { $0.didReviewLegacyNames } }
+    package func markLegacyNamesReviewed() throws { try update { $0.didReviewLegacyNames = true } }
+
+    private func withDocument<T>(_ body: (Document) -> T) throws -> T {
+        lock.lock(); defer { lock.unlock() }
+        return body(try load())
     }
 
-    private func withDocument<T>(_ body: (Document) -> T) -> T {
+    private func update(_ body: (inout Document) -> Void) throws {
         lock.lock(); defer { lock.unlock() }
-        return body(load())
-    }
-
-    private func update(_ body: (inout Document) -> Void) {
-        lock.lock(); defer { lock.unlock() }
-        var document = load()
+        var document = try load()
         body(&document)
-        guard let data = try? JSONEncoder().encode(document) else { return }
-        try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        let data: Data
+        do { data = try encode(document) }
+        catch { throw StagingOwnershipRegistryError.encoding(underlying: error) }
+        do { try persist(data) }
+        catch { throw StagingOwnershipRegistryError.persistence(underlying: error) }
     }
 
-    private func load() -> Document {
-        guard let data = try? Data(contentsOf: url), let document = try? JSONDecoder().decode(Document.self, from: data) else { return Document() }
-        return document
+    private func load() throws -> Document {
+        let data: Data
+        do {
+            guard let existing = try readData() else { return Document() }
+            data = existing
+        } catch {
+            DiagnosticLogger.log(.error, category: "StagingOwnership", "Staging recovery metadata is unreadable; preserving the existing document.")
+            throw StagingOwnershipRegistryError.unreadable(underlying: error)
+        }
+        do { return try JSONDecoder().decode(Document.self, from: data) }
+        catch {
+            DiagnosticLogger.log(.error, category: "StagingOwnership", "Staging recovery metadata is malformed; preserving the existing document for explicit recovery. byteCount=\(data.count)")
+            throw StagingOwnershipRegistryError.malformed(underlying: error)
+        }
+    }
+
+    private static func persistAtomicallyAndDurably(_ data: Data, to url: URL, fileManager: FileManager) throws {
+        let parent = url.deletingLastPathComponent()
+        try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+        let temporary = parent.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        defer { try? fileManager.removeItem(at: temporary) }
+        try data.write(to: temporary, options: .withoutOverwriting)
+        let handle = try FileHandle(forWritingTo: temporary)
+        try handle.synchronize()
+        try handle.close()
+        #if os(macOS)
+        guard Darwin.rename(temporary.path, url.path) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+        let directoryDescriptor = Darwin.open(parent.path, O_RDONLY)
+        guard directoryDescriptor >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+        defer { Darwin.close(directoryDescriptor) }
+        guard Darwin.fsync(directoryDescriptor) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+        #else
+        try data.write(to: url, options: .atomic)
+        #endif
     }
 }
 
@@ -146,10 +216,10 @@ package final class StagingCleanupService: @unchecked Sendable {
         return String(reflecting: value)
     }
 
-    package func inventory(olderThan cutoff: Date? = nil, includeLegacyReview: Bool = true) -> StagingCleanupInventory {
+    package func inventory(olderThan cutoff: Date? = nil, includeLegacyReview: Bool = true) throws -> StagingCleanupInventory {
         var candidates: [StagingCleanupCandidate] = []
         var retained = Set<UUID>()
-        for record in registry.records {
+        for record in try registry.records {
             guard fileManager.fileExists(atPath: record.stagingURL.path) else { continue }
             retained.insert(record.operationID)
             guard record.state == .completed, cutoff.map({ record.createdAt < $0 }) ?? true else { continue }
@@ -157,8 +227,8 @@ package final class StagingCleanupService: @unchecked Sendable {
                   identity(record.destinationURL) == record.destinationIdentity else { continue }
             candidates.append(.init(record: record, byteCount: allocatedSize(of: record.stagingURL)))
         }
-        _ = registry.prune(keeping: retained)
-        return .init(candidates: candidates, legacyItemsForReview: includeLegacyReview ? legacyItems() : [])
+        _ = try registry.prune(keeping: retained)
+        return .init(candidates: candidates, legacyItemsForReview: includeLegacyReview ? try legacyItems() : [])
     }
 
     package func cleanup(_ candidates: [StagingCleanupCandidate]) async -> StagingCleanupResult {
@@ -167,14 +237,14 @@ package final class StagingCleanupService: @unchecked Sendable {
             var failures: [StagingCleanupFailure] = []
             for candidate in candidates {
                 let record = candidate.record
-                guard registry.records.contains(where: { $0.operationID == record.operationID && $0.state == .completed }) else { continue }
-                guard identity(record.stagingURL) == record.stagingIdentity,
-                      identity(record.destinationURL) == record.destinationIdentity else { continue }
                 do {
+                    guard try registry.records.contains(where: { $0.operationID == record.operationID && $0.state == .completed }) else { continue }
+                    guard identity(record.stagingURL) == record.stagingIdentity,
+                          identity(record.destinationURL) == record.destinationIdentity else { continue }
                     try accessPolicy.validateAccess(to: record.stagingURL)
                     try accessPolicy.validateDestinationAccess(to: record.stagingURL)
                     try remove(record.stagingURL)
-                    registry.remove(operationID: record.operationID)
+                    try registry.remove(operationID: record.operationID)
                     removed.append(record.stagingURL)
                 } catch {
                     failures.append(.init(url: record.stagingURL, message: error.localizedDescription))
@@ -185,21 +255,25 @@ package final class StagingCleanupService: @unchecked Sendable {
     }
 
     package func cleanupOnStartup(now: Date = Date()) async -> StagingCleanupResult {
-        let inventory = inventory(olderThan: now.addingTimeInterval(-Self.conservativeAutomaticAge), includeLegacyReview: false)
-        return await cleanup(inventory.candidates)
+        do {
+            let inventory = try inventory(olderThan: now.addingTimeInterval(-Self.conservativeAutomaticAge), includeLegacyReview: false)
+            return await cleanup(inventory.candidates)
+        } catch {
+            return .init(removed: [], failures: [.init(url: StagingOwnershipRegistry.defaultURL, message: error.localizedDescription)])
+        }
     }
 
     /// Prefix-only matches are deliberately review-only and are never cleanup candidates.
-    private func legacyItems() -> [URL] {
-        guard !registry.didReviewLegacyNames else { return [] }
-        let parents = Set(registry.records.map { $0.destinationURL.standardizedFileURL } + legacyReviewDirectories().map(\.standardizedFileURL))
+    private func legacyItems() throws -> [URL] {
+        guard try !registry.hasReviewedLegacyNames() else { return [] }
+        let parents = Set(try registry.records.map { $0.destinationURL.standardizedFileURL } + legacyReviewDirectories().map(\.standardizedFileURL))
         let prefixes = [".pulsefiles-copy-", ".pulsefiles-move-", ".pulsefiles-backup-"]
         let matches = parents.flatMap { parent in
             (try? fileManager.contentsOfDirectory(at: parent, includingPropertiesForKeys: nil))?.filter { item in
                 prefixes.contains { item.lastPathComponent.hasPrefix($0) }
             } ?? []
         }
-        registry.didReviewLegacyNames = true
+        try registry.markLegacyNamesReviewed()
         return matches.sorted { $0.path < $1.path }
     }
 

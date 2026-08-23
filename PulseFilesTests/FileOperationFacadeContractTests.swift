@@ -652,6 +652,38 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(at: fixture.right, includingPropertiesForKeys: nil).contains { $0.lastPathComponent.hasPrefix(".pulsefiles-") })
     }
 
+    func testRegistrationFailurePreventsAnyStagedContentOrEndpointMutation() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Protected.txt")
+        let destination = fixture.right.appendingPathComponent("Protected.txt")
+        let stagingDirectory = fixture.root.appendingPathComponent("Unregistered-Staging")
+        try "source-is-unchanged".write(to: source, atomically: true, encoding: .utf8)
+        let copier = InvocationCountingStreamingCopier()
+        let registry = StagingOwnershipRegistry(
+            url: fixture.root.appendingPathComponent("registry.json"),
+            persist: { _ in throw CocoaError(.fileWriteNoPermission) }
+        )
+        let service = FileOperationService(
+            fileManager: .default,
+            accessPolicy: fixture.unrestrictedPolicy,
+            streamingCopier: copier,
+            replacementDirectoryProvider: { _ in
+                try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
+                return stagingDirectory
+            },
+            stagingRegistry: registry
+        )
+
+        let result = try await service.copy(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+
+        XCTAssertEqual(result.failedItems.count, 1)
+        XCTAssertTrue(result.failedItems[0].error.localizedDescription.contains("durably save"))
+        XCTAssertEqual(copier.invocationCount, 0)
+        XCTAssertEqual(try String(contentsOf: source), "source-is-unchanged")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+    }
+
     func testPartialFailureCleansManagedDirectoryWithoutPublishingPartialCopy() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Partial.txt")
@@ -1889,6 +1921,17 @@ final class FileOperationServiceTests: XCTestCase {
 private struct RecordedFileOperation: Equatable {
     let source: URL
     let destination: URL
+}
+
+private final class InvocationCountingStreamingCopier: FileOperationStreamingCopying, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var invocationCount: Int { lock.withLock { count } }
+
+    func copyFile(from source: URL, to destination: URL, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+        lock.withLock { count += 1 }
+        try Data(contentsOf: source).write(to: destination)
+    }
 }
 
 private final class ScriptedStreamingCopier: FileOperationStreamingCopying {

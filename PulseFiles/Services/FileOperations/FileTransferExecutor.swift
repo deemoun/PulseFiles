@@ -330,7 +330,12 @@ package final class FileTransferExecutor {
         // Refuse to remove an unmarked directory, even if a provider recycled
         // or redirected the URL after allocation.
         guard staging.isOwned(using: fileManager) else { return [] }
-        stagingRegistry.setState(.completed, operationID: staging.operationID)
+        do {
+            try stagingRegistry.setState(.completed, operationID: staging.operationID)
+        } catch {
+            DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup deferred because staging recovery metadata could not be updated. reason=\(error.localizedDescription)")
+            return [FileOperationCleanupWarning(url: staging.directory, message: error.localizedDescription)]
+        }
         do {
             try removeIfExists(staging.stagedItem)
             try removeIfExists(staging.backupItem)
@@ -338,7 +343,7 @@ package final class FileTransferExecutor {
             // operation directory as a unit. A failed final removal therefore
             // remains identifiable for a later, explicitly owned cleanup.
             try fileManager.removeItem(at: staging.directory)
-            stagingRegistry.remove(operationID: staging.operationID)
+            try stagingRegistry.remove(operationID: staging.operationID)
             return []
         } catch {
             DiagnosticLogger.log(.warning, category: "FileOperation", "Cleanup warning: could not remove managed staging area at \(DiagnosticLogger.sanitizedPath(staging.directory)); reason=\(error.localizedDescription)")
@@ -594,22 +599,33 @@ package final class FileTransferExecutor {
         guard !fileManager.fileExists(atPath: marker.path) else {
             throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: "managed")
         }
-        try fileManager.createEmptyFile(at: marker)
         let destinationDirectory = destination.deletingLastPathComponent().standardizedFileURL
         guard let stagingIdentity = StagingCleanupService.resourceIdentity(directory),
               let destinationIdentity = StagingCleanupService.resourceIdentity(destinationDirectory) else {
             try? fileManager.removeItem(at: directory)
             throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: "managed identity")
         }
-        stagingRegistry.register(.init(
-            operationID: operationID,
-            stagingURL: directory,
-            createdAt: Date(),
-            destinationURL: destinationDirectory,
-            stagingIdentity: stagingIdentity,
-            destinationIdentity: destinationIdentity,
-            state: .active
-        ))
+        do {
+            try stagingRegistry.register(.init(
+                operationID: operationID,
+                stagingURL: directory,
+                createdAt: Date(),
+                destinationURL: destinationDirectory,
+                stagingIdentity: stagingIdentity,
+                destinationIdentity: destinationIdentity,
+                state: .active
+            ))
+        } catch {
+            try? fileManager.removeItem(at: directory)
+            throw error
+        }
+        do {
+            try fileManager.createEmptyFile(at: marker)
+        } catch {
+            try? stagingRegistry.remove(operationID: operationID)
+            try? fileManager.removeItem(at: directory)
+            throw error
+        }
         return staging
     }
 
