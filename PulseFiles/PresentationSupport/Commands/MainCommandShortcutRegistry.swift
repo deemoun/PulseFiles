@@ -126,3 +126,9 @@ enum MainCommandShortcutRegistry {
         descriptor(command, menu: menu(key, [.command, .control]), label: "⌃⌘\(key)", bindings: [binding(keyCode, [.command, .control])])
     }
 }
+
+extension CommandBarAction {
+    var shortcut: String {
+        MainCommandShortcutRegistry.descriptor(for: MainCommand(commandBarAction: self)).primaryLabel
+    }
+}

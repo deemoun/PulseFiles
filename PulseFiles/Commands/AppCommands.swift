@@ -39,8 +39,4 @@ package enum CommandBarAction: String, CaseIterable {
         case .previousTab: return "Previous Tab".localized
         }
     }
-
-    package var shortcut: String {
-        MainCommandShortcutRegistry.descriptor(for: MainCommand(commandBarAction: self)).primaryLabel
-    }
 }
