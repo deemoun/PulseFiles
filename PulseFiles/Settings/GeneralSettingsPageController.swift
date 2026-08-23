@@ -72,7 +72,17 @@ final class GeneralSettingsPageController: SettingsPageControllerBase {
         cleanupButton.isEnabled = false
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let inventory = await Task.detached(priority: .utility) { self.stagingCleanupService.inventory() }.value
+            let inventory: StagingCleanupInventory
+            do {
+                inventory = try await Task.detached(priority: .utility) { try self.stagingCleanupService.inventory() }.value
+            } catch {
+                cleanupButton.isEnabled = true
+                let alert = NSAlert()
+                alert.messageText = "Incomplete transfers could not be inspected".localized
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+                return
+            }
             let alert = NSAlert()
             alert.messageText = "Clear Incomplete Transfers?".localized
             alert.informativeText = "%@ safely identifiable abandoned item(s), using %@.".localized(with: inventory.candidates.count, FileSizeFormatter.string(fromByteCount: inventory.totalByteCount))
