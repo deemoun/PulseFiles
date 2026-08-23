@@ -2,6 +2,72 @@ import XCTest
 @testable import PulseFiles
 
 final class ArchiveAndBatchRenameTests: XCTestCase {
+    func testLargeEntryStreamsThroughConfiguredBoundedBuffer() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("large.bin")
+        let handle = try FileHandle(forWritingTo: source, createIfNecessary: true)
+        try handle.truncate(atOffset: 8 * 1024 * 1024)
+        try handle.close()
+        let archive = root.appendingPathComponent("large.zip")
+        let destination = root.appendingPathComponent("output", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let observation = StreamObservation()
+        let service = ArchiveOperationService(
+            accessPolicy: .init(isEnabled: true, rootURL: root),
+            streamBufferSize: 32 * 1024,
+            streamHook: { point, count in observation.record(point: point, count: count) }
+        )
+
+        _ = try await service.create(.init(sources: [source], destinationURL: archive))
+        _ = try await service.extract(.init(archiveURL: archive, destinationDirectory: destination), conflictHandler: { _ in .replace })
+
+        XCTAssertLessThanOrEqual(observation.maximumPayloadChunk, 32 * 1024)
+        XCTAssertGreaterThan(observation.payloadChunkCount, 100)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: destination.appendingPathComponent("large.bin").path)[.size] as? NSNumber,
+                       NSNumber(value: 8 * 1024 * 1024))
+    }
+
+    func testCancellationWhileStreamingLargeEntryRemovesStaging() async throws {
+        let fixture = try await largeArchiveFixture(byteCount: 2 * 1024 * 1024)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let reads = StreamObservation()
+        let service = ArchiveOperationService(
+            accessPolicy: fixture.policy,
+            streamBufferSize: 16 * 1024,
+            streamHook: { point, count in
+                reads.record(point: point, count: count)
+                if point == .extractRead, count == 16 * 1024, reads.extractionPayloadReads == 4 { throw CancellationError() }
+            }
+        )
+
+        let result = try await service.extract(fixture.request, conflictHandler: { _ in .replace })
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.destination.appendingPathComponent("large.bin").path))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: fixture.destination.path).contains { $0.hasPrefix(".pulsefiles-extract-") })
+    }
+
+    func testInjectedStreamWriteFailureDoesNotPublishPartialArchive() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source.bin")
+        try Data(repeating: 7, count: 256 * 1024).write(to: source)
+        let archive = root.appendingPathComponent("failed.zip")
+        let writes = StreamObservation()
+        let service = ArchiveOperationService(accessPolicy: .init(isEnabled: true, rootURL: root), streamBufferSize: 4096) { point, count in
+            writes.record(point: point, count: count)
+            if point == .createWrite, writes.creationWrites == 3 { throw CocoaError(.fileWriteNoSpace) }
+        }
+
+        await XCTAssertThrowsErrorAsync { _ = try await service.create(.init(sources: [source], destinationURL: archive)) }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: archive.path))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: root, includingPropertiesForKeys: nil).contains { $0.lastPathComponent.hasPrefix(".pulsefiles-archive-") })
+    }
+
     func testStoredZipRoundTripAndConfiguredLimits() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); defer { try? FileManager.default.removeItem(at: root) }
@@ -130,6 +196,55 @@ final class ArchiveAndBatchRenameTests: XCTestCase {
         _ = try await ArchiveOperationService(accessPolicy: policy).create(.init(sources: sourceURLs, destinationURL: archive))
         return ArchiveFixture(root: root, destination: destination, archive: archive, policy: policy)
     }
+
+    private func largeArchiveFixture(byteCount: UInt64) async throws -> ArchiveFixture {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let sources = root.appendingPathComponent("sources", isDirectory: true)
+        let destination = root.appendingPathComponent("destination", isDirectory: true)
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let source = sources.appendingPathComponent("large.bin")
+        let handle = try FileHandle(forWritingTo: source, createIfNecessary: true)
+        try handle.truncate(atOffset: byteCount)
+        try handle.close()
+        let archive = root.appendingPathComponent("large.zip")
+        let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: root)
+        _ = try await ArchiveOperationService(accessPolicy: policy).create(.init(sources: [source], destinationURL: archive))
+        return ArchiveFixture(root: root, destination: destination, archive: archive, policy: policy)
+    }
+}
+
+private final class StreamObservation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var maximum = 0
+    private var payloadChunks = 0
+    private var extractReads = 0
+    private var createWriteCalls = 0
+
+    func record(point: ArchiveStreamPoint, count: Int) {
+        lock.lock(); defer { lock.unlock() }
+        if point == .createRead || point == .extractWrite {
+            maximum = max(maximum, count)
+            payloadChunks += 1
+        }
+        if point == .extractRead, count == 16 * 1024 { extractReads += 1 }
+        if point == .createWrite { createWriteCalls += 1 }
+    }
+    var maximumPayloadChunk: Int { lock.withLock { maximum } }
+    var payloadChunkCount: Int { lock.withLock { payloadChunks } }
+    var extractionPayloadReads: Int { lock.withLock { extractReads } }
+    var creationWrites: Int { lock.withLock { createWriteCalls } }
+}
+
+private extension FileHandle {
+    convenience init(forWritingTo url: URL, createIfNecessary: Bool) throws {
+        if createIfNecessary { FileManager.default.createFile(atPath: url.path, contents: nil) }
+        try self.init(forWritingTo: url)
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ body: () -> T) -> T { lock(); defer { unlock() }; return body() }
 }
 
 private struct ArchiveFixture {
