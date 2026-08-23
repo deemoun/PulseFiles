@@ -64,7 +64,7 @@ package extension FileOperationStreamingCopying {
     /// The production copier overrides this path so creation is relative to a
     /// checked directory descriptor.  The URL fallback keeps test copiers
     /// source-compatible; it is never used by `FileHandleStreamingCopier`.
-    package func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
+    func copyFile(from source: URL, toParent parent: OpenDirectoryCapability, named name: String, progress: @escaping @Sendable (Int) async throws -> Void) async throws {
         try parent.revalidate()
         try OpenDirectoryCapability.validateName(name)
         try await copyFile(from: source, to: parent.directoryURL.appendingPathComponent(name), progress: progress)

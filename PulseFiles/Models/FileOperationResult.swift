@@ -125,6 +125,18 @@ package struct FileOperationPathSafetyState: Equatable {
     /// Finder aliases are not symbolic links. Mutations reject the alias
     /// object before resolving or changing it or its target.
     package var isFinderAlias = false
+
+    package init(
+        isAvailable: Bool = true,
+        isReadOnlyVolume: Bool = false,
+        isICloudPlaceholder: Bool = false,
+        isFinderAlias: Bool = false
+    ) {
+        self.isAvailable = isAvailable
+        self.isReadOnlyVolume = isReadOnlyVolume
+        self.isICloudPlaceholder = isICloudPlaceholder
+        self.isFinderAlias = isFinderAlias
+    }
 }
 
 package enum FileConflictResolution: Equatable {
