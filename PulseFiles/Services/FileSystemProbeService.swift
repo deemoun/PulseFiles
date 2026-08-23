@@ -11,9 +11,9 @@ package enum FileSystemProbeAnswer<Value: Sendable>: Sendable, Equatable where V
 }
 
 package protocol FileSystemProbing: Sendable {
-    package func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
-    package func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
-    package func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?>
+    func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
+    func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
+    func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?>
 }
 
 /// Keeps potentially blocking FileManager and resource-value queries off the

@@ -45,7 +45,7 @@ protocol ExperimentalSettingsProviding: AnyObject {
 
 /// Presentation adapter for typed preferences. Persistence and launch navigation
 /// are delegated to services that can be tested without loading AppKit.
-final class SettingsService: SettingsPreferences, AppearanceSettingsProviding, GeneralSettingsProviding, NavigationSettingsProviding, ExperimentalSettingsProviding {
+final class SettingsService: SettingsPreferences, AppearanceSettingsProviding, GeneralSettingsProviding, NavigationSettingsProviding, ExperimentalSettingsProviding, TerminalSettingsProviding {
     static let appLanguageDefaultsKey = SettingsRepository.appLanguageDefaultsKey
     static var jsonSettingsURL: URL { SettingsRepository.defaultJSONURL }
 

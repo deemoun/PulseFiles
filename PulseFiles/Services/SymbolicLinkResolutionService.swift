@@ -3,11 +3,11 @@ import PulseFilesModels
 import Foundation
 
 package protocol SymbolicLinkDestinationReading {
-    package func destinationOfSymbolicLink(atPath path: String) throws -> String
-    package func fileExists(atPath path: String) -> Bool
+    func destinationOfSymbolicLink(atPath path: String) throws -> String
+    func fileExists(atPath path: String) -> Bool
 }
 
-package extension FileManager: SymbolicLinkDestinationReading {}
+extension FileManager: SymbolicLinkDestinationReading {}
 
 package enum SymbolicLinkResolutionError: LocalizedError, Equatable {
     case targetDoesNotExist

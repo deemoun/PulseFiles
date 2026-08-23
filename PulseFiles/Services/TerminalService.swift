@@ -2,6 +2,12 @@ import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
 
+package protocol TerminalSettingsProviding: AnyObject {
+    var experimentalTerminalEnabled: Bool { get }
+    var defaultTerminalVisible: Bool { get }
+    var hasAcknowledgedTerminalWarning: Bool { get set }
+}
+
 package final class TerminalService {
     package var shellPath: String {
         ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
@@ -11,7 +17,7 @@ package final class TerminalService {
         sanitizedEnvironment(from: ProcessInfo.processInfo.environment)
     }
 
-    package func defaultVisibilityState(settings: SettingsService) -> TerminalVisibilityState {
+    package func defaultVisibilityState(settings: TerminalSettingsProviding) -> TerminalVisibilityState {
         DiagnosticLogger.log(.debug, category: "Terminal", "Resolved terminal visibility defaults: experimentEnabled=\(settings.experimentalTerminalEnabled); visibleByDefault=\(settings.defaultTerminalVisible)")
         return TerminalVisibilityState(
             isExperimentEnabled: settings.experimentalTerminalEnabled,
@@ -19,7 +25,7 @@ package final class TerminalService {
         )
     }
 
-    package func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy = .current) -> TerminalWarningState {
+    package func warningState(settings: TerminalSettingsProviding, accessPolicy: SandboxFileAccessPolicy = .current) -> TerminalWarningState {
         DiagnosticLogger.log(.info, category: "Terminal", "Resolved terminal warning state: acknowledged=\(settings.hasAcknowledgedTerminalWarning); sandboxRestrictionsEnabled=\(accessPolicy.isEnabled)")
         return TerminalWarningState(
             isAcknowledged: settings.hasAcknowledgedTerminalWarning,
@@ -28,7 +34,7 @@ package final class TerminalService {
         )
     }
 
-    package func acknowledgeFirstUseWarning(settings: SettingsService) {
+    package func acknowledgeFirstUseWarning(settings: TerminalSettingsProviding) {
         DiagnosticLogger.log(.info, category: "Terminal", "Terminal first-use warning acknowledged")
         settings.hasAcknowledgedTerminalWarning = true
     }

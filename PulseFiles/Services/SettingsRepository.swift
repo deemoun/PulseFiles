@@ -3,10 +3,10 @@ import PulseFilesModels
 import PulseFilesUtilities
 
 package protocol SettingsPersisting: AnyObject {
-    package var snapshot: SettingsSnapshot { get }
-    package func update(_ mutation: (inout SettingsSnapshot) -> Void)
-    package func importJSONIfChanged()
-    @discardableResult package func writeSettingsJSON() throws -> URL
+    var snapshot: SettingsSnapshot { get }
+    func update(_ mutation: (inout SettingsSnapshot) -> Void)
+    func importJSONIfChanged()
+    @discardableResult func writeSettingsJSON() throws -> URL
 }
 
 /// Owns the v1 UserDefaults and JSON persistence contract. JSON replacement is
