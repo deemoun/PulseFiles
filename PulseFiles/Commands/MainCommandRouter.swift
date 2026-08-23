@@ -206,7 +206,7 @@ package struct ScratchDirectoryCommandRouter {
 }
 
 package extension MainCommand {
-    package var conflictsWithFileOperation: Bool {
+    var conflictsWithFileOperation: Bool {
         switch self {
         case .newFile, .newFolder, .rename, .batchRename, .createArchive, .extractArchive, .duplicate, .undo, .copy, .move, .trash, .cutToClipboard, .pasteFromClipboard:
             return true
