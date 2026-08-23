@@ -9,7 +9,7 @@ protocol SettingsPageController: AnyObject {
 
 @MainActor
 class SettingsPageControllerBase: NSObject, SettingsPageController {
-    let rootView = FlippedSettingsView()
+    let rootView: NSView = FlippedSettingsView()
     var onChange: (() -> Void)?
 
     override init() {

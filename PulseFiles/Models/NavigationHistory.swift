@@ -2,9 +2,9 @@ import Foundation
 import PulseFilesUtilities
 
 package struct NavigationHistory: Codable, Equatable {
-    private(set) var backStack: [URL] = []
-    private(set) var forwardStack: [URL] = []
-    private(set) var current: URL
+    package private(set) var backStack: [URL] = []
+    package private(set) var forwardStack: [URL] = []
+    package private(set) var current: URL
 
     package init(initialURL: URL = FileManager.default.homeDirectoryForCurrentUser) {
         current = initialURL

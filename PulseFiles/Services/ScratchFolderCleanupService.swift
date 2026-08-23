@@ -11,6 +11,12 @@ package struct ScratchFolderSelection: Equatable, Sendable {
     package let directory: URL
     package let identity: String
     package let resolvedPath: String
+
+    package init(directory: URL, identity: String, resolvedPath: String) {
+        self.directory = directory
+        self.identity = identity
+        self.resolvedPath = resolvedPath
+    }
 }
 
 package struct ScratchFolderInventory: Sendable {

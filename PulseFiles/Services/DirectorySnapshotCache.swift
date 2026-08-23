@@ -26,7 +26,7 @@ package final class DirectorySnapshotCache {
         let includesHiddenFiles: Bool
         let sort: FileSortDescriptor
 
-        init(directory: URL, includesHiddenFiles: Bool, sort: FileSortDescriptor) {
+        package init(directory: URL, includesHiddenFiles: Bool, sort: FileSortDescriptor) {
             self.directory = directory.standardizedFileURL.resolvingSymlinksInPath()
             self.includesHiddenFiles = includesHiddenFiles
             self.sort = sort
@@ -34,8 +34,8 @@ package final class DirectorySnapshotCache {
     }
 
     package struct Snapshot {
-        let metadata: DirectorySnapshotMetadata
-        let items: [FileItem]
+        package let metadata: DirectorySnapshotMetadata
+        package let items: [FileItem]
     }
 
     private struct Entry {

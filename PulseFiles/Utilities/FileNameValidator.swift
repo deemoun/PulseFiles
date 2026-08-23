@@ -1,7 +1,7 @@
 import Foundation
 
 package struct FileNameValidator {
-    enum ValidationError: LocalizedError, Equatable {
+    package enum ValidationError: LocalizedError, Equatable {
         case empty
         case containsSlash
         case reservedRelativePath
@@ -9,7 +9,7 @@ package struct FileNameValidator {
         case reservedName(String)
         case duplicateName(String)
 
-        var errorDescription: String? {
+        package var errorDescription: String? {
             switch self {
             case .empty:
                 return "Names cannot be empty or contain only whitespace.".localized

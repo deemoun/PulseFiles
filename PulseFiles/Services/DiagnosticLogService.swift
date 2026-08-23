@@ -43,7 +43,7 @@ package final class DiagnosticLogService {
     private var dateProvider: () -> Date
     private var idProvider: () -> UUID
 
-    private(set) var entries: [DiagnosticLogEntry] = []
+    package private(set) var entries: [DiagnosticLogEntry] = []
 
     package init(
         maximumEntryCount: Int = 750,

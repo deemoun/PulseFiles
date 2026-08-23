@@ -91,6 +91,8 @@ package enum MainCommandRoute: Equatable {
 }
 
 package struct MainCommandRouter {
+    package init() {}
+
     /// Entry surfaces intentionally share this path so none can acquire its own
     /// availability or target-selection rules.
     package func route(_ command: MainCommand, from _: MainCommandEntrySurface, in state: MainCommandRoutingState) -> MainCommandRoute {
@@ -195,6 +197,8 @@ package enum ScratchDirectoryCommandRoute: Equatable {
 /// Keeps scratch-location command decisions independent from AppKit prompts so
 /// every non-mutating and recovery outcome can be covered by routing tests.
 package struct ScratchDirectoryCommandRouter {
+    package init() {}
+
     package func route(configuredDirectory: URL?, canAccess: (URL) -> Bool) -> ScratchDirectoryCommandRoute {
         guard let configuredDirectory else { return .promptForConfiguration }
         return canAccess(configuredDirectory) ? .navigate(configuredDirectory) : .requestAccess(configuredDirectory)

@@ -120,7 +120,6 @@ final class FilePaneViewModel {
 
     deinit {
         memoryPressureSource.cancel()
-        snapshotCache.clear()
         loadTask?.cancel()
         loadWatchdogTask?.cancel()
         retryTask?.cancel()

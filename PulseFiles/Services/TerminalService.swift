@@ -9,6 +9,8 @@ package protocol TerminalSettingsProviding: AnyObject {
 }
 
 package final class TerminalService {
+    package init() {}
+
     package var shellPath: String {
         ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
     }

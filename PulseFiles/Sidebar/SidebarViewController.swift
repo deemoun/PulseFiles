@@ -544,7 +544,7 @@ final class SidebarViewController: NSViewController {
     }
 
     private func addSidebarInfoRow(_ info: SidebarInfoRow, identifier: String? = nil) {
-        let row = SidebarSidebarInfoRowView(info: info)
+        let row = SidebarInfoRowView(info: info)
         if let identifier { row.identifier = NSUserInterfaceItemIdentifier(identifier) }
         stack.addArrangedSubview(row)
         pinToSidebarContentWidth(row)
@@ -594,7 +594,7 @@ final class SidebarViewController: NSViewController {
 
     private func updateSidebarInfoRow(identifier: String, value: String) {
         for view in stack.arrangedSubviews where view.identifier?.rawValue == identifier {
-            (view as? SidebarSidebarInfoRowView)?.setValue(value)
+            (view as? SidebarInfoRowView)?.setValue(value)
         }
     }
 

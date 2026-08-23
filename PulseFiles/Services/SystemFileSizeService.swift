@@ -7,6 +7,8 @@ import Darwin
 /// directory listing cache. Symbolic links are measured as links and never
 /// followed while walking a directory.
 package struct SystemFileSizeService {
+    package init() {}
+
     /// Returns the logical size in bytes of a file, or the combined logical
     /// size of every entry contained by a directory.
     package func size(of url: URL) throws -> Int64 {

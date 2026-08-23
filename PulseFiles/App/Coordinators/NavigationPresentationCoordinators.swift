@@ -16,7 +16,7 @@ final class OpenWithWorkflowCoordinator {
     func present(files: [URL], presenter: any WorkflowPresentationCallbacks, open: @escaping (URL, URL) -> Void) {
         guard !files.isEmpty else { presenter.workflowFailed(message: "Nothing Selected".localized, detail: "Select one or more files to open with another application.".localized); return }
         do {
-            for file in files where try !accessPolicy.withValidatedAccess(to: file) { FileManager.default.fileExists(atPath: file.path) } {
+            for file in files where try !accessPolicy.withValidatedAccess(to: file, { FileManager.default.fileExists(atPath: file.path) }) {
                 throw FileOperationError.sourceMissing(file)
             }
         } catch { presenter.workflowFailed(message: "Could Not Open File".localized, detail: error.localizedDescription); return }

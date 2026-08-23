@@ -13,7 +13,7 @@ final class TerminalPresentationCoordinator {
         isVisible = true; return .show
     }
     func synchronize(installed: Bool) { isVisible = installed }
-    func workingDirectory(activePaneURL: URL, accessPolicy: SandboxFileAccessPolicy) -> URL? {
+    func workingDirectory(activePaneURL: URL, accessPolicy: SandboxFileAccessPolicy) -> URL {
         service.resolvedWorkingDirectory(activePaneURL: activePaneURL, accessPolicy: accessPolicy)
     }
     func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy) -> TerminalWarningState {

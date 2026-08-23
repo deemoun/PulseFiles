@@ -100,7 +100,7 @@ final class SettingsService: SettingsPreferences, AppearanceSettingsProviding, G
     var liquidGlassEnabled: Bool { get { snapshot.liquidGlassEnabled ?? false } set { change { $0.liquidGlassEnabled = newValue } } }
     var experimentalTerminalEnabled: Bool { get { snapshot.experimentalTerminalEnabled ?? false } set { change { $0.experimentalTerminalEnabled = newValue; if !newValue { $0.defaultTerminalVisible = false } } } }
     var hasAcknowledgedTerminalWarning: Bool { get { snapshot.hasAcknowledgedTerminalWarning ?? false } set { change { $0.hasAcknowledgedTerminalWarning = newValue } } }
-    var defaultTerminalVisible: Bool { get { experimentalTerminalEnabled && (snapshot.defaultTerminalVisible ?? false) } set { change { $0.defaultTerminalVisible = experimentalTerminalEnabled && newValue } } }
+    var defaultTerminalVisible: Bool { get { experimentalTerminalEnabled && (snapshot.defaultTerminalVisible ?? false) } set { change { $0.defaultTerminalVisible = self.experimentalTerminalEnabled && newValue } } }
     var defaultSinglePaneMode: Bool { get { snapshot.defaultSinglePaneMode ?? false } set { change { $0.defaultSinglePaneMode = newValue } } }
     var showHiddenFilesByDefault: Bool { get { snapshot.showHiddenFilesByDefault ?? false } set { change { $0.showHiddenFilesByDefault = newValue } } }
     var defaultPanePresentationMode: PanePresentationMode { get { snapshot.defaultPanePresentationMode ?? .list } set { change { $0.defaultPanePresentationMode = newValue } } }
@@ -136,7 +136,7 @@ final class SettingsService: SettingsPreferences, AppearanceSettingsProviding, G
         set { change { $0.fileColorScheme = newValue.colors.reduce(into: [:]) { $0[$1.key.rawValue] = StoredColorAppKitAdapter.rgba(from: $1.value) } } }
     }
     func resetFileColorScheme() { change { $0.fileColorScheme = nil } }
-    var folderAccessGrants: [FolderAccessGrant] { get { grantService.grants } set { grantService.grants = newValue; try? repository.writeSettingsJSON() } }
+    var folderAccessGrants: [FolderAccessGrant] { get { grantService.grants } set { grantService.grants = newValue; _ = try? repository.writeSettingsJSON() } }
     var defaultSortDescriptor: FileSortDescriptor { get { snapshot.defaultSortDescriptor ?? FileSortDescriptor() } set { change { $0.defaultSortDescriptor = newValue } } }
     func sortDescriptor(for pane: PaneID) -> FileSortDescriptor { pane == .left ? (snapshot.leftPaneSortDescriptor ?? defaultSortDescriptor) : (snapshot.rightPaneSortDescriptor ?? defaultSortDescriptor) }
     func setSortDescriptor(_ value: FileSortDescriptor, for pane: PaneID) { change { if pane == .left { $0.leftPaneSortDescriptor = value } else { $0.rightPaneSortDescriptor = value } } }

@@ -21,7 +21,7 @@ final class FileTransferWorkflowCoordinator {
 
     func clipboardPayload() -> FileClipboard.Payload? { clipboard.read() }
 
-    func pasteOperation(payload: FileClipboard.Payload, destination: URL) throws -> (String, FileOperationRequest, (FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult) {
+    func pasteOperation(payload: FileClipboard.Payload, destination: URL) throws -> (String, FileOperationRequest, (@escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult) {
         let request = try self.request(sources: payload.urls, destination: destination)
         let name = payload.operation == .copy ? "Paste Copy".localized : "Paste Move".localized
         return (name, request, { [fileOperations] conflicts, progress in

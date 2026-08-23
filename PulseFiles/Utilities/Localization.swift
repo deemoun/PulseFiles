@@ -4,7 +4,7 @@ package enum AppLanguage: String, CaseIterable, Codable {
     case english = "en"
     case russian = "ru"
 
-    var localizedDisplayName: String {
+    package var localizedDisplayName: String {
         switch self {
         case .english: return "English".localized
         case .russian: return "Russian".localized

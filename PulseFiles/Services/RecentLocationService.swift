@@ -5,7 +5,7 @@ import Foundation
 package final class RecentLocationService {
     private let defaults: UserDefaults
     private let key = "recentLocations"
-    private(set) var locations: [URL] = []
+    package private(set) var locations: [URL] = []
     package var onChange: (([URL]) -> Void)?
 
     package init(defaults: UserDefaults = .standard) {

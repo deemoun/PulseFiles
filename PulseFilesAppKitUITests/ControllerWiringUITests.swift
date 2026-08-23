@@ -199,7 +199,7 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertEqual(state.rightDirectory, folder)
     }
 
-    func testPlainArrowsUseWindowPathAndAffectOnlyActivePaneWithoutChangingMarks() async throws {
+    func testPlainArrowsUseWindowPathAndMovePrimarySelectionInOnlyActivePane() async throws {
         let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         for side in ["left", "right"] {
@@ -220,7 +220,6 @@ final class ControllerWiringUITests: XCTestCase {
             let urls = pane.viewModel.visibleItems.map(\.url)
             pane.preparePendingSelection(urls[0])
             pane.selectItem(at: urls[0])
-            let marks = pane.selectedItems.map(\.url)
             let otherFocus = controller.uiHarnessPane(paneID == .left ? .right : .left).viewModel.focusedURL
             app.activate(selector)
             app.window.makeFirstResponder(nil)
@@ -230,7 +229,7 @@ final class ControllerWiringUITests: XCTestCase {
             XCTAssertEqual(pane.viewModel.focusedURL, urls[1], "Down must advance exactly one row")
             XCTAssertTrue(app.window.firstResponder === pane.tableView, "Vertical navigation must restore the active table as first responder")
             XCTAssertEqual(pane.currentDirectory, directory)
-            XCTAssertEqual(pane.selectedItems.map(\.url), marks)
+            XCTAssertEqual(pane.selectedItems.map(\.url), [urls[1]])
             XCTAssertTrue(pane.tableView.accessibilityFocused())
             let focusedRow = pane.tableView.rowView(atRow: 2, makeIfNecessary: true)
             XCTAssertTrue(focusedRow?.accessibilityFocused() == true)
@@ -238,7 +237,7 @@ final class ControllerWiringUITests: XCTestCase {
 
             try app.postKey(keyCode: 126)
             XCTAssertEqual(pane.viewModel.focusedURL, urls[0], "Up must retreat exactly one row")
-            XCTAssertEqual(pane.selectedItems.map(\.url), marks)
+            XCTAssertEqual(pane.selectedItems.map(\.url), [urls[0]])
         }
     }
 
@@ -279,6 +278,25 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertEqual(left.currentDirectory.path, "/", "Left at the filesystem root must be safe")
         try app.postKey(keyCode: 124, modifiers: .command)
         XCTAssertEqual(left.currentDirectory.path, "/", "Command-Right remains command routing, not pane descent")
+    }
+
+    func testReturnOnParentRowNavigatesToParentWithoutCommandFeedback() async throws {
+        let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let child = root.appendingPathComponent("child", isDirectory: true)
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let pane = controller.uiHarnessPane(.left)
+        controller.uiHarnessNavigate(.left, to: child)
+        try await waitUntil { pane.currentDirectory == child }
+        app.activate(#selector(MainWindowViewController.menuFocusLeftPane(_:)))
+        pane.setFocusedDestination(.parent)
+
+        try app.postKey(keyCode: 36)
+
+        try await waitUntil { pane.currentDirectory == root }
+        XCTAssertNil(app.window.attachedSheet)
     }
 
     func testArrowEventsRemainEditingGesturesAndRepeatsMoveOnlyOncePerEvent() async throws {

@@ -11,6 +11,8 @@ package struct DirectoryItemReadFailure {
 package struct DirectoryContentsReadError: LocalizedError {
     package let failures: [DirectoryItemReadFailure]
 
+    package init(failures: [DirectoryItemReadFailure]) { self.failures = failures }
+
     package var errorDescription: String? {
         "Could not read metadata for \(failures.count) item(s)."
     }
@@ -22,6 +24,8 @@ package struct DirectoryContentsReadError: LocalizedError {
 package struct DirectoryLoadTimeoutError: LocalizedError, Equatable {
     package let timeout: TimeInterval
 
+    package init(timeout: TimeInterval) { self.timeout = timeout }
+
     package var errorDescription: String? {
         "Folder is taking too long to respond. Try again."
     }
@@ -32,6 +36,11 @@ package struct DirectoryLoadTimeoutError: LocalizedError, Equatable {
 package struct DirectoryContentsResult {
     package let items: [FileItem]
     package let itemReadFailures: [DirectoryItemReadFailure]
+
+    package init(items: [FileItem], itemReadFailures: [DirectoryItemReadFailure]) {
+        self.items = items
+        self.itemReadFailures = itemReadFailures
+    }
 
     package var isComplete: Bool { itemReadFailures.isEmpty }
 }

@@ -61,6 +61,13 @@ package struct DescendantSearchLimits: Equatable {
     package var maximumDepth = 32
     package var timeout: TimeInterval = 10
     package var batchSize = 100
+
+    package init(maximumItems: Int = 10_000, maximumDepth: Int = 32, timeout: TimeInterval = 10, batchSize: Int = 100) {
+        self.maximumItems = maximumItems
+        self.maximumDepth = maximumDepth
+        self.timeout = timeout
+        self.batchSize = batchSize
+    }
 }
 
 package struct DescendantSearchResult {

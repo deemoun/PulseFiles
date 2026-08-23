@@ -153,7 +153,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         reloadRowsForSelectionColorChange()
         configureStatusView()
         configureContentOverlay()
-        onSelectionChanged?(selectedItems)
+        presentationDelegate?.filePane(self, didEmit: .selection(selectedItems))
         // Selection changes not initiated by our focus-only arrow handling are
         // standard AppKit mouse, modified-key, or accessibility mark gestures.
         if !isReloadingData, tableView.selectedRow >= 0 {
@@ -165,7 +165,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
             previousSelectionURLs = selectedItems.map(\.url)
         }
         if !isReloadingData {
-            onActivate?()
+            navigationDelegate?.filePane(self, didEmit: .activate)
         }
     }
 
@@ -192,7 +192,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         if !isReloadingData {
-            onActivate?()
+            navigationDelegate?.filePane(self, didEmit: .activate)
         }
         return true
     }
@@ -213,7 +213,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     /// The sole submission path for an inline rename session. AppKit can send
     /// an action, end-editing notification, and object value for one edit.
-    private func commitInlineRename(itemURL: URL?, sessionGeneration: UInt?, proposedName: String, isCancelled: Bool) {
+    func commitInlineRename(itemURL: URL?, sessionGeneration: UInt?, proposedName: String, isCancelled: Bool) {
         guard let itemURL,
               let sessionGeneration,
               inlineRenameSession.matches(itemURL: itemURL, generation: sessionGeneration) else { return }
@@ -235,16 +235,16 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         )
         clearInlineRenameState()
         if case let .rename(_, name) = result, let item {
-            onRenameItem?(item, name)
+            commandDelegate?.filePane(self, didEmit: .rename(item, name))
         }
         flushDeferredTableReloadIfNeeded()
     }
 
-    private func item(for url: URL) -> FileItem? {
+    func item(for url: URL) -> FileItem? {
         viewModel.visibleItems.first { isSameFileURL($0.url, url) }
     }
 
-    private func updateInlineRenameField(at row: Int, for itemURL: URL) {
+    func updateInlineRenameField(at row: Int, for itemURL: URL) {
         guard let column = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }),
               let cell = tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? NSTableCellView,
               let textField = cell.textField as? InlineRenameTextField else { return }
@@ -252,7 +252,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         textField.sessionGeneration = inlineRenameSession.generation(for: itemURL)
     }
 
-    private func clearInlineRenameState() {
+    func clearInlineRenameState() {
         inlineRenameRow = nil
         inlineRenameItem = nil
     }
@@ -272,7 +272,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
     }
 
-    private func pruneInvalidSelection() {
+    func pruneInvalidSelection() {
         guard tableView.numberOfRows > 0 else {
             tableView.deselectAll(nil)
             return
@@ -312,7 +312,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         guard !urls.isEmpty else { return false }
         let operation = resolvedDropOperation(for: urls, destination: destination, pasteboard: info.draggingPasteboard)
         guard canDrop(urls, into: destination, operation: operation) else { return false }
-        onDropFiles?(urls, destination, operation == .copy)
+        commandDelegate?.filePane(self, didEmit: .drop(urls, destination: destination, copy: operation == .copy))
         return true
     }
 

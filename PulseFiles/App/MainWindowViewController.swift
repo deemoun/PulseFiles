@@ -131,7 +131,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         thumbnailLoader: thumbnailLoader,
         authorizedFolderSelection: authorizedFolderSelection
     )
-    private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy)
+    private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy, volumeDiscovery: volumeDiscovery)
     private let terminal: TerminalViewController
     private let commandBar = CommandBarView()
     private lazy var fileOperationProgressWindowController = FileOperationProgressWindowController { [weak self] in
@@ -313,7 +313,6 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         if let flagsChangedEventMonitor {
             NSEvent.removeMonitor(flagsChangedEventMonitor)
         }
-        clipboardSession.clear()
     }
 
     private func buildLayout() {
@@ -438,6 +437,19 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private func targetPane(useInactive: Bool = false) -> FilePaneViewController {
         let paneID = useInactive ? activePaneID.opposite : activePaneID
         return paneID == .left ? leftPane : rightPane
+    }
+
+    private func focusPane(_ paneID: PaneID) {
+        if activePaneID == paneID {
+            targetPane().makeTableFirstResponder()
+            return
+        }
+        activePaneID = paneID
+        if isSinglePaneMode { rebuildPaneArrangement() }
+    }
+
+    func openAcceptedFolderFromExternalEvent(_ directory: URL) {
+        targetPane().navigate(to: directory)
     }
 
     private func updateActivePane() {
@@ -632,9 +644,17 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         case .noOppositePane:
             feedback = ("Opposite Pane Unavailable", "Use dual-pane mode before using this command.")
         case .noSelection:
-            feedback = ("Nothing Selected", "Select one or more items before using this command.")
+            if targetPane().focusedDestination == .parent {
+                feedback = parentRowCommandFeedback
+            } else {
+                feedback = ("Nothing Selected", "Select one or more items before using this command.")
+            }
         case .noFocusedItem, .noRealFocusedItem:
-            feedback = ("Nothing Focused", "Focus an item before using this command.")
+            if targetPane().focusedDestination == .parent {
+                feedback = parentRowCommandFeedback
+            } else {
+                feedback = ("Nothing Focused", "Focus an item before using this command.")
+            }
         case .sandboxRejectedSelection:
             feedback = ("Access Denied", "The selected item is outside the locations PulseFiles is allowed to access.")
         case .noActiveFileOperation:
@@ -647,6 +667,13 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
             feedback = ("Last Tab", "Each pane must keep at least one tab open.")
         }
         showError(message: feedback.0.localized, detail: feedback.1.localized)
+    }
+
+    private var parentRowCommandFeedback: (String, String) {
+        (
+            "Parent Folder Focused",
+            "This command requires an item inside the current folder. Press Right Arrow or Return to open the parent folder."
+        )
     }
 
     private func promptForArchiveCreation() {
@@ -892,6 +919,17 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
             // it explicitly rather than relying on AppKit to eventually send
             // the event to the active pane's table view.
             targetPane().handleKeyDown(event)
+            return true
+        }
+        if !isTextInputFocused,
+           paneNavigationModifiers.isEmpty,
+           event.keyCode == 36,
+           targetPane().focusedDestination == .parent {
+            // Return normally routes through the global `.open` command. The
+            // synthetic `..` row intentionally has no focused URL, so let the
+            // pane handle it before command routing translates that safe state
+            // into "no focused item."
+            targetPane().openFocusedItem()
             return true
         }
         if let routedCommand = commandRouter.commandForKeyDown(event, isTextInputFocused: isTextInputFocused) {
@@ -1435,6 +1473,7 @@ extension MainWindowViewController {
         }
 
         let accessPolicy = accessPolicy
+        let fileSizeService = fileSizeService
         Task { [weak self] in
             do {
                 let details = try await Task.detached(priority: .userInitiated) {
@@ -2165,6 +2204,8 @@ extension MainWindowViewController {
     @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
     @objc func menuScratchDirectory(_ sender: Any?) { performCommand(.scratchDirectory) }
     @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
+    @objc func menuFocusLeftPane(_ sender: Any?) { focusPane(.left) }
+    @objc func menuFocusRightPane(_ sender: Any?) { focusPane(.right) }
     @objc func menuSwapPanes(_ sender: Any?) { performCommand(.swapPanes) }
     @objc func menuSyncOppositePane(_ sender: Any?) { performCommand(.syncOppositePane) }
     @objc func menuRevealInOppositePane(_ sender: Any?) { performCommand(.revealInOppositePane) }

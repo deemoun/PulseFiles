@@ -13,7 +13,7 @@ package final class VolumeStatusResolutionCache {
 
     private var task: Task<Void, Never>?
     private var request: Request?
-    private(set) var status: VolumeStatusPresentation
+    package private(set) var status: VolumeStatusPresentation
     package var onChange: (() -> Void)?
 
     package init(directory: URL) {

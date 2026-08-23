@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let editSettingsJSONDebugDefaultsKey = "PulseFilesShowEditSettingsJSONMenuItem"
     static let editSettingsJSONDebugLaunchArgument = "--pulsefiles-show-edit-settings-json-menu-item"

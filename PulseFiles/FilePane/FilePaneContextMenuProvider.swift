@@ -1,6 +1,7 @@
 import AppKit
 
 /// Builds pane context menus while leaving selection/focus ownership in `FilePaneViewController`.
+@MainActor
 final class FilePaneContextMenuProvider: NSObject {
     enum Context { case parent, item(FileItem, hasOppositePane: Bool), background(showsHiddenFiles: Bool) }
     struct Entry: Equatable { let title: String; let command: MainCommand?; let separator: Bool }
@@ -8,8 +9,8 @@ final class FilePaneContextMenuProvider: NSObject {
     var onOpenWithApplication: ((URL, URL?) -> Void)?
     private let openWithApplicationResolver: OpenWithMenuApplicationResolver
 
-    init(openWithApplicationResolver: OpenWithMenuApplicationResolver = OpenWithMenuApplicationResolver()) {
-        self.openWithApplicationResolver = openWithApplicationResolver
+    init(openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil) {
+        self.openWithApplicationResolver = openWithApplicationResolver ?? OpenWithMenuApplicationResolver()
     }
 
     static func entries(for context: Context) -> [Entry] {

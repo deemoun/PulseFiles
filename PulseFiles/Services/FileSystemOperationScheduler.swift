@@ -63,7 +63,7 @@ package actor FileSystemOperationScheduler {
     package let staleOperations: Int
   }
 
-  static let shared = FileSystemOperationScheduler()
+  package static let shared = FileSystemOperationScheduler()
 
   private struct Work {
     package let id: UInt64

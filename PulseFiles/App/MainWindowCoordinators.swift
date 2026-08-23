@@ -58,7 +58,15 @@ extension FileClipboard: FileClipboardProviding {}
 extension SystemFileSizeService: FileSizeResolving {}
 extension ReadOnlyViewerService: ViewerContentLoading {}
 extension DiagnosticsExportService: DiagnosticsExporting {}
-extension TerminalService: TerminalStateProviding {}
+extension TerminalService: TerminalStateProviding {
+    func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy) -> TerminalWarningState {
+        warningState(settings: settings as any TerminalSettingsProviding, accessPolicy: accessPolicy)
+    }
+
+    func acknowledgeFirstUseWarning(settings: SettingsService) {
+        acknowledgeFirstUseWarning(settings: settings as any TerminalSettingsProviding)
+    }
+}
 extension StandardFolderAccessService: StandardFolderAccessProviding {}
 extension ThumbnailLoadingService: ThumbnailLoading {}
 
@@ -139,6 +147,7 @@ struct MainWindowDependencies {
         )
     }
 
+    @MainActor
     func replacingPaneComposition(
         accessPolicy: SandboxFileAccessPolicy,
         paneFileSystem: any FileSystemServicing,

@@ -27,6 +27,7 @@ final class FilePaneViewController: NSViewController {
     var isPaneActive = false
     var dimmedFileURLs = Set<String>()
     var previousSelectedRowIndexes = IndexSet()
+    var previousSelectionURLs: [URL] = []
     /// URLs survive sorting, filtering, and monitor-driven reloads; row indexes do not.
     var selectionRestoration = FilePaneSelectionRestoration()
     var quickSearchState = QuickSearchState()
@@ -108,9 +109,25 @@ final class FilePaneViewController: NSViewController {
         case .parent, nil: viewModel.setFocusedURL(nil)
         }
         let newRow = row(for: focusedDestination)
+        updateKeyboardFocusIndicator(at: oldRow, isFocused: false)
+        updateKeyboardFocusIndicator(at: newRow, isFocused: true)
         let rows = IndexSet([oldRow, newRow].compactMap { $0 })
         guard !rows.isEmpty, tableView.numberOfColumns > 0 else { return }
         tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
+        // Reloading cells does not guarantee that AppKit recreates the row
+        // view. Reapply the indicator after the reload so a reused row cannot
+        // make keyboard focus movement appear to do nothing.
+        updateKeyboardFocusIndicator(at: oldRow, isFocused: false)
+        updateKeyboardFocusIndicator(at: newRow, isFocused: true)
+    }
+
+    private func updateKeyboardFocusIndicator(at row: Int?, isFocused: Bool) {
+        guard let row,
+              row >= 0,
+              row < tableView.numberOfRows,
+              let rowView = tableView.rowView(atRow: row, makeIfNecessary: true) as? FileTableRowView else { return }
+        rowView.drawsKeyboardFocus = isFocused
+        rowView.needsDisplay = true
     }
 
     var parentURL: URL {
@@ -901,7 +918,7 @@ private extension PanePresentationMode {
     var symbolName: String {
         switch self {
         case .list: return "list.bullet"
-        case .brief: return "list.dash"
+        case .brief: return "rectangle.compress.vertical"
         case .gallery: return "square.grid.2x2"
         }
     }
@@ -963,12 +980,12 @@ extension FilePaneViewController: FileTableViewActionDelegate {
             displayed: displayedDestinations,
             delta: delta
         ), let destinationRow = row(for: destination) else { return }
-        // The window-level shortcut path can deliver an arrow while focus is
-        // sitting on pane chrome (or nowhere at all). Once vertical navigation
-        // begins, restore the table as first responder so key repeat and the
-        // next arrow stay on AppKit's normal, predictable responder path.
+        // Plain arrows follow conventional file-manager behavior: move the
+        // primary selection and make that row the command target. Modified
+        // arrows are left to NSTableView for native range-selection behavior.
         view.window?.makeFirstResponder(tableView)
         setFocusedDestination(destination)
+        tableView.selectRowIndexes(IndexSet(integer: destinationRow), byExtendingSelection: false)
         tableView.scrollRowToVisible(destinationRow)
         tableView.setAccessibilityFocused(true)
         tableView.rowView(atRow: destinationRow, makeIfNecessary: true)?.setAccessibilityFocused(true)

@@ -28,11 +28,18 @@ final class ClipboardDropWorkflowCoordinator {
         onCutURLsChanged(operation == .move ? urls : [])
         trackedChangeCount = transfer.clipboard.changeCount
         feedbackTimer?.invalidate()
-        feedbackTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in self?.onFeedbackExpired() }
+        feedbackTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.onFeedbackExpired() }
+        }
         changeMonitor?.invalidate()
         changeMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, let trackedChangeCount, transfer.clipboard.changeCount != trackedChangeCount else { return }
-            self.clear(); self.onFeedbackExpired()
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let trackedChangeCount,
+                      transfer.clipboard.changeCount != trackedChangeCount else { return }
+                self.clear()
+                self.onFeedbackExpired()
+            }
         }
     }
     func clear() {

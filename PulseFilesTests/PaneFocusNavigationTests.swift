@@ -4,7 +4,7 @@ import XCTest
 final class PaneFocusNavigationTests: XCTestCase {
     private let directory = URL(fileURLWithPath: "/tmp/pulsefiles-focus-tests", isDirectory: true)
 
-    func testFocusMovesWithoutReplacingMultipleMarks() {
+    func testFocusDestinationMovesToTheNextDisplayedItem() {
         let first = directory.appendingPathComponent("first")
         let second = directory.appendingPathComponent("second")
         let third = directory.appendingPathComponent("third")
@@ -14,7 +14,7 @@ final class PaneFocusNavigationTests: XCTestCase {
         if case let .item(url) = destination { state.setFocus(url) }
 
         XCTAssertEqual(state.focusedURL, second)
-        XCTAssertEqual(state.markedURLs, [first, third], "Keyboard focus must not collapse the drag/file-operation marks.")
+        XCTAssertEqual(state.markedURLs, [first, third], "The pure destination resolver must not mutate selection state.")
     }
 
     func testFocusSurvivesFilteringAndReturnsWhenVisibleAgain() {

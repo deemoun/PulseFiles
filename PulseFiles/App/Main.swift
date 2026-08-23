@@ -1,6 +1,7 @@
 import AppKit
 
 @main
+@MainActor
 enum PulseFilesApplication {
     private static let appDelegate = AppDelegate()
 

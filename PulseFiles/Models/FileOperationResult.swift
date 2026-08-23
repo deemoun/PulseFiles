@@ -157,6 +157,10 @@ package enum FileTransferCapacityPreflight: Equatable {
 }
 
 package struct FileOperationRequest {
+    package init(sources: [URL], destinationDirectory: URL) {
+        self.sources = sources
+        self.destinationDirectory = destinationDirectory
+    }
     package let sources: [URL]
     package let destinationDirectory: URL
 }

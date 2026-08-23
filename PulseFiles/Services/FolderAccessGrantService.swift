@@ -29,6 +29,8 @@ package protocol FolderAccessBookmarkResolving {
 }
 
 package struct SystemFolderAccessBookmarkResolver: FolderAccessBookmarkResolving {
+    package init() {}
+
     package func makeBookmarkData(for url: URL) throws -> Data {
         try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
     }
