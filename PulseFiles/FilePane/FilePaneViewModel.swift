@@ -11,6 +11,7 @@ final class FilePaneViewModel {
     var fileSystemForCompositionTesting: any FileSystemServicing { fileSystem }
     var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private let snapshotCache = DirectorySnapshotCache()
+    private let memoryPressureSource: DispatchSourceMemoryPressure
     private let directoryMonitor: DirectoryMonitor
     private var loadTask: Task<Void, Never>?
     private var loadWatchdogTask: Task<Void, Never>?
@@ -86,6 +87,10 @@ final class FilePaneViewModel {
         self.fileSystem = fileSystem
         self.accessPolicy = accessPolicy
         self.directoryMonitor = directoryMonitor
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(
+            eventMask: [.warning, .critical],
+            queue: .main
+        )
         self.quickSearchMatchMode = quickSearchMatchMode
         self.quickSearchPresentation = quickSearchPresentation
         self.directoryLoadTimeout = directoryLoadTimeout
@@ -105,9 +110,17 @@ final class FilePaneViewModel {
             guard let self else { return }
             self.reloadAfterExternalDirectoryChange()
         }
+        memoryPressureSource.setEventHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.snapshotCache.clear()
+            }
+        }
+        memoryPressureSource.resume()
     }
 
     deinit {
+        memoryPressureSource.cancel()
+        snapshotCache.clear()
         loadTask?.cancel()
         loadWatchdogTask?.cancel()
         retryTask?.cancel()
