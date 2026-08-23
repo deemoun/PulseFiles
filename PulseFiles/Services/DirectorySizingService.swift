@@ -29,7 +29,7 @@ package final class DirectorySizingService: @unchecked Sendable {
         fileManager: FileManager = .default,
         accessPolicy: SandboxFileAccessPolicy = .current,
         scheduler: FileSystemOperationScheduler = .shared,
-        traversal: @escaping Traversal = DirectorySizingService.traverse
+        traversal: @escaping Traversal = { try DirectorySizingService.traverse($0, $1, $2) }
     ) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
@@ -40,8 +40,9 @@ package final class DirectorySizingService: @unchecked Sendable {
     package func size(of root: URL) async throws -> DirectorySizeResult {
         try accessPolicy.validateAccess(to: root)
         return try await accessPolicy.withValidatedAccess(to: root) {
-            try await scheduler.submitInspection { [fileManager, traversal] token in
-                try traversal(root, fileManager, token)
+            let fileManager = SendableFileManager(value: fileManager)
+            return try await scheduler.submitInspection { [fileManager, traversal] token in
+                try traversal(root, fileManager.value, token)
             }
         }
     }
@@ -88,4 +89,8 @@ package final class DirectorySizingService: @unchecked Sendable {
             completeness: skipped == 0 ? .complete : .partial(skippedItemCount: skipped)
         )
     }
+}
+
+private struct SendableFileManager: @unchecked Sendable {
+    let value: FileManager
 }

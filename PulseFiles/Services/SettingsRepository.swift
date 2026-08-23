@@ -27,7 +27,7 @@ package final class SettingsRepository: SettingsPersisting {
         self.jsonURLProvider = jsonURLProvider ?? { Self.defaultJSONURL }
         if syncsJSON {
             importJSONIfChanged()
-            try? writeSettingsJSON()
+            _ = try? writeSettingsJSON()
         }
     }
 
@@ -78,7 +78,7 @@ package final class SettingsRepository: SettingsPersisting {
         return url
     }
 
-    private func writeIfNeeded() { if syncsJSON && !isSynchronizing { try? writeSettingsJSON() } }
+    private func writeIfNeeded() { if syncsJSON && !isSynchronizing { _ = try? writeSettingsJSON() } }
 
     private func readSnapshot() -> SettingsSnapshot {
         var s = SettingsSnapshot()

@@ -504,6 +504,12 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
         )
     }
 
+    private func isUnavailableVolumeError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return (nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoSuchFileError)
+            || (nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT))
+    }
+
     /// Directory enumeration and metadata reads can be expensive (and can
     /// block on network volumes), so plan them off the caller's actor.
 
@@ -561,7 +567,7 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
 
 
 private extension FileConflictResolution {
-    package var logValue: String {
+    var logValue: String {
         switch self {
         case .replace: return "replace"
         case .skip: return "skip"

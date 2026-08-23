@@ -109,7 +109,7 @@ package actor FileSystemOperationScheduler {
     cancellation: @escaping @Sendable () -> Void,
     operation: @escaping @Sendable () throws -> Value
   ) async throws -> Value {
-    package let id = nextID
+    let id = nextID
     nextID &+= 1
     return try await withTaskCancellationHandler(
       operation: {

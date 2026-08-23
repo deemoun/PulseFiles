@@ -60,7 +60,7 @@ package final class StartupNavigationService {
             return policy.validatedDirectory(ExperimentalFlags.appSandboxRoot.appendingPathComponent(name, isDirectory: true))
         }
         let candidates = pane == .left ? [home(), documents()] : [home()]
-        if let accessible = candidates.first(where: policy.canAccess) { return accessible }
+        if let accessible = candidates.first(where: { policy.canAccess($0) }) { return accessible }
         let support = applicationSupport(); try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         return policy.canAccess(support) ? support : policy.validatedDirectory(support)
     }
