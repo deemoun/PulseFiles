@@ -44,6 +44,23 @@ final class ControllerWiringUITests: XCTestCase {
         }
     }
 
+    func testPaneHeaderActionsStayInsidePaneWhenNarrowed() throws {
+        let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
+
+        for paneID in [PaneID.left, .right] {
+            let pane = controller.uiHarnessPane(paneID)
+            pane.loadViewIfNeeded()
+            pane.view.frame.size.width = 260
+            pane.view.layoutSubtreeIfNeeded()
+
+            let selectorFrame = pane.presentationSelector.convert(pane.presentationSelector.bounds, to: pane.header)
+            let hiddenButtonFrame = pane.hiddenButton.convert(pane.hiddenButton.bounds, to: pane.header)
+            XCTAssertGreaterThanOrEqual(selectorFrame.minX, pane.header.bounds.minX)
+            XCTAssertLessThanOrEqual(hiddenButtonFrame.maxX, pane.header.bounds.maxX)
+            XCTAssertLessThanOrEqual(selectorFrame.maxX, hiddenButtonFrame.minX)
+        }
+    }
+
     func testSettingsLanguageSelectorExposesBothLanguagesAndPersistsSelection() throws {
         let suite = "SettingsLanguageSelector.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
