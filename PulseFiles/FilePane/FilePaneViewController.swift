@@ -446,6 +446,8 @@ final class FilePaneViewController: NSViewController {
         header.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         header.blendingMode = .withinWindow
         header.state = .active
+        header.wantsLayer = true
+        header.layer?.masksToBounds = true
 
         directoryIcon.imageScaling = .scaleProportionallyDown
         directoryIcon.setContentHuggingPriority(.required, for: .horizontal)
@@ -467,6 +469,11 @@ final class FilePaneViewController: NSViewController {
         presentationSelector.target = self
         presentationSelector.action = #selector(changePresentationMode)
         presentationSelector.setAccessibilityLabel("Pane presentation mode".localized)
+        presentationSelector.setContentHuggingPriority(.required, for: .horizontal)
+        presentationSelector.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        hiddenButton.setContentHuggingPriority(.required, for: .horizontal)
+        hiddenButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         breadcrumb.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.breadcrumb(for: paneID))
         breadcrumb.onSelect = { [weak self] url in self?.navigate(to: url) }
@@ -532,12 +539,23 @@ final class FilePaneViewController: NSViewController {
 
         activeStripe.wantsLayer = true
         activeStripe.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.activeIndicator(for: paneID))
-        let headerStack = NSStackView(views: [tabSelector, directoryIcon, breadcrumb, presentationSelector, hiddenButton])
-        headerStack.orientation = .horizontal
-        headerStack.alignment = .centerY
-        headerStack.spacing = 8
-        headerStack.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(headerStack)
+        // Keep pane actions in a trailing group that cannot be displaced by a
+        // long tab or breadcrumb. A single stack makes AppKit satisfy the long
+        // intrinsic widths by pushing the presentation selector outside its
+        // pane while a split view is being resized.
+        let locationStack = NSStackView(views: [tabSelector, directoryIcon, breadcrumb])
+        locationStack.orientation = .horizontal
+        locationStack.alignment = .centerY
+        locationStack.spacing = 8
+        locationStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let actionStack = NSStackView(views: [presentationSelector, hiddenButton])
+        actionStack.orientation = .horizontal
+        actionStack.alignment = .centerY
+        actionStack.spacing = 8
+        actionStack.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(locationStack)
+        header.addSubview(actionStack)
 
         NSLayoutConstraint.activate([
             activeStripe.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -550,9 +568,11 @@ final class FilePaneViewController: NSViewController {
             header.topAnchor.constraint(equalTo: view.topAnchor),
             header.heightAnchor.constraint(equalToConstant: 42),
 
-            headerStack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 10),
-            headerStack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -8),
-            headerStack.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            locationStack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 10),
+            locationStack.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -8),
+            locationStack.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            actionStack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -8),
+            actionStack.centerYAnchor.constraint(equalTo: header.centerYAnchor),
             directoryIcon.widthAnchor.constraint(equalToConstant: 20),
             directoryIcon.heightAnchor.constraint(equalToConstant: 20),
 
