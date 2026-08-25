@@ -66,6 +66,27 @@ final class MainWindowCoordinatorTests: XCTestCase {
         )
     }
 
+    func testCommandPresentationDistinguishesParentRowFromMissingSelection() {
+        let coordinator = CommandPresentationCoordinator()
+        XCTAssertEqual(coordinator.feedback(for: .noSelection, parentRowFocused: false).message, "Nothing Selected")
+        XCTAssertEqual(coordinator.feedback(for: .noSelection, parentRowFocused: true).message, "Parent Folder Focused")
+        XCTAssertEqual(coordinator.feedback(for: .noUndoRecovery, parentRowFocused: false).detail, "The last operation cannot be safely undone.")
+    }
+
+    @MainActor
+    func testPaneSynchronizationBuildsRevealIntentAndRejectsStaleVolumeProbe() {
+        let coordinator = PaneNavigationSynchronizationCoordinator()
+        let item = URL(fileURLWithPath: "/left/folder/report.txt")
+        XCTAssertEqual(coordinator.revealPlan(for: item), .init(directory: item.deletingLastPathComponent(), item: item))
+
+        let directories = [URL(fileURLWithPath: "/left"), URL(fileURLWithPath: "/right")]
+        let stale = coordinator.beginVolumeProbe()
+        let current = coordinator.beginVolumeProbe()
+        XCTAssertFalse(coordinator.acceptsVolumeProbe(stale, originalDirectories: directories, currentDirectories: directories))
+        XCTAssertTrue(coordinator.acceptsVolumeProbe(current, originalDirectories: directories, currentDirectories: directories))
+        XCTAssertFalse(coordinator.acceptsVolumeProbe(current, originalDirectories: directories, currentDirectories: Array(directories.reversed())))
+    }
+
     @MainActor
     func testFileOperationCoordinatorCapturesOnlyCompleteUndoRecovery() {
         let coordinator = FileOperationCoordinator()
