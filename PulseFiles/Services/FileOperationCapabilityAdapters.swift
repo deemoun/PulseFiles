@@ -7,8 +7,8 @@ import Foundation
 package final class FileOperationArchiveAdapter: FileOperationArchiveServicing {
     private let service: ArchiveOperationService
 
-    package init(accessPolicy: SandboxFileAccessPolicy) {
-        service = ArchiveOperationService(accessPolicy: accessPolicy)
+    package init(service: ArchiveOperationService) {
+        self.service = service
     }
 
     package func createArchive(
@@ -37,8 +37,8 @@ package final class FileOperationArchiveAdapter: FileOperationArchiveServicing {
 package final class FileOperationBatchRenameAdapter: FileOperationBatchRenameServicing {
     private let service: BatchRenameService
 
-    package init(accessPolicy: SandboxFileAccessPolicy) {
-        service = BatchRenameService(accessPolicy: accessPolicy)
+    package init(service: BatchRenameService) {
+        self.service = service
     }
 
     package func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan {

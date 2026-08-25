@@ -176,6 +176,49 @@ final class ArchiveAndBatchRenameTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: b), "A")
     }
 
+    func testBatchRenameRejectsFinderAliasWithOrdinaryMutationError() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("alias")
+        try Data("alias-record".utf8).write(to: source)
+        let service = BatchRenameService(
+            accessPolicy: .init(isEnabled: true, rootURL: root),
+            pathSafetyStateProvider: { url in
+                .init(isAvailable: true, isFinderAlias: url.standardizedFileURL == source.standardizedFileURL)
+            }
+        )
+
+        XCTAssertThrowsError(try service.plan(.init(sources: [source], proposedNames: ["renamed"]))) { error in
+            guard case FileOperationError.finderAliasMutationUnsupported(source) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testBatchRenameProviderDisappearanceBeforeExecutionIsPartialFailure() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("provider-item")
+        try Data("provider".utf8).write(to: source)
+        let availability = AvailabilityState()
+        let service = BatchRenameService(
+            accessPolicy: .init(isEnabled: true, rootURL: root),
+            pathSafetyStateProvider: { url in
+                .init(isAvailable: url == source ? availability.value : true)
+            }
+        )
+        let plan = try service.plan(.init(sources: [source], proposedNames: ["renamed"]))
+        availability.value = false
+
+        let result = await service.execute(plan)
+
+        XCTAssertFalse(result.succeededCompletely)
+        XCTAssertEqual(result.failedItems.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
     private func XCTAssertThrowsErrorAsync(_ expression: () async throws -> Void) async {
         do { try await expression(); XCTFail("Expected an error") } catch { }
     }
@@ -211,6 +254,15 @@ final class ArchiveAndBatchRenameTests: XCTestCase {
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: root)
         _ = try await ArchiveOperationService(accessPolicy: policy).create(.init(sources: [source], destinationURL: archive))
         return ArchiveFixture(root: root, destination: destination, archive: archive, policy: policy)
+    }
+}
+
+private final class AvailabilityState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var available = true
+    var value: Bool {
+        get { lock.withLock { available } }
+        set { lock.withLock { available = newValue } }
     }
 }
 

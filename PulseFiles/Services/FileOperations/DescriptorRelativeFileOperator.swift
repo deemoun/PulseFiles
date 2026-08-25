@@ -14,9 +14,16 @@ package final class DescriptorRelativeFileOperator {
         self.fileManager = fileManager
     }
 
+    private var usesDescriptorCapabilities: Bool {
+        guard let manager = fileManager as? FileManager else { return false }
+        // Custom adapters and FileManager test subclasses retain their injected
+        // mutation hooks; only the unmodified system adapter uses Darwin.
+        return type(of: manager) == FileManager.self
+    }
+
     package func verifyExistingItem(_ url: URL) throws {
         #if os(macOS)
-        guard fileManager is FileManager else {
+        guard usesDescriptorCapabilities else {
             guard fileManager.fileExists(atPath: url.path) else { throw FileOperationError.sourceMissing(url) }
             return
         }
@@ -31,7 +38,7 @@ package final class DescriptorRelativeFileOperator {
 
     package func rename(_ source: URL, to destination: URL) throws {
         #if os(macOS)
-        guard fileManager is FileManager else { try fileManager.moveItem(at: source, to: destination); return }
+        guard usesDescriptorCapabilities else { try fileManager.moveItem(at: source, to: destination); return }
         let sourceParent = try OpenDirectoryCapability(directory: source.deletingLastPathComponent())
         defer { sourceParent.close() }
         let destinationParent = try OpenDirectoryCapability(directory: destination.deletingLastPathComponent())
@@ -46,7 +53,7 @@ package final class DescriptorRelativeFileOperator {
 
     package func remove(_ url: URL) throws {
         #if os(macOS)
-        guard fileManager is FileManager else { try fileManager.removeItem(at: url); return }
+        guard usesDescriptorCapabilities else { try fileManager.removeItem(at: url); return }
         let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
         defer { parent.close() }
         try parent.removeItem(named: url.lastPathComponent)
@@ -57,7 +64,7 @@ package final class DescriptorRelativeFileOperator {
 
     package func create(_ url: URL, isDirectory: Bool) throws {
         #if os(macOS)
-        guard fileManager is FileManager else {
+        guard usesDescriptorCapabilities else {
             if isDirectory { try fileManager.createDirectory(at: url, withIntermediateDirectories: false) }
             else { try fileManager.createEmptyFile(at: url) }
             return
@@ -74,7 +81,7 @@ package final class DescriptorRelativeFileOperator {
 
     package func createSymbolicLink(at url: URL, destination: String) throws {
         #if os(macOS)
-        guard fileManager is FileManager else { try fileManager.createSymbolicLink(atPath: url.path, withDestinationPath: destination); return }
+        guard usesDescriptorCapabilities else { try fileManager.createSymbolicLink(atPath: url.path, withDestinationPath: destination); return }
         let parent = try OpenDirectoryCapability(directory: url.deletingLastPathComponent())
         defer { parent.close() }
         try parent.createSymbolicLink(named: url.lastPathComponent, destination: destination)
