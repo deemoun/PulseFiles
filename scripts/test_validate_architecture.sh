@@ -7,6 +7,17 @@ FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesArchitecture.XXXXXX")"
 trap 'rm -rf "$FIXTURE"' EXIT
 mkdir -p "$FIXTURE/PulseFiles/App"
 
+# The validator also checks the feature-target declarations. Keep a minimal
+# manifest in the disposable repository so the focused source fixtures exercise
+# the rule named by each assertion instead of failing for an unrelated missing
+# manifest.
+cat > "$FIXTURE/Package.swift" <<'EOF'
+.target(name: "PulseFilesPane", path: "PulseFiles/FilePane")
+.target(name: "PulseFilesSidebar", path: "PulseFiles/Sidebar")
+.target(name: "PulseFilesSettings", path: "PulseFiles/Settings")
+.target(name: "PulseFilesTerminal", path: "PulseFiles/Terminal")
+EOF
+
 assert_rejected() {
   local name="$1" snippet="$2" file="$FIXTURE/PulseFiles/App/Fixture.swift"
   printf '%s\n' "$snippet" > "$file"
@@ -45,6 +56,17 @@ assert_accepted file-exists 'let exists = fm.fileExists(atPath: path)'
 assert_accepted attributes-read 'let values = try manager.attributesOfItem(atPath: path)'
 assert_accepted directory-read 'let children = try arbitrary.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)'
 assert_accepted readable-handle 'let handle = try FileHandle(forReadingFrom: url)'
+
+# Target extraction is part of the boundary: a feature directory must not be
+# silently folded back into the executable by a stale manifest edit.
+cp "$FIXTURE/Package.swift" "$FIXTURE/Package.swift.valid"
+sed 's|path: "PulseFiles/FilePane"|path: "PulseFiles/App"|' \
+  "$FIXTURE/Package.swift.valid" > "$FIXTURE/Package.swift"
+if PULSEFILES_ARCHITECTURE_ROOT="$FIXTURE" "$SCRIPT_DIR/validate_architecture.sh" >/dev/null 2>&1; then
+  echo 'ERROR: stale feature target mapping was accepted' >&2
+  exit 1
+fi
+mv "$FIXTURE/Package.swift.valid" "$FIXTURE/Package.swift"
 
 # Concrete service selection belongs to PulseFiles/App, never a feature.
 mkdir -p "$FIXTURE/PulseFiles/Terminal"
