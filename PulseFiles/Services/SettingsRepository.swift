@@ -15,6 +15,7 @@ package final class SettingsRepository: SettingsPersisting {
     package static let schemaVersion = 1
     package static let appLanguageDefaultsKey = "appLanguage"
     package static let lastImportDefaultsKey = "settingsJSONLastImportedModificationTime"
+    private static let liquidGlassDefaultsKey = "liquidGlassEnabled"
 
     private let defaults: UserDefaults
     private let syncsJSON: Bool
@@ -84,7 +85,7 @@ package final class SettingsRepository: SettingsPersisting {
         var s = SettingsSnapshot()
         s.appLanguage = defaults.string(forKey: Self.appLanguageDefaultsKey)
         s.defaultSidebarVisible = bool("defaultSidebarVisible") ?? bool("isSidebarVisible")
-        s.liquidGlassEnabled = bool("liquidGlassEnabled")
+        s.liquidGlassEnabled = bool(Self.liquidGlassDefaultsKey)
         s.experimentalTerminalEnabled = bool("experimentalTerminalEnabled")
         s.hasAcknowledgedTerminalWarning = bool("hasAcknowledgedTerminalWarning")
         s.defaultTerminalVisible = bool("defaultTerminalVisible")
@@ -119,7 +120,7 @@ package final class SettingsRepository: SettingsPersisting {
 
     private func writeSnapshot(_ s: SettingsSnapshot) {
         set(s.appLanguage, Self.appLanguageDefaultsKey); set(s.defaultSidebarVisible, "defaultSidebarVisible")
-        set(s.liquidGlassEnabled, "liquidGlassEnabled"); set(s.experimentalTerminalEnabled, "experimentalTerminalEnabled")
+        set(s.liquidGlassEnabled, Self.liquidGlassDefaultsKey); set(s.experimentalTerminalEnabled, "experimentalTerminalEnabled")
         set(s.hasAcknowledgedTerminalWarning, "hasAcknowledgedTerminalWarning"); set(s.defaultTerminalVisible, "defaultTerminalVisible")
         set(s.defaultSinglePaneMode, "defaultSinglePaneMode"); set(s.showHiddenFilesByDefault, "showHiddenFilesByDefault")
         setRaw(s.defaultPanePresentationMode?.rawValue, "defaultPanePresentationMode"); setRaw(s.leftPanePresentationMode?.rawValue, "leftPanePresentationMode"); setRaw(s.rightPanePresentationMode?.rawValue, "rightPanePresentationMode")

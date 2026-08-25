@@ -15,6 +15,7 @@ final class TerminalViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let processFactory: () -> TerminalProcess
     private let accessPolicy: SandboxFileAccessPolicy
+    private var liquidGlassStyle: LiquidGlassStyle
     var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private var runningProcess: TerminalProcess?
     private var runningAccessScope: FolderAccessScope?
@@ -25,10 +26,11 @@ final class TerminalViewController: NSViewController {
     var isShellInteractionAllowedProvider: (() -> Bool)?
     var suggestedWorkingDirectory = ExperimentalFlags.appSandboxRoot
 
-    init(terminalService: any TerminalStateProviding, processFactory: @escaping () -> TerminalProcess = { PTYTerminalProcess() }, accessPolicy: SandboxFileAccessPolicy) {
+    init(terminalService: any TerminalStateProviding, processFactory: @escaping () -> TerminalProcess = { PTYTerminalProcess() }, accessPolicy: SandboxFileAccessPolicy, liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle(liquidGlassEnabled: false)) {
         self.terminalService = terminalService
         self.processFactory = processFactory
         self.accessPolicy = accessPolicy
+        self.liquidGlassStyle = liquidGlassStyle
         super.init(nibName: nil, bundle: nil)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -38,7 +40,7 @@ final class TerminalViewController: NSViewController {
         view = NSView(); view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.black.cgColor; view.layer?.cornerRadius = LiquidGlassStyle.cornerRadius
         view.layer?.cornerCurve = .continuous; view.layer?.masksToBounds = true; view.layer?.borderWidth = 1
-        view.layer?.borderColor = LiquidGlassStyle.panelStroke.cgColor
+        view.layer?.borderColor = liquidGlassStyle.panelStroke.cgColor
         view.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.panel)
     }
     override func viewDidLoad() {
@@ -52,7 +54,7 @@ final class TerminalViewController: NSViewController {
         let size = terminalView.bounds.size
         runningProcess?.resize(columns: max(1, Int(size.width / 7.8)), rows: max(1, Int(size.height / 16)))
     }
-    func refreshAppearance() { view.layer?.cornerRadius = LiquidGlassStyle.isEnabled ? LiquidGlassStyle.cornerRadius : LiquidGlassStyle.compactCornerRadius; view.layer?.borderColor = LiquidGlassStyle.panelStroke.cgColor }
+    func refreshAppearance(style: LiquidGlassStyle) { liquidGlassStyle = style; view.layer?.cornerRadius = liquidGlassStyle.isEnabled ? LiquidGlassStyle.cornerRadius : LiquidGlassStyle.compactCornerRadius; view.layer?.borderColor = liquidGlassStyle.panelStroke.cgColor }
     func focusCommandField() {
         view.window?.makeFirstResponder(terminalView)
         startSessionIfAllowed()

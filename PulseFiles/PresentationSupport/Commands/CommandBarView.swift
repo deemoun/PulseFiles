@@ -6,10 +6,12 @@ final class CommandBarView: NSVisualEffectView {
     private let stack = NSStackView()
     private let transientStatusLabel = NSTextField(labelWithString: "")
     private var isShowingShiftActions = false
+    private var liquidGlassStyle: LiquidGlassStyle
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+    init(style: LiquidGlassStyle) {
+        liquidGlassStyle = style
+        super.init(frame: .zero)
+        material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         blendingMode = .withinWindow
         state = .active
         setAccessibilityIdentifier(AccessibilityIdentifiers.CommandBar.panel)
@@ -56,8 +58,9 @@ final class CommandBarView: NSVisualEffectView {
         reloadButtons()
     }
 
-    func refreshAppearance() {
-        material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+    func refreshAppearance(style: LiquidGlassStyle) {
+        liquidGlassStyle = style
+        material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         reloadButtons()
     }
 
@@ -87,7 +90,7 @@ final class CommandBarView: NSVisualEffectView {
 
         let actions: [CommandBarAction] = [.rename, .view, .copy, .move, isShowingShiftActions ? .newFile : .newFolder, .delete]
         for action in actions {
-            let button = CommandBarActionButton(commandAction: action)
+            let button = CommandBarActionButton(commandAction: action, style: liquidGlassStyle)
             button.target = self
             button.action = #selector(runAction(_:))
             button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
@@ -113,9 +116,11 @@ private final class CommandBarActionButton: NSControl {
     private var trackingArea: NSTrackingArea?
     private var isHovering = false { didSet { updateChrome() } }
     private var isPressing = false { didSet { updateChrome() } }
+    private let liquidGlassStyle: LiquidGlassStyle
 
-    init(commandAction: CommandBarAction) {
+    init(commandAction: CommandBarAction, style: LiquidGlassStyle) {
         self.commandAction = commandAction
+        self.liquidGlassStyle = style
         super.init(frame: .zero)
         setup()
     }
@@ -209,25 +214,25 @@ private final class CommandBarActionButton: NSControl {
 
     private func updateChrome() {
         let destructive = commandAction.isDestructive
-        let baseAlpha: CGFloat = LiquidGlassStyle.isEnabled ? 0.068 : 0.075
+        let baseAlpha: CGFloat = liquidGlassStyle.isEnabled ? 0.068 : 0.075
         let hoverBoost: CGFloat = isHovering ? 0.045 : 0
         let pressBoost: CGFloat = isPressing ? 0.06 : 0
         let fillAlpha = baseAlpha + hoverBoost + pressBoost
-        let strokeAlpha = LiquidGlassStyle.isEnabled ? 0.14 : 0.11
-        let textColor = destructive ? NSColor.systemRed : LiquidGlassStyle.label
+        let strokeAlpha = liquidGlassStyle.isEnabled ? 0.14 : 0.11
+        let textColor = destructive ? NSColor.systemRed : liquidGlassStyle.label
         let keyFill = destructive
-            ? NSColor.systemRed.withAlphaComponent(LiquidGlassStyle.isEnabled ? 0.13 : 0.10)
-            : NSColor(calibratedWhite: 1, alpha: LiquidGlassStyle.isEnabled ? 0.10 : 0.08)
+            ? NSColor.systemRed.withAlphaComponent(liquidGlassStyle.isEnabled ? 0.13 : 0.10)
+            : NSColor(calibratedWhite: 1, alpha: liquidGlassStyle.isEnabled ? 0.10 : 0.08)
 
         layer?.backgroundColor = destructive
             ? NSColor.systemRed.withAlphaComponent(fillAlpha).cgColor
             : NSColor(calibratedRed: 0.70, green: 0.84, blue: 1.0, alpha: fillAlpha).cgColor
         layer?.borderWidth = 1
         layer?.borderColor = destructive
-            ? NSColor.systemRed.withAlphaComponent(LiquidGlassStyle.isEnabled ? 0.28 : 0.22).cgColor
+            ? NSColor.systemRed.withAlphaComponent(liquidGlassStyle.isEnabled ? 0.28 : 0.22).cgColor
             : NSColor(calibratedRed: 0.70, green: 0.84, blue: 1.0, alpha: strokeAlpha).cgColor
 
-        keyLabel.textColor = destructive ? NSColor.systemRed : LiquidGlassStyle.secondaryLabel
+        keyLabel.textColor = destructive ? NSColor.systemRed : liquidGlassStyle.secondaryLabel
         keyLabel.wantsLayer = true
         keyLabel.layer?.cornerRadius = 4
         keyLabel.layer?.cornerCurve = .continuous

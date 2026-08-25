@@ -20,19 +20,19 @@ final class SidebarInfoRowView: NSView {
 
         let imageView = NSImageView(image: NSImage(systemSymbolName: info.symbol, accessibilityDescription: info.title) ?? NSImage())
         imageView.symbolConfiguration = .init(pointSize: 12, weight: .medium)
-        imageView.contentTintColor = LiquidGlassStyle.secondaryLabel
+        imageView.contentTintColor = NSColor.secondaryLabelColor
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.setContentHuggingPriority(.required, for: .horizontal)
 
         let titleLabel = NSTextField(labelWithString: info.title)
         titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
-        titleLabel.textColor = LiquidGlassStyle.secondaryLabel
+        titleLabel.textColor = NSColor.secondaryLabelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         valueLabel.stringValue = info.value
         valueLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        valueLabel.textColor = LiquidGlassStyle.label
+        valueLabel.textColor = NSColor.labelColor
         valueLabel.alignment = .left
         valueLabel.lineBreakMode = .byWordWrapping
         valueLabel.maximumNumberOfLines = 2
@@ -126,25 +126,25 @@ final class SidebarRowView: NSControl {
 
         imageView.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: item.title)
         imageView.symbolConfiguration = .init(pointSize: 13, weight: .medium)
-        imageView.contentTintColor = LiquidGlassStyle.secondaryLabel
+        imageView.contentTintColor = NSColor.secondaryLabelColor
         imageView.translatesAutoresizingMaskIntoConstraints = false
 
         titleLabel.stringValue = item.title
         titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        titleLabel.textColor = LiquidGlassStyle.label
+        titleLabel.textColor = NSColor.labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         subtitleLabel.stringValue = item.subtitle ?? ""
         subtitleLabel.font = .systemFont(ofSize: 11, weight: .regular)
-        subtitleLabel.textColor = LiquidGlassStyle.secondaryLabel
+        subtitleLabel.textColor = NSColor.secondaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingMiddle
         subtitleLabel.isHidden = item.subtitle == nil
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         badgeLabel.stringValue = item.badge.map(String.init) ?? ""
         badgeLabel.font = .systemFont(ofSize: 10, weight: .semibold)
-        badgeLabel.textColor = LiquidGlassStyle.secondaryLabel
+        badgeLabel.textColor = NSColor.secondaryLabelColor
         badgeLabel.alignment = .right
         badgeLabel.isHidden = item.badge == nil
         badgeLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -178,13 +178,13 @@ final class SidebarRowView: NSControl {
     }
 
     private func highlight(_ active: Bool) {
-        layer?.backgroundColor = (active ? LiquidGlassStyle.activeFill : hoverFill).cgColor
+        layer?.backgroundColor = (active ? NSColor.systemBlue.withAlphaComponent(0.08) : hoverFill).cgColor
     }
 
     private func updateChrome() {
         layer?.backgroundColor = hoverFill.cgColor
         layer?.borderWidth = isHovering ? 1 : 0
-        layer?.borderColor = LiquidGlassStyle.subtleStroke.cgColor
+        layer?.borderColor = NSColor.separatorColor.cgColor
     }
 
     private var hoverFill: NSColor {

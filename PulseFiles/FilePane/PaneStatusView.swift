@@ -16,7 +16,7 @@ final class PaneStatusView: NSVisualEffectView {
         blendingMode = .withinWindow
         state = .active
         label.font = .systemFont(ofSize: 12)
-        label.textColor = LiquidGlassStyle.secondaryLabel
+        label.textColor = NSColor.secondaryLabelColor
         label.lineBreakMode = .byTruncatingMiddle
         label.translatesAutoresizingMaskIntoConstraints = false
 
@@ -47,7 +47,7 @@ final class PaneStatusView: NSVisualEffectView {
             label.stringValue = partialRefreshFailure == nil
                 ? "Loading...".localized
                 : "Refreshing incomplete folder listing...".localized
-            label.textColor = partialRefreshFailure == nil ? LiquidGlassStyle.secondaryLabel : .systemOrange
+            label.textColor = partialRefreshFailure == nil ? NSColor.secondaryLabelColor : .systemOrange
             return
         }
         if let partialRefreshFailure {
@@ -66,7 +66,7 @@ final class PaneStatusView: NSVisualEffectView {
         let size = selectedItems.isEmpty ? "" : " · %@ selected".localized(with: FileSizeFormatter.string(fromByteCount: selectedSize))
         let itemSummary = "%d items · %d folders · %d selected%@".localized(with: items.count, folderCount, selectedItems.count, size)
         label.stringValue = "\(itemSummary) · \(volumeStatus.detail)"
-        label.textColor = volumeStatus.isWarning ? .systemOrange : LiquidGlassStyle.secondaryLabel
+        label.textColor = volumeStatus.isWarning ? .systemOrange : NSColor.secondaryLabelColor
     }
 
     private func configureActions(_ actions: [Action]) {
@@ -107,12 +107,12 @@ final class PaneContentOverlayView: NSVisualEffectView {
         spinner.translatesAutoresizingMaskIntoConstraints = false
 
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
-        titleLabel.textColor = LiquidGlassStyle.label
+        titleLabel.textColor = NSColor.labelColor
         titleLabel.alignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         detailLabel.font = .systemFont(ofSize: 12)
-        detailLabel.textColor = LiquidGlassStyle.secondaryLabel
+        detailLabel.textColor = NSColor.secondaryLabelColor
         detailLabel.alignment = .center
         detailLabel.lineBreakMode = .byWordWrapping
         detailLabel.maximumNumberOfLines = 3
