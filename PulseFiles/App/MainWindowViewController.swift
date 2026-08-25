@@ -92,6 +92,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private let recentLocations: any RecentLocationRecording
     private let bookmarkService: any BookmarkPersisting
     private let volumeDiscovery: any VolumeDiscovering
+    private let directorySizing: any DirectorySizing
     private let thumbnailLoader: any ThumbnailLoading
     private let standardFolderAccess: any StandardFolderAccessProviding
     private var recentOperationSummaries: [DiagnosticOperationSummary] = []
@@ -131,7 +132,14 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         thumbnailLoader: thumbnailLoader,
         authorizedFolderSelection: authorizedFolderSelection
     )
-    private lazy var sidebar = SidebarViewController(recentLocations: recentLocations, bookmarkService: bookmarkService, settings: settings, accessPolicy: accessPolicy, volumeDiscovery: volumeDiscovery)
+    private lazy var sidebar = SidebarViewController(
+        recentLocations: recentLocations,
+        bookmarkService: bookmarkService,
+        settings: settings,
+        accessPolicy: accessPolicy,
+        volumeDiscovery: volumeDiscovery,
+        directorySizing: directorySizing
+    )
     private let terminal: TerminalViewController
     private let commandBar = CommandBarView()
     private lazy var fileOperationProgressWindowController = FileOperationProgressWindowController { [weak self] in
@@ -216,6 +224,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         paneFileSystems: [any FileSystemServicing],
         panePolicies: [SandboxFileAccessPolicy],
         sidebarPolicy: SandboxFileAccessPolicy,
+        sidebarDirectorySizing: any DirectorySizing,
         terminalPolicy: SandboxFileAccessPolicy,
         folderAccessGrants: any FolderAccessGrantProviding
     ) {
@@ -223,6 +232,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
             [leftPane.viewModel.fileSystemForCompositionTesting, rightPane.viewModel.fileSystemForCompositionTesting],
             [leftPane.viewModel.accessPolicyForCompositionTesting, rightPane.viewModel.accessPolicyForCompositionTesting],
             sidebar.accessPolicyForCompositionTesting,
+            sidebar.directorySizingForCompositionTesting,
             terminal.accessPolicyForCompositionTesting,
             authorizedFolderSelection.grantServiceForCompositionTesting
         )
@@ -253,6 +263,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         self.recentLocations = dependencies.recentLocations
         self.bookmarkService = dependencies.bookmarks
         self.volumeDiscovery = dependencies.volumeDiscovery
+        self.directorySizing = dependencies.directorySizing
         self.thumbnailLoader = dependencies.thumbnailLoader
         self.standardFolderAccess = dependencies.standardFolderAccess
         self.applicationOpener = dependencies.applicationOpener
