@@ -1257,6 +1257,7 @@ extension MainWindowViewController {
             showFirstUseTerminalWarningIfNeeded()
         }
         terminalLayoutCoordinator.install(terminal.view, in: contentSplitView, heightConstraint: &terminalHeightConstraint)
+        terminal.startSessionIfAllowed()
     }
 
     private func showTerminalDisabledAlert() {
@@ -1285,12 +1286,15 @@ extension MainWindowViewController {
         let presentation = terminalPresentationCoordinator
         let settings = settings
         if let window = view.window {
-            alert.beginSheetModal(for: window) { response in
+            alert.beginSheetModal(for: window) { [weak self] response in
                 presentation.acknowledgeWarningIfNeeded(response: response.rawValue, acknowledgementResponse: acknowledgementResponse, settings: settings)
+                self?.terminal.startSessionIfAllowed()
+                self?.terminal.focusCommandField()
             }
         } else {
             let response = alert.runModal()
             presentation.acknowledgeWarningIfNeeded(response: response.rawValue, acknowledgementResponse: acknowledgementResponse, settings: settings)
+            terminal.startSessionIfAllowed()
         }
     }
 

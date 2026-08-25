@@ -119,6 +119,37 @@ final class TerminalBehaviorTests: XCTestCase {
     }
 
     @MainActor
+    func testActivatingAcknowledgedTerminalStartsShellBeforeFirstKeystroke() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.isShellInteractionAllowedProvider = { true }
+        controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+
+        controller.startSessionIfAllowed()
+
+        XCTAssertTrue(process.didRun)
+        XCTAssertTrue(process.writes.isEmpty)
+        XCTAssertEqual(process.currentDirectoryURL, sandboxFixture.allowedDirectory)
+    }
+
+    func testTerminalKeyboardNavigationUsesStandardANSISequences() {
+        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 126, characters: nil)!, as: UTF8.self), "\u{1B}[A")
+        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 125, characters: nil)!, as: UTF8.self), "\u{1B}[B")
+        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 123, characters: nil)!, as: UTF8.self), "\u{1B}[D")
+        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 124, characters: nil)!, as: UTF8.self), "\u{1B}[C")
+        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 117, characters: nil)!, as: UTF8.self), "\u{1B}[3~")
+    }
+
+    func testTerminalOptionKeySendsMetaPrefix() {
+        XCTAssertEqual(
+            String(decoding: TerminalTextView.inputData(keyCode: 0, characters: "b", modifiers: .option)!, as: UTF8.self),
+            "\u{1B}b"
+        )
+    }
+
+    @MainActor
     func testStoppingFinishedTerminalSessionDoesNotReportTermination() {
         let process = FakeTerminalProcess()
         process.isRunning = false
