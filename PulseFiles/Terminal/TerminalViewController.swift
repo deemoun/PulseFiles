@@ -1,31 +1,34 @@
 import AppKit
+import PulseFilesPresentationSupport
+import PulseFilesServices
+import PulseFilesUtilities
 
 /// An opt-in terminal backed by one interactive shell, rather than a new shell
 /// for every Return key press. The PTY is important: programs see a terminal,
 /// so prompts, stderr, and interactive input behave as they do in Terminal.
-final class TerminalViewController: NSViewController {
-    static let maximumRetainedOutputBytes = 256 * 1024
-    static let maximumRetainedOutputCharacters = 128 * 1024
-    static let maximumRetainedOutputLines = 2_000
+package final class TerminalViewController: NSViewController {
+    package static let maximumRetainedOutputBytes = 256 * 1024
+    package static let maximumRetainedOutputCharacters = 128 * 1024
+    package static let maximumRetainedOutputLines = 2_000
     private static let truncationNotice = "[Earlier terminal output truncated]\n"
 
-    private let terminalService: any TerminalStateProviding
+    private let terminalService: any TerminalSessionProviding
     private let terminalView = TerminalTextView()
     private let scrollView = NSScrollView()
     private let processFactory: () -> TerminalProcess
     private let accessPolicy: SandboxFileAccessPolicy
     private var liquidGlassStyle: LiquidGlassStyle
-    var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
+    package var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private var runningProcess: TerminalProcess?
     private var runningAccessScope: FolderAccessScope?
     private let outputLock = NSLock()
     private var pendingOutput = ""
     private var isOutputFlushScheduled = false
-    var workingDirectoryProvider: (() -> URL)?
-    var isShellInteractionAllowedProvider: (() -> Bool)?
-    var suggestedWorkingDirectory = ExperimentalFlags.appSandboxRoot
+    package var workingDirectoryProvider: (() -> URL)?
+    package var isShellInteractionAllowedProvider: (() -> Bool)?
+    package var suggestedWorkingDirectory = ExperimentalFlags.appSandboxRoot
 
-    init(terminalService: any TerminalStateProviding, processFactory: @escaping () -> TerminalProcess = { PTYTerminalProcess() }, accessPolicy: SandboxFileAccessPolicy, liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle(liquidGlassEnabled: false)) {
+    package init(terminalService: any TerminalSessionProviding, processFactory: @escaping () -> TerminalProcess, accessPolicy: SandboxFileAccessPolicy, liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle(liquidGlassEnabled: false)) {
         self.terminalService = terminalService
         self.processFactory = processFactory
         self.accessPolicy = accessPolicy
@@ -53,8 +56,8 @@ final class TerminalViewController: NSViewController {
         let size = terminalView.bounds.size
         runningProcess?.resize(columns: max(1, Int(size.width / 7.8)), rows: max(1, Int(size.height / 16)))
     }
-    func refreshAppearance(style: LiquidGlassStyle) { liquidGlassStyle = style; view.layer?.cornerRadius = liquidGlassStyle.isEnabled ? LiquidGlassStyle.cornerRadius : LiquidGlassStyle.compactCornerRadius; view.layer?.borderColor = liquidGlassStyle.panelStroke.cgColor }
-    func focusCommandField() {
+    package func refreshAppearance(style: LiquidGlassStyle) { liquidGlassStyle = style; view.layer?.cornerRadius = liquidGlassStyle.isEnabled ? LiquidGlassStyle.cornerRadius : LiquidGlassStyle.compactCornerRadius; view.layer?.borderColor = liquidGlassStyle.panelStroke.cgColor }
+    package func focusCommandField() {
         view.window?.makeFirstResponder(terminalView)
         startSessionIfAllowed()
     }
@@ -62,25 +65,25 @@ final class TerminalViewController: NSViewController {
     /// Starts the persistent shell as soon as the panel becomes active, so the
     /// terminal presents a prompt instead of looking like a non-functional log.
     /// The experiment flag and first-use acknowledgement are still authoritative.
-    func startSessionIfAllowed() {
+    package func startSessionIfAllowed() {
         guard runningProcess == nil, isShellInteractionAllowedProvider?() ?? true else { return }
         startSession()
     }
 
     /// Stop is deliberately explicit: it terminates the shell and releases its
     /// security-scoped folder access. The next keystroke starts a fresh shell.
-    func stopRunningCommand() {
+    package func stopRunningCommand() {
         guard let process = runningProcess else { return }
         process.outputHandler = nil; process.terminationHandler = nil
         if process.isRunning { process.terminate(); appendLine("[terminated]") }
         runningProcess = nil; endRunningAccessScope(); flushBufferedOutput()
     }
-    func resetSession() { stopRunningCommand(); discardBufferedOutput(); terminalView.string = ""; appendLine("[terminal reset]") }
-    func runCommandForTesting(_ command: String) { sendInput(Data((command + "\n").utf8)) }
-    var terminalTextForTesting: String { terminalView.string }
-    var hasRunningAccessScopeForTesting: Bool { runningAccessScope != nil }
-    func receiveOutputForTesting(_ text: String) { queueOutput(text) }
-    func flushOutputForTesting() { flushBufferedOutput() }
+    package func resetSession() { stopRunningCommand(); discardBufferedOutput(); terminalView.string = ""; appendLine("[terminal reset]") }
+    package func runCommandForTesting(_ command: String) { sendInput(Data((command + "\n").utf8)) }
+    package var terminalTextForTesting: String { terminalView.string }
+    package var hasRunningAccessScopeForTesting: Bool { runningAccessScope != nil }
+    package func receiveOutputForTesting(_ text: String) { queueOutput(text) }
+    package func flushOutputForTesting() { flushBufferedOutput() }
 
     private func buildLayout() {
         terminalView.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.textView); terminalView.isEditable = true; terminalView.isSelectable = true
@@ -148,8 +151,8 @@ private enum TerminalControlSequenceRenderer {
     }
 }
 
-final class TerminalTextView: NSTextView {
-    var onInput: ((Data) -> Void)?
+package final class TerminalTextView: NSTextView {
+    package var onInput: ((Data) -> Void)?
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers.contains(.command) {
@@ -173,7 +176,7 @@ final class TerminalTextView: NSTextView {
     override func cut(_ sender: Any?) {}
     override func deleteBackward(_ sender: Any?) { onInput?(Data([0x7f])) }
 
-    static func inputData(keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags = []) -> Data? {
+    package static func inputData(keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags = []) -> Data? {
         let escapeSequences: [UInt16: String] = [
             123: "\u{1B}[D", 124: "\u{1B}[C", 125: "\u{1B}[B", 126: "\u{1B}[A",
             115: "\u{1B}[H", 119: "\u{1B}[F", 116: "\u{1B}[5~", 121: "\u{1B}[6~",

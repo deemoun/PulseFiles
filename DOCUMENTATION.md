@@ -30,6 +30,47 @@ Cross-target declarations use Swift's `package` access level so they remain
 implementation details rather than public library API. The executable re-exports
 its package-internal layers only to keep presentation files concise; each lower target declares its own imports and dependencies.
 
+### Presentation dependency graph
+
+`PulseFilesApp` is the composition layer (the executable target is currently
+named `PulseFiles`). It is the only presentation node that may select concrete
+filesystem, access-policy, persistence, or process implementations. Presentation
+features are independently testable AppKit modules and are peers, never a stack:
+
+```text
+PulseFilesApp (composition root)
+  ├── PulseFilesPane ───────────────┐
+  ├── PulseFilesSidebar ────────────┤
+  ├── PulseFilesSettings ───────────┼──→ PulseFilesPresentationSupport
+  └── PulseFilesTerminal ───────────┘
+
+PulseFilesApp ───────────────→ PulseFilesWorkflows → PulseFilesServices
+feature modules ─────────────→ minimum required Models / Services protocols
+PulseFilesPresentationSupport → PulseFilesModels
+PulseFilesServices ──────────→ PulseFilesModels → PulseFilesUtilities
+```
+
+An arrow means “may depend on.” There are no arrows between pane, sidebar,
+settings, and terminal. A feature reports intent through a model value, closure,
+delegate, or small capability protocol; `PulseFilesApp` coordinates the receiving
+feature and injects implementations. In particular, features do not construct
+`FileSystemService`, `FileOperationService`, `SandboxFileAccessPolicy`, concrete
+persistence services, or `PTYTerminalProcess`.
+
+Extraction is incremental. `PulseFilesPresentationSupport` begins with shared,
+AppKit-only styling and accessibility identifiers, and `PulseFilesTerminal` is a
+separate target consuming only presentation support, service capabilities, and
+utilities. Pane, sidebar, and settings remain source directories in the executable
+until their current cross-feature seams have been converted to package-visible
+models or protocols. During that transition, `scripts/validate_architecture.sh`
+enforces the same graph with exact construction and import rules. New exceptions
+must be exact file/import allowlist entries with an adjacent rationale; wildcard
+feature-to-feature exceptions are not permitted.
+
+Declarations crossing targets use `package`, not `public`. Target manifests must
+list only directly imported lower layers. Production factories, singleton
+selection, and adapters that join multiple features remain under `PulseFiles/App`.
+
 Filesystem mutation lives in `PulseFilesServices`. Its concrete validators,
 planners, executors, schedulers, metadata preservation, staging, and copy
 implementations remain package-internal. Operation request/result values live in
