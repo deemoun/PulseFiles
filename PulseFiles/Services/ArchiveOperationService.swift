@@ -30,16 +30,24 @@ package final class ArchiveOperationService {
     private struct Source { let url: URL; let path: String; let size: UInt64; let isDirectory: Bool }
     private struct Central { let path: String; let size: UInt32; let crc: UInt32; let offset: UInt32; let isDirectory: Bool }
     private struct Entry { let path: String; let dataOffset: UInt64; let size: UInt64; let crc: UInt32; let isDirectory: Bool }
-    private struct PublishedOutput { let destination: URL; let staged: URL; let identity: NSObjectProtocol }
-    private let fileManager: FileManager
+    private let fileManager: FileOperationFileManaging
     private let accessPolicy: SandboxFileAccessPolicy
+    private let mutations: FileMutationEngine
     private let bufferSize: Int
     private let streamHook: StreamHook?
 
-    package init(fileManager: FileManager = .default, accessPolicy: SandboxFileAccessPolicy = .current,
-                 streamBufferSize: Int = 64 * 1024, streamHook: StreamHook? = nil) {
+    package init(fileManager: FileOperationFileManaging = FileManager.default, accessPolicy: SandboxFileAccessPolicy = .current,
+                 pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationPreflightValidator.defaultPathSafetyState,
+                 stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry(),
+                 streamBufferSize: Int = 64 * 1024, streamHook: StreamHook? = nil,
+                 mutations: FileMutationEngine? = nil) {
         self.fileManager = fileManager
         self.accessPolicy = accessPolicy
+        let descriptor = DescriptorRelativeFileOperator(fileManager: fileManager)
+        let validator = FileOperationPreflightValidator(fileManager: fileManager, accessPolicy: accessPolicy,
+                                                        pathSafetyStateProvider: pathSafetyStateProvider)
+        self.mutations = mutations ?? validator.mutationEngine(fileManager: fileManager, accessPolicy: accessPolicy,
+                                                               descriptorOperator: descriptor, stagingRegistry: stagingRegistry)
         self.bufferSize = max(1, streamBufferSize)
         self.streamHook = streamHook
     }
@@ -56,9 +64,10 @@ package final class ArchiveOperationService {
             try collect(source, relative: source.lastPathComponent, limits: request.limits, sources: &sources, bytes: &totalBytes)
         }
         guard sources.count <= Int(UInt16.max) else { throw ArchiveOperationError.itemLimitExceeded(Int(UInt16.max)) }
-        let temporary = request.destinationURL.deletingLastPathComponent().appendingPathComponent(".pulsefiles-archive-\(UUID().uuidString)")
+        let staging = try mutations.makeStagingArea(in: request.destinationURL.deletingLastPathComponent(), prefix: "archive")
+        let temporary = staging.directory.appendingPathComponent("item")
         do {
-            guard fileManager.createFile(atPath: temporary.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+            try mutations.createFile(temporary)
             let output = try FileHandle(forWritingTo: temporary)
             defer { try? output.close() }
             var central: [Central] = [], completedBytes: UInt64 = 0
@@ -98,10 +107,15 @@ package final class ArchiveOperationService {
             var end = Data(); end.le32(0x06054b50); end.le16(0); end.le16(0); end.le16(UInt16(central.count)); end.le16(UInt16(central.count))
             end.le32(centralSize); end.le32(centralOffset); end.le16(0)
             try write(end, to: output, point: .createWrite); try output.synchronize(); try output.close()
-            try fileManager.moveItem(at: temporary, to: request.destinationURL)
-            return .init(completedItems: [request.destinationURL], skippedItems: [], failedItems: [], wasCancelled: false)
+            _ = try mutations.publish(temporary, to: request.destinationURL, staging: staging)
+            return .init(completedItems: [request.destinationURL], skippedItems: [], failedItems: [],
+                         cleanupWarnings: mutations.cleanup(staging), wasCancelled: false)
         } catch {
-            try? fileManager.removeItem(at: temporary)
+            let warnings = mutations.cleanup(staging)
+            if !warnings.isEmpty {
+                return .init(completedItems: [], skippedItems: [], failedItems: [.init(url: request.destinationURL, error: error)],
+                             cleanupWarnings: warnings, wasCancelled: error is CancellationError)
+            }
             if error is CancellationError { return .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: true) }
             throw error
         }
@@ -112,18 +126,16 @@ package final class ArchiveOperationService {
         let archive = try FileHandle(forReadingFrom: request.archiveURL); defer { try? archive.close() }
         let entries = try parse(archive, limits: request.limits)
         let totalBytes = entries.reduce(UInt64(0)) { $0 + $1.size }
-        let staging = request.destinationDirectory.appendingPathComponent(".pulsefiles-extract-\(UUID().uuidString)", isDirectory: true)
-        try accessPolicy.validateDestinationAccess(to: staging)
-        var completed: [URL] = [], skipped: [URL] = [], backups: [(destination: URL, backup: URL)] = [], published: [PublishedOutput] = []
+        let staging = try mutations.makeStagingArea(in: request.destinationDirectory, prefix: "extract")
+        var completed: [URL] = [], skipped: [URL] = [], published: [FileMutationEngine.Publication] = []
         do {
-            try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
             var completedBytes: UInt64 = 0
             for (index, entry) in entries.enumerated() {
-                try Task.checkCancellation(); let staged = staging.appendingPathComponent(entry.path)
-                if entry.isDirectory { try fileManager.createDirectory(at: staged, withIntermediateDirectories: true) }
+                try Task.checkCancellation(); let staged = staging.directory.appendingPathComponent(entry.path)
+                if entry.isDirectory { try mutations.createDirectoryTree(staged) }
                 else {
-                    try fileManager.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    guard fileManager.createFile(atPath: staged.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+                    try mutations.createDirectoryTree(staged.deletingLastPathComponent())
+                    try mutations.createFile(staged)
                     do {
                         let output = try FileHandle(forWritingTo: staged); defer { try? output.close() }
                         try archive.seek(toOffset: entry.dataOffset); var remaining = entry.size; var crc = CRC32()
@@ -137,12 +149,13 @@ package final class ArchiveOperationService {
                                                          completedByteCount: try int64(completedBytes), totalByteCount: try int64(totalBytes)))
                         }
                         try output.synchronize(); guard crc.value == entry.crc else { throw ArchiveOperationError.malformedArchive }
-                    } catch { try? fileManager.removeItem(at: staged); throw error }
+                    } catch { try? mutations.remove(staged); throw error }
                 }
                 await progressHandler?(.init(currentItemName: entry.path, completedCount: index + 1, totalCount: entries.count,
                                              completedByteCount: try int64(completedBytes), totalByteCount: try int64(totalBytes)))
             }
-            let children = try fileManager.contentsOfDirectory(at: staging, includingPropertiesForKeys: nil).sorted { $0.lastPathComponent < $1.lastPathComponent }
+            let children = try fileManager.contentsOfDirectory(at: staging.directory, includingPropertiesForKeys: nil, options: [])
+                .filter { $0 != staging.marker }.sorted { $0.lastPathComponent < $1.lastPathComponent }
             var decisions: [(URL, URL, FileConflictResolution)] = []
             for child in children {
                 let destination = request.destinationDirectory.appendingPathComponent(child.lastPathComponent)
@@ -153,29 +166,15 @@ package final class ArchiveOperationService {
             }
             for (child, destination, decision) in decisions {
                 try Task.checkCancellation(); if decision == .skip || decision == .applyToRemainingSkip { skipped.append(destination); continue }
-                if fileManager.fileExists(atPath: destination.path) {
-                    let directory = staging.appendingPathComponent(".replacement-backups", isDirectory: true); try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-                    let backup = directory.appendingPathComponent(UUID().uuidString); try fileManager.moveItem(at: destination, to: backup); backups.append((destination, backup))
-                }
-                let identity = try publishedIdentity(at: child); try fileManager.moveItem(at: child, to: destination)
-                published.append(.init(destination: destination, staged: child, identity: identity)); completed.append(destination)
+                published.append(try mutations.publish(child, to: destination, staging: staging)); completed.append(destination)
             }
-            try fileManager.removeItem(at: staging)
-            return .init(completedItems: completed, skippedItems: skipped, failedItems: [], wasCancelled: false)
+            let warnings = mutations.cleanup(staging)
+            return .init(completedItems: completed, skippedItems: skipped, failedItems: [], cleanupWarnings: warnings, wasCancelled: false)
         } catch {
-            var warnings: [FileOperationCleanupWarning] = []
-            for output in published.reversed() {
-                do {
-                    guard fileManager.fileExists(atPath: output.destination.path) else { throw CocoaError(.fileNoSuchFile) }
-                    guard try publishedIdentity(at: output.destination).isEqual(output.identity) else { completed.removeAll { $0.standardizedFileURL == output.destination.standardizedFileURL }; throw CocoaError(.fileWriteFileExists) }
-                    try fileManager.moveItem(at: output.destination, to: output.staged); completed.removeAll { $0.standardizedFileURL == output.destination.standardizedFileURL }
-                } catch { warnings.append(.init(url: output.destination, message: "Could not safely return the published archive output to staging: \(error.localizedDescription)")) }
-            }
-            for backup in backups.reversed() where fileManager.fileExists(atPath: backup.backup.path) {
-                do { guard !fileManager.fileExists(atPath: backup.destination.path) else { throw CocoaError(.fileWriteFileExists) }; try fileManager.moveItem(at: backup.backup, to: backup.destination) }
-                catch { warnings.append(.init(url: backup.backup, message: "Could not restore the original destination item: \(error.localizedDescription)")) }
-            }
-            if warnings.isEmpty { do { try fileManager.removeItem(at: staging) } catch { warnings.append(.init(url: staging, message: "Could not remove extraction staging: \(error.localizedDescription)")) } }
+            let rollback = mutations.rollback(published)
+            var warnings = rollback.warnings
+            completed.removeAll { !rollback.retainedDestinations.contains($0.standardizedFileURL) }
+            if warnings.isEmpty { warnings.append(contentsOf: mutations.cleanup(staging)) }
             if !warnings.isEmpty { return .init(completedItems: completed, skippedItems: skipped, failedItems: [.init(url: request.archiveURL, error: error)], cleanupWarnings: warnings, wasCancelled: error is CancellationError) }
             if error is CancellationError { return .init(completedItems: [], skippedItems: skipped, failedItems: [], wasCancelled: true) }
             throw error
@@ -190,7 +189,7 @@ package final class ArchiveOperationService {
         guard sources.count < limits.maximumItemCount else { throw ArchiveOperationError.itemLimitExceeded(limits.maximumItemCount) }
         if values.isDirectory == true {
             sources.append(.init(url: url, path: relative + "/", size: 0, isDirectory: true))
-            for child in try fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]) { try collect(child, relative: relative + "/" + child.lastPathComponent, limits: limits, sources: &sources, bytes: &bytes) }
+            for child in try fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey], options: []) { try collect(child, relative: relative + "/" + child.lastPathComponent, limits: limits, sources: &sources, bytes: &bytes) }
         } else {
             guard let rawSize = values.fileSize, rawSize >= 0 else { throw CocoaError(.fileReadUnknown) }
             bytes = try add(bytes, UInt64(rawSize)); guard bytes <= UInt64(limits.maximumExpandedBytes) else { throw ArchiveOperationError.expandedByteLimitExceeded(limits.maximumExpandedBytes) }

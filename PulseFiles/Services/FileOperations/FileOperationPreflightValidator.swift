@@ -207,3 +207,14 @@ package final class FileOperationPreflightValidator {
         return String(describing: identifier)
     }
 }
+
+package extension FileOperationPreflightValidator {
+    /// Builds the shared mutation capability without exposing the validator's
+    /// policy and path-safety collaborators to feature services.
+    func mutationEngine(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy,
+                        descriptorOperator: DescriptorRelativeFileOperator,
+                        stagingRegistry: StagingOwnershipRegistry) -> FileMutationEngine {
+        FileMutationEngine(fileManager: fileManager, accessPolicy: accessPolicy, validator: self,
+                           descriptorOperator: descriptorOperator, stagingRegistry: stagingRegistry)
+    }
+}

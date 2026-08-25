@@ -113,8 +113,9 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
         self.preflightValidator = preflightValidator
         self.transferPlanner = FileTransferPlanner(fileManager: fileManager, accessPolicy: accessPolicy)
         self.transferExecutor = FileTransferExecutor(fileManager: fileManager, streamingCopier: streamingCopier, descriptorOperator: descriptorOperator, preflightValidator: preflightValidator, metadataPreserver: metadataPreserver, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider, traversalLimits: traversalLimits, replacementDirectoryProvider: replacementDirectoryProvider, stagingRegistry: stagingRegistry)
-        self.archiveAdapter = FileOperationArchiveAdapter(accessPolicy: accessPolicy)
-        self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
+        let mutations = preflightValidator.mutationEngine(fileManager: fileManager, accessPolicy: accessPolicy, descriptorOperator: descriptorOperator, stagingRegistry: stagingRegistry)
+        self.archiveAdapter = FileOperationArchiveAdapter(service: ArchiveOperationService(fileManager: fileManager, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider, stagingRegistry: stagingRegistry, mutations: mutations))
+        self.batchRenameAdapter = FileOperationBatchRenameAdapter(service: BatchRenameService(fileManager: fileManager, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider, stagingRegistry: stagingRegistry, mutations: mutations))
     }
 
     package init(fileManager: FileOperationFileManaging, accessPolicy: SandboxFileAccessPolicy, streamingCopier: FileOperationStreamingCopying = FileHandleStreamingCopier(), destinationCapacityProvider: @escaping (URL) -> Int64? = FileOperationPreflightValidator.defaultDestinationCapacity, volumeIdentifierProvider: @escaping (URL) -> String? = FileOperationPreflightValidator.defaultVolumeIdentifier, pathSafetyStateProvider: @escaping (URL) -> FileOperationPathSafetyState = FileOperationPreflightValidator.defaultPathSafetyState, cloudDownloadPreparer: any FileOperationCloudDownloadPreparing = MacOSCloudDownloadPreparer(), traversalLimits: TraversalLimits = .init(), replacementDirectoryProvider: @escaping (URL) throws -> URL = FileTransferExecutor.systemReplacementDirectory, stagingRegistry: StagingOwnershipRegistry = StagingOwnershipRegistry()) {
@@ -131,8 +132,9 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
         self.preflightValidator = preflightValidator
         self.transferPlanner = FileTransferPlanner(fileManager: fileManager, accessPolicy: accessPolicy)
         self.transferExecutor = FileTransferExecutor(fileManager: fileManager, streamingCopier: streamingCopier, descriptorOperator: descriptorOperator, preflightValidator: preflightValidator, metadataPreserver: metadataPreserver, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider, traversalLimits: traversalLimits, replacementDirectoryProvider: replacementDirectoryProvider, stagingRegistry: stagingRegistry)
-        self.archiveAdapter = FileOperationArchiveAdapter(accessPolicy: accessPolicy)
-        self.batchRenameAdapter = FileOperationBatchRenameAdapter(accessPolicy: accessPolicy)
+        let mutations = preflightValidator.mutationEngine(fileManager: fileManager, accessPolicy: accessPolicy, descriptorOperator: descriptorOperator, stagingRegistry: stagingRegistry)
+        self.archiveAdapter = FileOperationArchiveAdapter(service: ArchiveOperationService(fileManager: fileManager, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider, stagingRegistry: stagingRegistry, mutations: mutations))
+        self.batchRenameAdapter = FileOperationBatchRenameAdapter(service: BatchRenameService(fileManager: fileManager, accessPolicy: accessPolicy, pathSafetyStateProvider: pathSafetyStateProvider, stagingRegistry: stagingRegistry, mutations: mutations))
     }
 
     package func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult {
