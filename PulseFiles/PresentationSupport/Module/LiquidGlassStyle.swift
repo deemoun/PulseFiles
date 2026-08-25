@@ -3,34 +3,34 @@ import AppKit
 /// Immutable presentation values for the optional liquid-glass appearance.
 /// Persistence deliberately lives outside this type; composition roots create a
 /// value from `SettingsService` and inject it into the views they own.
-struct LiquidGlassStyle: Equatable {
-    static let cornerRadius: CGFloat = 10
-    static let compactCornerRadius: CGFloat = 8
+package struct LiquidGlassStyle: Equatable {
+    package static let cornerRadius: CGFloat = 10
+    package static let compactCornerRadius: CGFloat = 8
 
-    let isEnabled: Bool
+    package let isEnabled: Bool
 
-    init(liquidGlassEnabled: Bool) {
+    package init(liquidGlassEnabled: Bool) {
         isEnabled = liquidGlassEnabled
     }
 
-    var windowBackground: NSColor {
+    package var windowBackground: NSColor {
         isEnabled ? NSColor(calibratedRed: 0.045, green: 0.061, blue: 0.078, alpha: 1) : .windowBackgroundColor
     }
-    var panelFill: NSColor {
+    package var panelFill: NSColor {
         isEnabled ? NSColor(calibratedRed: 0.70, green: 0.84, blue: 1.0, alpha: 0.045) : .controlBackgroundColor
     }
-    var panelStroke: NSColor {
+    package var panelStroke: NSColor {
         isEnabled ? NSColor(calibratedRed: 0.70, green: 0.84, blue: 1.0, alpha: 0.105) : .separatorColor
     }
-    var subtleStroke: NSColor {
+    package var subtleStroke: NSColor {
         isEnabled ? NSColor(calibratedRed: 0.70, green: 0.84, blue: 1.0, alpha: 0.07) : .separatorColor
     }
-    var activeStroke: NSColor { NSColor.systemBlue.withAlphaComponent(isEnabled ? 0.58 : 0.7) }
-    var activeFill: NSColor { NSColor.systemBlue.withAlphaComponent(isEnabled ? 0.125 : 0.08) }
-    var label: NSColor { isEnabled ? NSColor(calibratedWhite: 0.9, alpha: 1) : .labelColor }
-    var secondaryLabel: NSColor { isEnabled ? NSColor(calibratedWhite: 0.68, alpha: 1) : .secondaryLabelColor }
+    package var activeStroke: NSColor { NSColor.systemBlue.withAlphaComponent(isEnabled ? 0.58 : 0.7) }
+    package var activeFill: NSColor { NSColor.systemBlue.withAlphaComponent(isEnabled ? 0.125 : 0.08) }
+    package var label: NSColor { isEnabled ? NSColor(calibratedWhite: 0.9, alpha: 1) : .labelColor }
+    package var secondaryLabel: NSColor { isEnabled ? NSColor(calibratedWhite: 0.68, alpha: 1) : .secondaryLabelColor }
 
-    func applyPanelChrome(to view: NSView, radius: CGFloat = cornerRadius) {
+    package func applyPanelChrome(to view: NSView, radius: CGFloat = cornerRadius) {
         view.wantsLayer = true
         view.layer?.cornerRadius = isEnabled ? radius : Self.compactCornerRadius
         view.layer?.cornerCurve = .continuous
@@ -40,7 +40,7 @@ struct LiquidGlassStyle: Equatable {
         view.layer?.borderColor = panelStroke.cgColor
     }
 
-    func applyButtonChrome(to button: NSButton) {
+    package func applyButtonChrome(to button: NSButton) {
         button.bezelStyle = isEnabled ? .regularSquare : .rounded
         button.isBordered = !isEnabled
         button.wantsLayer = true
@@ -52,7 +52,7 @@ struct LiquidGlassStyle: Equatable {
         button.contentTintColor = isEnabled ? label : nil
     }
 
-    func applyDestructiveButtonChrome(to button: NSButton) {
+    package func applyDestructiveButtonChrome(to button: NSButton) {
         applyButtonChrome(to: button)
         button.contentTintColor = .systemRed
         guard isEnabled else { return }

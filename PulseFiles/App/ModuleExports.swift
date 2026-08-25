@@ -4,3 +4,6 @@
 @_exported import PulseFilesServices
 @_exported import PulseFilesUtilities
 @_exported import PulseFilesWorkflows
+
+@_exported import PulseFilesPresentationSupport
+@_exported import PulseFilesTerminal

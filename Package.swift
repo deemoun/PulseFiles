@@ -11,11 +11,21 @@ let package = Package(
         .target(name: "PulseFilesModels", dependencies: ["PulseFilesUtilities"], path: "PulseFiles/Models"),
         .target(name: "PulseFilesServices", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Services"),
         .target(name: "PulseFilesWorkflows", dependencies: ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Commands"),
+        .target(
+            name: "PulseFilesPresentationSupport",
+            dependencies: ["PulseFilesModels"],
+            path: "PulseFiles/PresentationSupport/Module"
+        ),
+        .target(
+            name: "PulseFilesTerminal",
+            dependencies: ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesUtilities"],
+            path: "PulseFiles/Terminal"
+        ),
         .executableTarget(
             name: "PulseFiles",
-            dependencies: ["PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesTerminal", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles",
-            exclude: ["Info.plist", "Utilities", "Models", "Services", "Commands"],
+            exclude: ["Info.plist", "Utilities", "Models", "Services", "Commands", "Terminal", "PresentationSupport/Module"],
             resources: [.process("Resources")]
         ),
         .testTarget(name: "PulseFilesCoreTests", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesCoreTests"),

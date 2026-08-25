@@ -33,7 +33,7 @@ protocol FileClipboardProviding: AnyObject {
 protocol FileSizeResolving { func size(of url: URL) throws -> Int64 }
 protocol ViewerContentLoading: AnyObject { func snapshots(for url: URL) -> AsyncThrowingStream<ViewerSnapshot, Error> }
 protocol DiagnosticsExporting { func export(to parentDirectory: URL, entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) throws -> URL }
-protocol TerminalStateProviding: AnyObject {
+protocol TerminalStateProviding: TerminalSessionProviding {
     var shellPath: String { get }
     var defaultEnvironment: [String: String] { get }
     func warningState(settings: SettingsService, accessPolicy: SandboxFileAccessPolicy) -> TerminalWarningState
