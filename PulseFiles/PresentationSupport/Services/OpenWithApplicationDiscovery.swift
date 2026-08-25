@@ -3,12 +3,12 @@ import AppKit
 /// Looks up the applications that macOS reports can open a file. Keeping this
 /// work behind an async dependency prevents NSWorkspace lookups from delaying a
 /// context-menu request.
-protocol OpenWithApplicationDiscovering: Sendable {
+package protocol OpenWithApplicationDiscovering: Sendable {
     func applicationURLs(for fileURL: URL) async throws -> [URL]
 }
 
-final class NSWorkspaceOpenWithApplicationDiscovery: OpenWithApplicationDiscovering, @unchecked Sendable {
-    func applicationURLs(for fileURL: URL) async throws -> [URL] {
+package final class NSWorkspaceOpenWithApplicationDiscovery: OpenWithApplicationDiscovering, @unchecked Sendable {
+    package func applicationURLs(for fileURL: URL) async throws -> [URL] {
         try await Task.detached(priority: .utility) {
             try Task.checkCancellation()
             return NSWorkspace.shared.urlsForApplications(toOpen: fileURL)
@@ -19,14 +19,14 @@ final class NSWorkspaceOpenWithApplicationDiscovery: OpenWithApplicationDiscover
 /// Applies asynchronous application-discovery results to an Open With submenu.
 /// A result is ignored if its original menu item no longer owns that submenu.
 @MainActor
-final class OpenWithMenuApplicationResolver {
+package final class OpenWithMenuApplicationResolver {
     private let discovery: any OpenWithApplicationDiscovering
 
-    init(discovery: any OpenWithApplicationDiscovering = NSWorkspaceOpenWithApplicationDiscovery()) {
+    package init(discovery: any OpenWithApplicationDiscovering = NSWorkspaceOpenWithApplicationDiscovery()) {
         self.discovery = discovery
     }
 
-    func resolveApplications(
+    package func resolveApplications(
         for fileURL: URL,
         menuItem: NSMenuItem,
         submenu: NSMenu,

@@ -7,35 +7,9 @@ protocol FolderAccessGrantProviding: AnyObject {
 extension FolderAccessGrantService: FolderAccessGrantProviding {}
 
 @MainActor
-final class AuthorizedFolderSelectionCoordinator {
-    struct Request {
-        let prompt: String
-        let message: String?
-        let initialDirectory: URL?
-        let acceptsExistingAccessibleURL: Bool
-        weak var presentingWindow: NSWindow?
-
-        init(
-            prompt: String,
-            message: String? = nil,
-            initialDirectory: URL? = nil,
-            acceptsExistingAccessibleURL: Bool = true,
-            presentingWindow: NSWindow? = nil
-        ) {
-            self.prompt = prompt
-            self.message = message
-            self.initialDirectory = initialDirectory
-            self.acceptsExistingAccessibleURL = acceptsExistingAccessibleURL
-            self.presentingWindow = presentingWindow
-        }
-    }
-
-    enum Failure: Error {
-        case cancelled
-        case grant(Error)
-        case rejected(Error)
-    }
-
+final class AuthorizedFolderSelectionCoordinator: AuthorizedFolderSelecting {
+    typealias Request = FolderSelectionRequest
+    typealias Failure = FolderSelectionFailure
     typealias Resolution = Result<URL, Failure>
 
     private let accessPolicy: SandboxFileAccessPolicy
@@ -69,6 +43,10 @@ final class AuthorizedFolderSelectionCoordinator {
         } else {
             finish(panel.runModal())
         }
+    }
+
+    func presentFailure(_ failure: Failure, in window: NSWindow?) {
+        FolderAccessFailurePresenter.present(failure, in: window)
     }
 
     func resolve(selectedURL: URL, for request: Request) -> Resolution {

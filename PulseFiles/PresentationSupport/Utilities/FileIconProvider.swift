@@ -5,18 +5,18 @@ import UniformTypeIdentifiers
 /// bounded set of images. Directory scanning therefore never invokes AppKit
 /// once for each path.
 @MainActor
-final class FileIconProvider {
-    static let shared = FileIconProvider()
+package final class FileIconProvider {
+    package static let shared = FileIconProvider()
 
     private let cache = NSCache<NSString, NSImage>()
     private let imageResolver: (FileIconKey) -> NSImage
 
-    init(countLimit: Int = 128, imageResolver: ((FileIconKey) -> NSImage)? = nil) {
+    package init(countLimit: Int = 128, imageResolver: ((FileIconKey) -> NSImage)? = nil) {
         cache.countLimit = countLimit
         self.imageResolver = imageResolver ?? Self.defaultImage
     }
 
-    func image(for key: FileIconKey) -> NSImage {
+    package func image(for key: FileIconKey) -> NSImage {
         let cacheKey = key.cacheKey
         if let image = cache.object(forKey: cacheKey) {
             return image
@@ -29,7 +29,7 @@ final class FileIconProvider {
 
     /// Call this only when icon-related resource metadata has changed. A new
     /// `FileIconKey` naturally selects a different cached image.
-    func invalidate(_ key: FileIconKey) {
+    package func invalidate(_ key: FileIconKey) {
         cache.removeObject(forKey: key.cacheKey)
     }
 
@@ -62,7 +62,7 @@ final class FileIconProvider {
 }
 
 private extension FileIconKey {
-    var cacheKey: NSString {
+    package var cacheKey: NSString {
         "\(fileType.rawValue)|\(fileExtension)|\(contentTypeIdentifier ?? "")|\(isAlias)" as NSString
     }
 }

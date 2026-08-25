@@ -1,5 +1,6 @@
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesPane
 
 @MainActor
 final class FilePaneViewModelTests: XCTestCase {

@@ -7,3 +7,6 @@
 
 @_exported import PulseFilesPresentationSupport
 @_exported import PulseFilesTerminal
+@_exported import PulseFilesPane
+@_exported import PulseFilesSidebar
+@_exported import PulseFilesSettings

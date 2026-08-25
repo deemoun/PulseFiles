@@ -46,7 +46,7 @@ PulseFilesApp (composition root)
 
 PulseFilesApp ───────────────→ PulseFilesWorkflows → PulseFilesServices
 feature modules ─────────────→ minimum required Models / Services protocols
-PulseFilesPresentationSupport → PulseFilesModels
+PulseFilesPresentationSupport → PulseFilesServices / Models / Utilities
 PulseFilesServices ──────────→ PulseFilesModels → PulseFilesUtilities
 ```
 
@@ -57,15 +57,18 @@ feature and injects implementations. In particular, features do not construct
 `FileSystemService`, `FileOperationService`, `SandboxFileAccessPolicy`, concrete
 persistence services, or `PTYTerminalProcess`.
 
-Extraction is incremental. `PulseFilesPresentationSupport` begins with shared,
-AppKit-only styling and accessibility identifiers, and `PulseFilesTerminal` is a
-separate target consuming only presentation support, service capabilities, and
-utilities. Pane, sidebar, and settings remain source directories in the executable
-until their current cross-feature seams have been converted to package-visible
-models or protocols. During that transition, `scripts/validate_architecture.sh`
-enforces the same graph with exact construction and import rules. New exceptions
-must be exact file/import allowlist entries with an adjacent rationale; wildcard
-feature-to-feature exceptions are not permitted.
+`PulseFilesPane`, `PulseFilesSidebar`, `PulseFilesSettings`, and
+`PulseFilesTerminal` are separate peer targets. Shared AppKit-facing values and
+capability protocols live in `PulseFilesPresentationSupport`; AppKit-free values
+live in `PulseFilesModels`. `PulseFiles/Debug` deliberately remains an
+application-only DEBUG adapter rather than a target: its single log controller is
+created only by the composition root, has no reusable feature boundary, and a
+standalone module would add an artificial peer without an independently testable
+API. If Debug grows reusable state or capability contracts, extract those lower
+first and reassess the target boundary. `scripts/validate_architecture.sh` enforces
+the graph with exact construction and import rules. New exceptions must be exact
+file/import allowlist entries with an adjacent rationale; wildcard feature-to-feature
+exceptions are not permitted.
 
 Declarations crossing targets use `package`, not `public`. Target manifests must
 list only directly imported lower layers. Production factories, singleton

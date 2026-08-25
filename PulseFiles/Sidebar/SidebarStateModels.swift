@@ -1,49 +1,49 @@
 import Foundation
 
-struct SidebarNavigationSection {
-    let title: String
-    let items: [SidebarItem]
+package struct SidebarNavigationSection {
+    package let title: String
+    package let items: [SidebarItem]
 }
 
 @MainActor
-final class SelectionInspectorViewModel {
+package final class SelectionInspectorViewModel {
     private(set) var generation = 0
     private var task: Task<Void, Never>?
 
     deinit { task?.cancel() }
 
     @discardableResult
-    func beginSelection() -> Int {
+    package func beginSelection() -> Int {
         generation += 1
         task?.cancel()
         task = nil
         return generation
     }
 
-    func isCurrent(_ candidate: Int) -> Bool {
+    package func isCurrent(_ candidate: Int) -> Bool {
         candidate == generation && task?.isCancelled != true
     }
 
-    func run(_ operation: @escaping @MainActor () async -> Void) {
+    package func run(_ operation: @escaping @MainActor () async -> Void) {
         task?.cancel()
         task = Task { await operation() }
     }
 }
 
 @MainActor
-final class SidebarNavigationModel {
+package final class SidebarNavigationModel {
     private let volumeDiscovery: any VolumeDiscovering
     private(set) var volumes: [Volume] = []
     private(set) var generation = 0
     private var task: Task<Void, Never>?
 
-    init(volumeDiscovery: any VolumeDiscovering) {
+    package init(volumeDiscovery: any VolumeDiscovering) {
         self.volumeDiscovery = volumeDiscovery
     }
 
     deinit { task?.cancel() }
 
-    func sections(scratch: [SidebarItem], workspace: [SidebarItem], favorites: [SidebarItem], devices: [SidebarItem], recent: [SidebarItem], isRestricted: Bool) -> [SidebarNavigationSection] {
+    package func sections(scratch: [SidebarItem], workspace: [SidebarItem], favorites: [SidebarItem], devices: [SidebarItem], recent: [SidebarItem], isRestricted: Bool) -> [SidebarNavigationSection] {
         let candidates = isRestricted
             ? [("Temporary Workspace".localized, scratch), ("Workspace", workspace), ("Recent", recent)]
             : [("Temporary Workspace".localized, scratch), ("Favorites", favorites), ("Devices", devices), ("Recent", recent)]
@@ -52,7 +52,7 @@ final class SidebarNavigationModel {
         }
     }
 
-    func refresh(onChange: @escaping @MainActor () -> Void) {
+    package func refresh(onChange: @escaping @MainActor () -> Void) {
         generation += 1
         let requestedGeneration = generation
         task?.cancel()

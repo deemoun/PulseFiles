@@ -1,20 +1,20 @@
 import AppKit
 
 @MainActor
-final class NavigationSettingsPageController: SettingsPageControllerBase {
+package final class NavigationSettingsPageController: SettingsPageControllerBase {
     private let settings: NavigationSettingsProviding
     private let accessPolicy: SandboxFileAccessPolicy
-    private let folderSelection: AuthorizedFolderSelectionCoordinator
+    private let folderSelection: any AuthorizedFolderSelecting
     private let scratchCleanupService: ScratchFolderCleanupService
     private let leftField = NSTextField(), rightField = NSTextField(), scratchField = NSTextField()
     private let hiddenFiles = NSButton(checkboxWithTitle: "Show hidden files by default".localized, target: nil, action: nil)
     private let matchSelector = NSPopUpButton(), presentationSelector = NSPopUpButton()
-    var onOpenScratchDirectory: ((URL) -> Void)?
-    var onScratchCleanupResult: ((FileOperationResult, String) -> Void)?
+    package var onOpenScratchDirectory: ((URL) -> Void)?
+    package var onScratchCleanupResult: ((FileOperationResult, String) -> Void)?
 
-    init(settings: NavigationSettingsProviding, accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, scratchCleanupService: ScratchFolderCleanupService) {
+    package init(settings: NavigationSettingsProviding, accessPolicy: SandboxFileAccessPolicy, scratchCleanupService: ScratchFolderCleanupService, folderSelection: any AuthorizedFolderSelecting) {
         self.settings = settings; self.accessPolicy = accessPolicy; self.scratchCleanupService = scratchCleanupService
-        self.folderSelection = AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: accessGrantService)
+        self.folderSelection = folderSelection
         super.init()
         [leftField, rightField, scratchField].forEach { $0.isEditable = false; $0.isSelectable = true; $0.lineBreakMode = .byTruncatingMiddle }
         scratchField.setAccessibilityIdentifier(AccessibilityIdentifiers.Settings.scratchPath)
@@ -32,7 +32,7 @@ final class NavigationSettingsPageController: SettingsPageControllerBase {
         reloadFromSettings()
     }
 
-    override func reloadFromSettings() {
+    package override func reloadFromSettings() {
         leftField.stringValue = settings.startupLeftDirectory?.path ?? "Last left folder (%@)".localized(with: settings.lastLeftDirectory.path)
         rightField.stringValue = settings.startupRightDirectory?.path ?? "Last right folder (%@)".localized(with: settings.lastRightDirectory.path)
         scratchField.stringValue = settings.scratchDirectory?.path ?? "No scratch folder configured".localized
@@ -94,7 +94,7 @@ final class NavigationSettingsPageController: SettingsPageControllerBase {
     private func choose(_ completion: @escaping (URL) -> Void) {
         let window = rootView.window
         folderSelection.selectFolder(for: .init(prompt: "Choose".localized, acceptsExistingAccessibleURL: true, presentingWindow: window)) { result in
-            switch result { case .success(let url): completion(url); case .failure(let failure): FolderAccessFailurePresenter.present(failure, in: window) }
+            switch result { case .success(let url): completion(url); case .failure(let failure): folderSelection.presentFailure(failure, in: window) }
         }
     }
 }

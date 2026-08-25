@@ -2,17 +2,17 @@ import AppKit
 import Foundation
 
 /// A mounted filesystem that can be presented in the sidebar without granting access to it.
-struct Volume: Equatable, Sendable {
-  let url: URL
-  let displayName: String
-  let isRemovable: Bool
-  let isLocal: Bool
-  let isNetwork: Bool
-  let isReadOnly: Bool
-  let totalCapacity: Int64?
-  let availableCapacity: Int64?
+package struct Volume: Equatable, Sendable {
+  package let url: URL
+  package let displayName: String
+  package let isRemovable: Bool
+  package let isLocal: Bool
+  package let isNetwork: Bool
+  package let isReadOnly: Bool
+  package let totalCapacity: Int64?
+  package let availableCapacity: Int64?
 
-  init(
+  package init(
     url: URL,
     displayName: String,
     isRemovable: Bool,
@@ -33,19 +33,19 @@ struct Volume: Equatable, Sendable {
   }
 }
 
-protocol VolumeDiscovering {
+package protocol VolumeDiscovering {
   /// Returns the currently mounted volumes without requiring callers to block
   /// the main actor while the filesystem is queried.
-  func mountedVolumes() async -> [Volume]
+  package func mountedVolumes() async -> [Volume]
 }
 
 /// The before-and-after state reported for a filesystem mount notification.
-struct VolumeChange: Equatable, Sendable {
-  let previous: [Volume]
-  let current: [Volume]
+package struct VolumeChange: Equatable, Sendable {
+  package let previous: [Volume]
+  package let current: [Volume]
 
   /// Roots whose mount identity or relevant presentation/access properties changed.
-  var affectedRoots: [URL] {
+  package var affectedRoots: [URL] {
     let previousByRoot = Dictionary(uniqueKeysWithValues: previous.map { ($0.url.normalizedVolumeRoot, $0) })
     let currentByRoot = Dictionary(uniqueKeysWithValues: current.map { ($0.url.normalizedVolumeRoot, $0) })
     let roots = Set(previousByRoot.keys).union(currentByRoot.keys)
@@ -55,21 +55,21 @@ struct VolumeChange: Equatable, Sendable {
   /// Network roots that require validation after any mount notification. Network
   /// shares can remain reachable at the same pathname while their backing
   /// connection or remote contents change without a distinguishable local diff.
-  var networkRootsRequiringFreshnessValidation: [URL] {
+  package var networkRootsRequiringFreshnessValidation: [URL] {
     Set((previous + current).filter(\.isNetwork).map { $0.url.normalizedVolumeRoot })
       .sorted { $0.path < $1.path }
   }
 }
 
-enum VolumeChangePaneRefreshAction: Equatable {
+package enum VolumeChangePaneRefreshAction: Equatable {
   case fallBack
   case revalidate
   case none
 }
 
 /// Routes a mount change to panes without coupling the decision to AppKit.
-enum VolumeChangePaneRefreshRouter {
-  static func actions(
+package enum VolumeChangePaneRefreshRouter {
+  package static func actions(
     for directories: [URL],
     change: VolumeChange,
     isReachable: (URL) -> Bool
@@ -88,7 +88,7 @@ enum VolumeChangePaneRefreshRouter {
   /// Async variant for UI callers. A deadline/unavailable probe is deliberately
   /// routed to fallback: keeping a pane attached to a possibly ejected volume is
   /// less safe than returning it to an available folder.
-  static func actions(
+  package static func actions(
     for directories: [URL],
     change: VolumeChange,
     isReachable: @escaping @Sendable (URL) async -> FileSystemProbeAnswer<Bool>
@@ -114,8 +114,8 @@ enum VolumeChangePaneRefreshRouter {
 /// NSWorkspace delivers these notifications on its own notification center; hopping
 /// through the main actor keeps consumers safe to update AppKit directly.
 @MainActor
-final class VolumeChangeMonitor {
-  var onVolumesChanged: ((VolumeChange) -> Void)?
+package final class VolumeChangeMonitor {
+  package var onVolumesChanged: ((VolumeChange) -> Void)?
 
   private let discovery: any VolumeDiscovering
   private let notificationCenter: NotificationCenter
@@ -124,7 +124,7 @@ final class VolumeChangeMonitor {
   private var discoveryTask: Task<Void, Never>?
   private var discoveryGeneration = 0
 
-  init(
+  package init(
     discovery: any VolumeDiscovering = VolumeDiscoveryService(),
     notificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter
   ) {
@@ -140,7 +140,7 @@ final class VolumeChangeMonitor {
     refreshKnownVolumes(publishChange: false)
   }
 
-  func publishRefresh() {
+  package func publishRefresh() {
     // A notification may arrive while querying a slow network volume. Publish
     // the last safe snapshot immediately so AppKit clients can react without
     // waiting for discovery; a second notification follows with fresh data.
@@ -170,11 +170,11 @@ final class VolumeChangeMonitor {
 }
 
 private extension URL {
-  var normalizedVolumeRoot: URL {
+  package var normalizedVolumeRoot: URL {
     standardizedFileURL.resolvingSymlinksInPath()
   }
 
-  func isDescendant(of root: URL) -> Bool {
+  package func isDescendant(of root: URL) -> Bool {
     let directoryComponents = standardizedFileURL.resolvingSymlinksInPath().pathComponents
     let rootComponents = root.standardizedFileURL.resolvingSymlinksInPath().pathComponents
     return directoryComponents.starts(with: rootComponents)
@@ -182,14 +182,14 @@ private extension URL {
 }
 
 /// Discovers mounted volumes through FileManager's mounted-volume API.
-final class VolumeDiscoveryService: VolumeDiscovering {
+package final class VolumeDiscoveryService: VolumeDiscovering {
   private let fileManager: FileManager
 
-  init(fileManager: FileManager = .default) {
+  package init(fileManager: FileManager = .default) {
     self.fileManager = fileManager
   }
 
-  func mountedVolumes() async -> [Volume] {
+  package func mountedVolumes() async -> [Volume] {
     await Task.detached(priority: .utility) { [fileManager] in
       Self.discoverMountedVolumes(using: fileManager)
     }.value
@@ -227,7 +227,7 @@ final class VolumeDiscoveryService: VolumeDiscovering {
       })
   }
 
-  static func sortedVolumes(_ volumes: [Volume]) -> [Volume] {
+  package static func sortedVolumes(_ volumes: [Volume]) -> [Volume] {
     volumes.sorted { lhs, rhs in
       lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
     }

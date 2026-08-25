@@ -2,11 +2,11 @@ import AppKit
 import QuickLookThumbnailing
 
 /// A cancellable, bounded thumbnail pipeline shared by Gallery rows.
-final class ThumbnailLoadingService {
+package final class ThumbnailLoadingService {
     private let cache = NSCache<NSURL, NSImage>()
     private let queue: OperationQueue
 
-    init(maxConcurrentLoads: Int = 4, cacheCountLimit: Int = 256, cacheCostLimit: Int = 64 * 1024 * 1024) {
+    package init(maxConcurrentLoads: Int = 4, cacheCountLimit: Int = 256, cacheCostLimit: Int = 64 * 1024 * 1024) {
         queue = OperationQueue()
         queue.name = "PulseFiles.ThumbnailLoading"
         queue.qualityOfService = .userInitiated
@@ -15,7 +15,7 @@ final class ThumbnailLoadingService {
         cache.totalCostLimit = max(1, cacheCostLimit)
     }
 
-    func thumbnail(for url: URL, size: CGSize, scale: CGFloat) async -> NSImage? {
+    package func thumbnail(for url: URL, size: CGSize, scale: CGFloat) async -> NSImage? {
         if let cached = cache.object(forKey: url as NSURL) { return cached }
         let operationBox = ThumbnailOperationBox()
         return await withTaskCancellationHandler {
@@ -41,7 +41,7 @@ private final class ThumbnailOperationBox: @unchecked Sendable {
     private var operation: ThumbnailOperation?
     private var isCancelled = false
 
-    func set(_ operation: ThumbnailOperation) {
+    package func set(_ operation: ThumbnailOperation) {
         lock.lock()
         self.operation = operation
         let shouldCancel = isCancelled
@@ -49,7 +49,7 @@ private final class ThumbnailOperationBox: @unchecked Sendable {
         if shouldCancel { operation.cancel() }
     }
 
-    func cancel() {
+    package func cancel() {
         lock.lock()
         isCancelled = true
         let operation = operation
@@ -65,7 +65,7 @@ private final class ThumbnailOperation: Operation, @unchecked Sendable {
     private let completion: (NSImage?) -> Void
     private let request: QLThumbnailGenerator.Request
 
-    init(url: URL, size: CGSize, scale: CGFloat, completion: @escaping (NSImage?) -> Void) {
+    package init(url: URL, size: CGSize, scale: CGFloat, completion: @escaping (NSImage?) -> Void) {
         self.url = url
         self.size = size
         self.scale = scale
@@ -73,7 +73,7 @@ private final class ThumbnailOperation: Operation, @unchecked Sendable {
         request = QLThumbnailGenerator.Request(fileAt: url, size: size, scale: scale, representationTypes: .thumbnail)
     }
 
-    override func main() {
+    package override func main() {
         guard !isCancelled else { completion(nil); return }
         let semaphore = DispatchSemaphore(value: 0)
         var result: NSImage?
@@ -85,7 +85,7 @@ private final class ThumbnailOperation: Operation, @unchecked Sendable {
         completion(isCancelled ? nil : result)
     }
 
-    override func cancel() {
+    package override func cancel() {
         super.cancel()
         QLThumbnailGenerator.shared.cancel(request)
     }

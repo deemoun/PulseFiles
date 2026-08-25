@@ -1,15 +1,15 @@
 import Foundation
 
 @MainActor
-final class FilePaneViewModel {
+package final class FilePaneViewModel {
     private struct PendingHistoryTransition {
         let prior: NavigationHistory
         let destination: NavigationHistory
     }
     private let fileSystem: FileSystemServicing
     private let accessPolicy: SandboxFileAccessPolicy
-    var fileSystemForCompositionTesting: any FileSystemServicing { fileSystem }
-    var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
+    package var fileSystemForCompositionTesting: any FileSystemServicing { fileSystem }
+    package var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private let snapshotCache = DirectorySnapshotCache()
     private let memoryPressureSource: DispatchSourceMemoryPressure
     private let directoryMonitor: DirectoryMonitor
@@ -41,10 +41,10 @@ final class FilePaneViewModel {
     private(set) var quickSearchMatchMode: QuickSearchMatchMode
     private(set) var quickSearchPresentation: QuickSearchPresentation
 
-    var onChange: (() -> Void)?
-    var onDirectoryChanged: ((URL) -> Void)?
-    var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
-    var onTabsChanged: (() -> Void)?
+    package var onChange: (() -> Void)?
+    package var onDirectoryChanged: ((URL) -> Void)?
+    package var onDisplayPreferencesChanged: ((Bool, FileSortDescriptor) -> Void)?
+    package var onTabsChanged: (() -> Void)?
 
     struct DirectoryLoadFailure {
         let directory: URL
@@ -71,7 +71,7 @@ final class FilePaneViewModel {
         }
     }
 
-    init(
+    package init(
         initialDirectory: URL,
         showsHiddenFiles: Bool = false,
         sort: FileSortDescriptor = FileSortDescriptor(),
@@ -136,60 +136,60 @@ final class FilePaneViewModel {
 
     private let directoryLoadTimeout: TimeInterval
 
-    var currentDirectory: URL { state.currentDirectory }
+    package var currentDirectory: URL { state.currentDirectory }
     /// Identifies the directory load currently represented by the pane state.
-    var loadGeneration: Int { activeLoadID }
-    var isAccessRestrictedToExperimentalSandbox: Bool { accessPolicy.isEnabled }
-    var sortDescriptor: FileSortDescriptor { state.sort }
-    var showsHiddenFiles: Bool { state.showsHiddenFiles }
-    var focusedURL: URL? { state.focusedURL }
-    var backDestination: URL? { state.history.backStack.last }
-    var navigationHistory: NavigationHistory { state.history }
-    var tabs: [PaneTabState] { state.tabs }
-    var activeTabID: UUID { state.activeTabID }
-    var visibleItems: [FileItem] {
+    package var loadGeneration: Int { activeLoadID }
+    package var isAccessRestrictedToExperimentalSandbox: Bool { accessPolicy.isEnabled }
+    package var sortDescriptor: FileSortDescriptor { state.sort }
+    package var showsHiddenFiles: Bool { state.showsHiddenFiles }
+    package var focusedURL: URL? { state.focusedURL }
+    package var backDestination: URL? { state.history.backStack.last }
+    package var navigationHistory: NavigationHistory { state.history }
+    package var tabs: [PaneTabState] { state.tabs }
+    package var activeTabID: UUID { state.activeTabID }
+    package var visibleItems: [FileItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return items }
         guard quickSearchPresentation == .filterMatches else { return items }
         return items.filter { match(for: $0) != nil }
     }
 
-    func match(for item: FileItem) -> QuickSearchMatch? {
+    package func match(for item: FileItem) -> QuickSearchMatch? {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return nil }
         return QuickSearchMatcher.match(query, in: item.filename, mode: quickSearchMatchMode)
     }
 
-    func setQuickSearchOptions(matchMode: QuickSearchMatchMode, presentation: QuickSearchPresentation) {
+    package func setQuickSearchOptions(matchMode: QuickSearchMatchMode, presentation: QuickSearchPresentation) {
         guard quickSearchMatchMode != matchMode || quickSearchPresentation != presentation else { return }
         quickSearchMatchMode = matchMode
         quickSearchPresentation = presentation
         onChange?()
     }
 
-    func validateAccess(to url: URL) throws {
+    package func validateAccess(to url: URL) throws {
         try accessPolicy.validateAccess(to: url)
     }
 
     /// Captures only logical browser state, allowing panes to exchange state
     /// without exchanging their controller/view instances.
-    func logicalStateSnapshot() -> PaneState {
+    package func logicalStateSnapshot() -> PaneState {
         var snapshot = state
         snapshot.searchQuery = searchQuery
         return snapshot
     }
 
-    func setFocusedURL(_ url: URL?) {
+    package func setFocusedURL(_ url: URL?) {
         state.setFocus(url)
     }
 
-    func setMarkedURLs(_ urls: Set<URL>) {
+    package func setMarkedURLs(_ urls: Set<URL>) {
         state.markedURLs = urls
     }
 
     /// Restores a snapshot atomically after its destination passes the same
     /// sandbox policy used by ordinary navigation.
-    func restoreLogicalState(_ snapshot: PaneState, onLoaded: (() -> Void)? = nil) throws {
+    package func restoreLogicalState(_ snapshot: PaneState, onLoaded: (() -> Void)? = nil) throws {
         try snapshot.tabs.forEach { try accessPolicy.validateAccess(to: $0.currentDirectory) }
         var restored = snapshot
         restored.currentDirectory = snapshot.currentDirectory.standardizedFileURL
@@ -200,7 +200,7 @@ final class FilePaneViewModel {
     }
 
     @discardableResult
-    func newTab(directory: URL? = nil) -> UUID {
+    package func newTab(directory: URL? = nil) -> UUID {
         let requested = directory ?? state.currentDirectory
         let validated = accessPolicy.validatedDirectory(requested, fallback: state.currentDirectory)
         let tab = PaneTabState(
@@ -215,7 +215,7 @@ final class FilePaneViewModel {
     }
 
     @discardableResult
-    func closeTab(id: UUID? = nil) -> Bool {
+    package func closeTab(id: UUID? = nil) -> Bool {
         guard state.tabs.count > 1,
               let index = state.tabs.firstIndex(where: { $0.id == (id ?? state.activeTabID) }) else { return false }
         let wasActive = state.tabs[index].id == state.activeTabID
@@ -228,7 +228,7 @@ final class FilePaneViewModel {
         return true
     }
 
-    func selectTab(id: UUID) {
+    package func selectTab(id: UUID) {
         guard id != state.activeTabID, state.tabs.contains(where: { $0.id == id }) else { return }
         state.searchQuery = searchQuery
         state.activeTabID = id
@@ -236,11 +236,11 @@ final class FilePaneViewModel {
         onTabsChanged?()
     }
 
-    func selectNextTab() { selectRelativeTab(offset: 1) }
-    func selectPreviousTab() { selectRelativeTab(offset: -1) }
+    package func selectNextTab() { selectRelativeTab(offset: 1) }
+    package func selectPreviousTab() { selectRelativeTab(offset: -1) }
 
     @discardableResult
-    func reorderTab(from sourceIndex: Int, to destinationIndex: Int) -> Bool {
+    package func reorderTab(from sourceIndex: Int, to destinationIndex: Int) -> Bool {
         guard state.tabs.indices.contains(sourceIndex), destinationIndex >= 0, destinationIndex < state.tabs.count,
               sourceIndex != destinationIndex else { return false }
         let tab = state.tabs.remove(at: sourceIndex)
@@ -262,31 +262,31 @@ final class FilePaneViewModel {
 
     /// Keeps parent-row presentation and keyboard navigation subject to the
     /// same access policy as every other directory navigation.
-    func canNavigate(to directory: URL) -> Bool {
+    package func canNavigate(to directory: URL) -> Bool {
         accessPolicy.canAccess(directory)
     }
 
-    func loadCurrentDirectory(forceRefresh: Bool = false, onLoaded: (() -> Void)? = nil) {
+    package func loadCurrentDirectory(forceRefresh: Bool = false, onLoaded: (() -> Void)? = nil) {
         load(directory: state.currentDirectory, addToHistory: false, forceRefresh: forceRefresh, onLoaded: onLoaded)
     }
 
-    func retryFailedDirectoryLoad() {
+    package func retryFailedDirectoryLoad() {
         guard loadFailure?.isRetryable == true else { return }
         load(directory: state.currentDirectory, addToHistory: false, forceRefresh: true)
     }
 
-    func reloadAfterExternalDirectoryChange() {
+    package func reloadAfterExternalDirectoryChange() {
         snapshotCache.invalidate(directory: state.currentDirectory)
         directoryChangeGeneration += 1
         pendingRefreshGeneration = directoryChangeGeneration
         startPendingExternalRefreshIfNeeded()
     }
 
-    func invalidateCurrentDirectorySnapshot() {
+    package func invalidateCurrentDirectorySnapshot() {
         snapshotCache.invalidate(directory: state.currentDirectory)
     }
 
-    func navigate(to url: URL) {
+    package func navigate(to url: URL) {
         let validatedURL = accessPolicy.validatedDirectory(url, fallback: state.currentDirectory)
         if validatedURL != url {
             DiagnosticLogger.log(.warning, category: "FilePane", "Rejected navigation outside sandbox: requested=\(DiagnosticLogger.sanitizedPath(url)); redirected=\(DiagnosticLogger.sanitizedPath(validatedURL))")
@@ -297,7 +297,7 @@ final class FilePaneViewModel {
     /// Leaves a directory whose volume was removed before a stale file descriptor can
     /// generate further directory events. The fallback is always policy-validated.
     @discardableResult
-    func fallBackIfCurrentDirectoryIsUnavailable(
+    package func fallBackIfCurrentDirectoryIsUnavailable(
         directoryExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
         preferredFallback: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> Bool {
@@ -319,7 +319,7 @@ final class FilePaneViewModel {
         return true
     }
 
-    func goParent() {
+    package func goParent() {
         let parent = state.currentDirectory.deletingLastPathComponent()
         guard parent != state.currentDirectory else {
             DiagnosticLogger.log(.debug, category: "FilePane", "Rejected parent navigation at filesystem root")
@@ -332,24 +332,24 @@ final class FilePaneViewModel {
         navigate(to: parent)
     }
 
-    func navigateToSandboxRoot() {
+    package func navigateToSandboxRoot() {
         navigate(to: accessPolicy.validatedDirectory(ExperimentalFlags.appSandboxRoot))
     }
 
-    func navigateToParentOfFailedDirectory() {
+    package func navigateToParentOfFailedDirectory() {
         guard let failedDirectory = loadFailure?.directory else { return }
         let parent = failedDirectory.deletingLastPathComponent()
         guard parent != failedDirectory else { return }
         navigate(to: accessPolicy.validatedDirectory(parent, fallback: state.currentDirectory))
     }
 
-    func goBack() {
+    package func goBack() {
         var destinationHistory = state.history
         guard let url = destinationHistory.goBack() else { return }
         loadHistoryDestination(url, destinationHistory: destinationHistory)
     }
 
-    func goForward() {
+    package func goForward() {
         var destinationHistory = state.history
         guard let url = destinationHistory.goForward() else { return }
         loadHistoryDestination(url, destinationHistory: destinationHistory)
@@ -371,18 +371,18 @@ final class FilePaneViewModel {
         load(directory: directory, addToHistory: false, historyTransition: transition)
     }
 
-    func toggleHiddenFiles() {
+    package func toggleHiddenFiles() {
         setShowsHiddenFiles(!state.showsHiddenFiles)
     }
 
-    func setShowsHiddenFiles(_ showsHiddenFiles: Bool) {
+    package func setShowsHiddenFiles(_ showsHiddenFiles: Bool) {
         guard state.showsHiddenFiles != showsHiddenFiles else { return }
         state.showsHiddenFiles = showsHiddenFiles
         persistDisplayPreferences()
         loadCurrentDirectory()
     }
 
-    func setSort(_ key: FileSortKey) {
+    package func setSort(_ key: FileSortKey) {
         if state.sort.key == key {
             state.sort.ascending.toggle()
         } else {
@@ -393,7 +393,7 @@ final class FilePaneViewModel {
         applyCurrentSort()
     }
 
-    func setSort(_ key: FileSortKey, ascending: Bool) {
+    package func setSort(_ key: FileSortKey, ascending: Bool) {
         var descriptor = state.sort
         descriptor.key = key
         descriptor.ascending = ascending
@@ -403,14 +403,14 @@ final class FilePaneViewModel {
         applyCurrentSort()
     }
 
-    func setSortDescriptor(_ descriptor: FileSortDescriptor) {
+    package func setSortDescriptor(_ descriptor: FileSortDescriptor) {
         guard state.sort != descriptor else { return }
         state.sort = descriptor
         persistDisplayPreferences()
         applyCurrentSort()
     }
 
-    func setSearchQuery(_ query: String) {
+    package func setSearchQuery(_ query: String) {
         guard searchQuery != query else { return }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchQuery = query

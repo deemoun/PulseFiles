@@ -1,5 +1,6 @@
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesPane
 
 final class FilePaneAdapterPolicyTests: XCTestCase {
     func testDropPolicyMovesOnlyInternalSameVolumeDrags() {

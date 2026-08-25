@@ -1,25 +1,25 @@
 import AppKit
 
 @MainActor
-protocol SettingsPageController: AnyObject {
+package protocol SettingsPageController: AnyObject {
     var rootView: NSView { get }
     var onChange: (() -> Void)? { get set }
     func reloadFromSettings()
 }
 
 @MainActor
-class SettingsPageControllerBase: NSObject, SettingsPageController {
-    let rootView: NSView = FlippedSettingsView()
-    var onChange: (() -> Void)?
+package class SettingsPageControllerBase: NSObject, SettingsPageController {
+    package let rootView: NSView = FlippedSettingsView()
+    package var onChange: (() -> Void)?
 
-    override init() {
+    package override init() {
         super.init()
         rootView.translatesAutoresizingMaskIntoConstraints = false
     }
 
-    func reloadFromSettings() {}
+    package func reloadFromSettings() {}
 
-    func install(sections: [NSView]) {
+    package func install(sections: [NSView]) {
         rootView.subviews.forEach { $0.removeFromSuperview() }
         let stack = NSStackView(views: sections)
         stack.orientation = .vertical
@@ -36,7 +36,7 @@ class SettingsPageControllerBase: NSObject, SettingsPageController {
         ])
     }
 
-    func section(title: String, views: [NSView]) -> NSView {
+    package func section(title: String, views: [NSView]) -> NSView {
         let label = NSTextField(labelWithString: title)
         label.font = .preferredFont(forTextStyle: .headline)
         let stack = NSStackView(views: [label] + views)
@@ -47,7 +47,7 @@ class SettingsPageControllerBase: NSObject, SettingsPageController {
         return stack
     }
 
-    func labeledPopup(_ title: String, popup: NSPopUpButton) -> NSView {
+    package func labeledPopup(_ title: String, popup: NSPopUpButton) -> NSView {
         let row = NSStackView(views: [NSTextField(labelWithString: title), popup])
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -57,5 +57,5 @@ class SettingsPageControllerBase: NSObject, SettingsPageController {
 }
 
 private final class FlippedSettingsView: NSView {
-    override var isFlipped: Bool { true }
+    package override var isFlipped: Bool { true }
 }

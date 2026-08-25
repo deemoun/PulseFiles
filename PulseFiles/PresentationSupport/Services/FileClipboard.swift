@@ -1,6 +1,6 @@
 import AppKit
 
-final class FileClipboard {
+package final class FileClipboard {
     enum Operation: String {
         case copy
         case move
@@ -11,23 +11,23 @@ final class FileClipboard {
         let operation: Operation
     }
 
-    static let operationPasteboardType = NSPasteboard.PasteboardType("com.pulsefiles.file-operation")
+    package static let operationPasteboardType = NSPasteboard.PasteboardType("com.pulsefiles.file-operation")
 
     private let pasteboard: NSPasteboard
 
-    var changeCount: Int { pasteboard.changeCount }
+    package var changeCount: Int { pasteboard.changeCount }
 
-    init(pasteboard: NSPasteboard = .general) {
+    package init(pasteboard: NSPasteboard = .general) {
         self.pasteboard = pasteboard
     }
 
-    func write(urls: [URL], operation: Operation) {
+    package func write(urls: [URL], operation: Operation) {
         pasteboard.clearContents()
         pasteboard.writeObjects(urls as [NSURL])
         pasteboard.setString(operation.rawValue, forType: Self.operationPasteboardType)
     }
 
-    func read() -> Payload? {
+    package func read() -> Payload? {
         let operation = pasteboard.string(forType: Self.operationPasteboardType)
             .flatMap(Operation.init(rawValue:)) ?? .copy
         let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) ?? []

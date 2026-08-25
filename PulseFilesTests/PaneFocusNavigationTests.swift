@@ -1,5 +1,6 @@
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesPane
 
 final class PaneFocusNavigationTests: XCTestCase {
     private let directory = URL(fileURLWithPath: "/tmp/pulsefiles-focus-tests", isDirectory: true)
