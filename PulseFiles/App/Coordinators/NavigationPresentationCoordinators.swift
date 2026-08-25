@@ -3,17 +3,32 @@ import Foundation
 import UniformTypeIdentifiers
 
 @MainActor
-protocol WorkflowPresentationCallbacks: AnyObject {
+protocol WorkflowWindowProviding: AnyObject {
     var workflowWindow: NSWindow? { get }
+}
+
+@MainActor
+protocol WorkflowAlertPresenting: AnyObject {
     func workflowFailed(message: String, detail: String)
 }
+
+@MainActor
+protocol WorkflowOperationExecuting: AnyObject {
+    func startWorkflowOperation(named name: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult)
+}
+
+@MainActor
+protocol WorkflowConflictResolving: AnyObject {
+    func resolveWorkflowConflict(destination: URL, operationName: String) async -> FileConflictResolution
+}
+
 
 @MainActor
 final class OpenWithWorkflowCoordinator {
     private let accessPolicy: SandboxFileAccessPolicy
     init(accessPolicy: SandboxFileAccessPolicy) { self.accessPolicy = accessPolicy }
 
-    func present(files: [URL], presenter: any WorkflowPresentationCallbacks, open: @escaping (URL, URL) -> Void) {
+    func present(files: [URL], presenter: any WorkflowWindowProviding & WorkflowAlertPresenting, open: @escaping (URL, URL) -> Void) {
         guard !files.isEmpty else { presenter.workflowFailed(message: "Nothing Selected".localized, detail: "Select one or more files to open with another application.".localized); return }
         do {
             for file in files where try !accessPolicy.withValidatedAccess(to: file, { FileManager.default.fileExists(atPath: file.path) }) {
@@ -38,7 +53,7 @@ final class GoToFolderWorkflowCoordinator {
     private var generation = 0
     init(probe: any FileSystemProbing, accessPolicy: SandboxFileAccessPolicy) { self.probe = probe; self.accessPolicy = accessPolicy }
 
-    func prompt(currentDirectory: URL, presenter: any WorkflowPresentationCallbacks, resolved: @escaping (URL) -> Void) {
+    func prompt(currentDirectory: URL, presenter: any WorkflowWindowProviding & WorkflowAlertPresenting, resolved: @escaping (URL) -> Void) {
         let alert = NSAlert(); alert.messageText = "Go to Folder".localized
         alert.informativeText = "Enter an absolute, home-relative, or active-pane-relative folder path. If macOS denies access, open or grant the folder first.".localized
         alert.addButton(withTitle: "Go".localized); alert.addButton(withTitle: "Cancel".localized)
@@ -49,7 +64,7 @@ final class GoToFolderWorkflowCoordinator {
         if let window = presenter.workflowWindow { alert.beginSheetModal(for: window, completionHandler: completion) } else { completion(alert.runModal()) }
     }
 
-    func resolve(_ rawPath: String, relativeTo directory: URL, presenter: any WorkflowPresentationCallbacks, completion: @escaping (URL) -> Void) {
+    func resolve(_ rawPath: String, relativeTo directory: URL, presenter: any WorkflowWindowProviding & WorkflowAlertPresenting, completion: @escaping (URL) -> Void) {
         generation += 1; let requestGeneration = generation
         Task { [probe, accessPolicy] in
             do {

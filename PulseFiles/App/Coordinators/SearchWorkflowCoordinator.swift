@@ -15,7 +15,7 @@ final class SearchWorkflowCoordinator {
 
     func cancel() { task?.cancel() }
 
-    func prompt(root: URL, presenter: any WorkflowPresentationCallbacks,
+    func prompt(root: URL, presenter: any WorkflowWindowProviding & WorkflowAlertPresenting,
                 onAction: @escaping (DescendantSearchResultsViewController.Action, DescendantSearchItem) -> Void) {
         let alert = NSAlert(); alert.messageText = "Search This Folder".localized
         alert.informativeText = "Searches descendants of %@ without following symbolic links. Results are limited for safety.".localized(with: root.path)

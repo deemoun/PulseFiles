@@ -102,6 +102,14 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.isVisible)
     }
 
+    @MainActor
+    func testSidebarLayoutCoordinatorOwnsPersistedWidthClamping() {
+        let coordinator = SidebarLayoutCoordinator(minimumWidth: 220, maximumWidth: 340, contentMinimumWidth: 620)
+        XCTAssertEqual(coordinator.clampedWidth(100), 220)
+        XCTAssertEqual(coordinator.clampedWidth(280), 280)
+        XCTAssertEqual(coordinator.clampedWidth(500), 340)
+    }
+
     func testWindowLayoutControllerTracksIndependentPanelsAndPaneMode() {
         var layout = WindowLayoutController(isSidebarVisible: true, isTerminalVisible: false)
         layout.setSidebarVisible(false)

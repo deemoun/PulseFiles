@@ -5,7 +5,7 @@ struct MainWindowWorkflowDependencies {
     let fileTransfer: FileTransferWorkflowCoordinator
     let fileCreation: FileCreationWorkflowCoordinator
     let search: SearchWorkflowCoordinator
-    let auxiliaryPanels: AuxiliaryPanelCoordinator
+    let auxiliaryPanels: AuxiliaryPresentationCoordinator
     let archiveAndRename: ArchiveAndRenameWorkflowCoordinator
     let openWith: OpenWithWorkflowCoordinator
     let goToFolder: GoToFolderWorkflowCoordinator
