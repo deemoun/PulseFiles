@@ -127,6 +127,50 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertEqual(request.destinationDirectory, destination)
     }
 
+    @MainActor
+    func testWindowOperationCoordinatorRoutesConflictAndPartialResultThroughPresenterAndRefresh() async throws {
+        let root = URL(fileURLWithPath: "/sandbox", isDirectory: true)
+        let source = root.appendingPathComponent("source.txt")
+        let destination = root.appendingPathComponent("right", isDirectory: true)
+        let presenter = RecordingFileOperationPresenter()
+        var refreshCount = 0
+        let finished = expectation(description: "result presented")
+        presenter.onResult = { finished.fulfill() }
+        let coordinator = MainWindowFileOperationCoordinator(
+            fileOperations: CoordinatorOperationSpy(), state: FileOperationCoordinator(),
+            accessPolicy: SandboxFileAccessPolicy(isEnabled: true, rootURL: root), presenter: presenter,
+            onActivityChanged: {}, onDefaultRefresh: { refreshCount += 1 }, onResult: { _, _ in }, onOperationStarted: {}
+        )
+
+        try coordinator.transfer(named: "Copy", sources: [source], destinationDirectory: destination, shouldConfirm: true) { request, conflict, _ in
+            XCTAssertEqual(request.sources, [source])
+            _ = await conflict(destination.appendingPathComponent("source.txt"))
+            return FileOperationResult(completedItems: [], skippedItems: [source], failedItems: [], wasCancelled: false)
+        }
+
+        await fulfillment(of: [finished], timeout: 1)
+        XCTAssertEqual(presenter.confirmationCount, 1)
+        XCTAssertEqual(presenter.conflictDestinations.count, 1)
+        XCTAssertEqual(refreshCount, 1)
+        XCTAssertEqual(presenter.results.first?.skippedItems, [source])
+    }
+
+    @MainActor
+    func testWindowOperationCoordinatorRejectsTransferOutsideSharedPolicy() {
+        let root = URL(fileURLWithPath: "/sandbox", isDirectory: true)
+        let presenter = RecordingFileOperationPresenter()
+        let coordinator = MainWindowFileOperationCoordinator(
+            fileOperations: CoordinatorOperationSpy(), state: FileOperationCoordinator(),
+            accessPolicy: SandboxFileAccessPolicy(isEnabled: true, rootURL: root), presenter: presenter,
+            onActivityChanged: {}, onDefaultRefresh: {}, onResult: { _, _ in }, onOperationStarted: {}
+        )
+        XCTAssertThrowsError(try coordinator.transfer(
+            named: "Move", sources: [URL(fileURLWithPath: "/outside/file")], destinationDirectory: root,
+            shouldConfirm: false, operation: { _, _, _ in .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: false) }
+        ))
+        XCTAssertEqual(presenter.confirmationCount, 0)
+    }
+
     func testArchiveRenameCoordinatorPreservesExtensionsInNumberedNames() {
         let sources = [URL(fileURLWithPath: "/tmp/one.txt"), URL(fileURLWithPath: "/tmp/folder")]
         XCTAssertEqual(
@@ -144,6 +188,40 @@ final class MainWindowCoordinatorTests: XCTestCase {
             XCTFail("Expected an empty-name validation error")
         } catch { XCTAssertTrue(error is FileNameValidator.ValidationError) }
     }
+}
+
+@MainActor
+private final class RecordingFileOperationPresenter: FileOperationPresenting {
+    var confirmationCount = 0
+    var conflictDestinations: [URL] = []
+    var results: [FileOperationResult] = []
+    var onResult: (() -> Void)?
+    func presentFileOperationConfirmation(operationName: String, urls: [URL], destinationDirectory: URL?, confirmButtonTitle: String, completion: @escaping () -> Void) { confirmationCount += 1; completion() }
+    func resolveFileOperationConflict(destination: URL, operationName: String) async -> FileConflictResolution { conflictDestinations.append(destination); return .skip }
+    func beginFileOperationProgress(named operationName: String) {}
+    func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {}
+    func endFileOperationProgress() {}
+    func showFileOperationCancellationPending() {}
+    func presentFileOperationResult(_ result: FileOperationResult, operationName: String) { results.append(result); onResult?() }
+    func presentFileOperationError(operationName: String, detail: String) {}
+    func presentUndoUnavailable() {}
+    func presentDetachedFileOperationWarning() {}
+}
+
+private final class CoordinatorOperationSpy: FileOperationCoordinating, @unchecked Sendable {
+    func transferCapacityPreflight(for request: FileOperationRequest, isMove: Bool) async throws -> FileTransferCapacityPreflight { .notRequired }
+    func copy(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func move(_ request: FileOperationRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func rename(_ source: URL, to rawName: String, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func undo(_ recovery: FileOperationRecovery, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func createFolder(named rawName: String, in directory: URL) async throws -> FileOperationResult { fatalError() }
+    func createFile(named rawName: String, in directory: URL) async throws -> FileOperationResult { fatalError() }
+    func trash(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func delete(_ urls: [URL], progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func createArchive(_ request: ArchiveCreateRequest, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func extractArchive(_ request: ArchiveExtractRequest, conflictHandler: @escaping FileConflictHandler, progressHandler: FileOperationProgressHandler?) async throws -> FileOperationResult { fatalError() }
+    func planBatchRename(_ request: BatchRenameRequest) throws -> BatchRenamePlan { fatalError() }
+    func batchRename(_ plan: BatchRenamePlan, progressHandler: FileOperationProgressHandler?) async -> FileOperationResult { fatalError() }
 }
 
 @MainActor
