@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesSidebar
 
 final class SidebarSelectionInspectorPresentationTests: XCTestCase {
     func testSingleSelectionIncludesFileMetadataRows() throws {

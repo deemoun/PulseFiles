@@ -1,5 +1,7 @@
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesSidebar
+@testable import PulseFilesPane
 
 final class ExtractedPaneAndSidebarStateTests: XCTestCase {
     func testQuickSearchCapturesFocusOnlyForActiveSearch() {

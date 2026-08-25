@@ -1071,7 +1071,7 @@ extension MainWindowViewController {
                 guard let self else { return [] }
                 return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
             }
-        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService, accessPolicy: accessPolicy, accessGrantService: .shared, standardFolderAccess: standardFolderAccess)
+        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService, accessPolicy: accessPolicy, accessGrantService: .shared, standardFolderAccess: standardFolderAccess, folderSelection: AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: FolderAccessGrantService.shared))
         controller.onOpenScratchDirectory = { [weak self] url in
             self?.targetPane().navigate(to: url)
         }

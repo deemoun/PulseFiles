@@ -1,15 +1,15 @@
 import AppKit
 
-struct SidebarItem {
-    let title: String
-    let subtitle: String?
-    let url: URL
-    let symbol: String
-    let group: String
-    let badge: Int?
-    let isAvailable: Bool
+package struct SidebarItem {
+    package let title: String
+    package let subtitle: String?
+    package let url: URL
+    package let symbol: String
+    package let group: String
+    package let badge: Int?
+    package let isAvailable: Bool
 
-    init(title: String, subtitle: String? = nil, url: URL, symbol: String, group: String, badge: Int? = nil, isAvailable: Bool = true) {
+    package init(title: String, subtitle: String? = nil, url: URL, symbol: String, group: String, badge: Int? = nil, isAvailable: Bool = true) {
         self.title = title
         self.subtitle = subtitle
         self.url = url
@@ -20,21 +20,21 @@ struct SidebarItem {
     }
 }
 
-struct SidebarInfoRow {
-    let title: String
-    let value: String
-    let symbol: String
+package struct SidebarInfoRow {
+    package let title: String
+    package let value: String
+    package let symbol: String
 }
 
-struct SelectionInspectorPresentation {
-    let title: String
-    let subtitle: String
-    let icon: NSImage
-    let rows: [SidebarInfoRow]
-    let selectedURLs: [URL]
+package struct SelectionInspectorPresentation {
+    package let title: String
+    package let subtitle: String
+    package let icon: NSImage
+    package let rows: [SidebarInfoRow]
+    package let selectedURLs: [URL]
 
     @MainActor
-    static func make(for items: [FileItem]) -> SelectionInspectorPresentation? {
+    package static func make(for items: [FileItem]) -> SelectionInspectorPresentation? {
         guard !items.isEmpty else { return nil }
         if items.count == 1, let item = items.first {
             return SelectionInspectorPresentation(
@@ -117,7 +117,7 @@ struct SelectionInspectorPresentation {
 
 
 extension FileItemType {
-    var displayName: String {
+    package var displayName: String {
         switch self {
         case .folder: return "Folder"
         case .symbolicLink: return "Symbolic Link"

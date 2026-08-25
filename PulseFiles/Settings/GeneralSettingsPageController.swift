@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class GeneralSettingsPageController: SettingsPageControllerBase {
+package final class GeneralSettingsPageController: SettingsPageControllerBase {
     private let settings: GeneralSettingsProviding
     private let languageSelector = NSPopUpButton()
     private let confirmCopy = NSButton(checkboxWithTitle: "Confirm copy operations".localized, target: nil, action: nil)
@@ -10,9 +10,9 @@ final class GeneralSettingsPageController: SettingsPageControllerBase {
     private let permanentDelete = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash".localized, target: nil, action: nil)
     private let stagingCleanupService: StagingCleanupService
     private lazy var cleanupButton = NSButton(title: "Clear Incomplete Transfers…".localized, target: self, action: #selector(cleanup(_:)))
-    var onMaintenanceCleanup: (() -> Void)?
+    package var onMaintenanceCleanup: (() -> Void)?
 
-    init(settings: GeneralSettingsProviding, stagingCleanupService: StagingCleanupService) {
+    package init(settings: GeneralSettingsProviding, stagingCleanupService: StagingCleanupService) {
         self.settings = settings
         self.stagingCleanupService = stagingCleanupService
         super.init()
@@ -36,7 +36,7 @@ final class GeneralSettingsPageController: SettingsPageControllerBase {
         reloadFromSettings()
     }
 
-    override func reloadFromSettings() {
+    package override func reloadFromSettings() {
         languageSelector.selectItem(at: AppLanguage.allCases.firstIndex(of: settings.appLanguage) ?? 0)
         confirmCopy.state = settings.confirmCopyOperations ? .on : .off
         confirmMove.state = settings.confirmMoveOperations ? .on : .off
@@ -99,5 +99,5 @@ final class GeneralSettingsPageController: SettingsPageControllerBase {
         }
     }
 
-    var languageSelectorForTesting: NSPopUpButton { languageSelector }
+    package var languageSelectorForTesting: NSPopUpButton { languageSelector }
 }

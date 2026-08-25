@@ -2,7 +2,7 @@ import AppKit
 
 /// Owns table-column construction and responsive column layout. Row identity,
 /// selection, focus, and view-model state remain in `FilePaneViewController`.
-final class FilePaneTableAdapter {
+package final class FilePaneTableAdapter {
     enum ColumnID {
         static let name = "name", fileExtension = "extension", kind = "kind", size = "size"
         static let modified = "modified", created = "created", added = "added", accessed = "accessed"
@@ -23,7 +23,7 @@ final class FilePaneTableAdapter {
     private var lastWidth: CGFloat = 0
     private var compactGrid = NSTableView.GridLineStyle()
 
-    func configure(tableView: NSTableView, scrollView: NSScrollView) {
+    package func configure(tableView: NSTableView, scrollView: NSScrollView) {
         self.tableView = tableView; self.scrollView = scrollView
         compactGrid = tableView.gridStyleMask
         add(ColumnID.name, "Name", 300, to: tableView)
@@ -40,7 +40,7 @@ final class FilePaneTableAdapter {
         column.minWidth = id == ColumnID.name ? 180 : 70
         column.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: true); table.addTableColumn(column)
     }
-    func applyLayout(hasOppositePane: Bool, force: Bool = false) {
+    package func applyLayout(hasOppositePane: Bool, force: Bool = false) {
         guard let table = tableView, let scroll = scrollView, table.tableColumns.count == Self.metrics.count else { return }
         let width = scroll.contentView.bounds.width - 1
         guard width > 0, force || abs(width - lastWidth) > 8 else { return }; lastWidth = width
@@ -65,18 +65,18 @@ final class FilePaneTableAdapter {
 // MARK: - Row rendering and AppKit table delegation
 
 extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int {
+    package func numberOfRows(in tableView: NSTableView) -> Int {
         viewModel.visibleItems.count + realRowOffset
     }
 
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+    package func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let rowView = FileTableRowView()
         rowView.drawsActiveSelection = isPaneActive
         rowView.drawsKeyboardFocus = self.row(for: focusedDestination) == row
         return rowView
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+    package func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let identifier = tableColumn?.identifier.rawValue else { return nil }
         if isParentRow(row) {
             return parentCell(for: identifier)
@@ -149,7 +149,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         return cell
     }
 
-    func tableViewSelectionDidChange(_ notification: Notification) {
+    package func tableViewSelectionDidChange(_ notification: Notification) {
         reloadRowsForSelectionColorChange()
         configureStatusView()
         configureContentOverlay()
@@ -169,7 +169,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
-    func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
+    package func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
         switch tableColumn.identifier.rawValue {
         case "extension":
             setSort(.extension)
@@ -190,20 +190,20 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+    package func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         if !isReloadingData {
             navigationDelegate?.filePane(self, didEmit: .activate)
         }
         return true
     }
 
-    func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
+    package func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
         tableColumn?.identifier.rawValue == "name"
             && inlineRenameRow == row
             && item(forRow: row) != nil
     }
 
-    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+    package func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
         guard tableColumn?.identifier.rawValue == "name",
               let item = item(forRow: row),
               let proposedName = object as? String,
@@ -213,7 +213,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     /// The sole submission path for an inline rename session. AppKit can send
     /// an action, end-editing notification, and object value for one edit.
-    func commitInlineRename(itemURL: URL?, sessionGeneration: UInt?, proposedName: String, isCancelled: Bool) {
+    package func commitInlineRename(itemURL: URL?, sessionGeneration: UInt?, proposedName: String, isCancelled: Bool) {
         guard let itemURL,
               let sessionGeneration,
               inlineRenameSession.matches(itemURL: itemURL, generation: sessionGeneration) else { return }
@@ -240,11 +240,11 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         flushDeferredTableReloadIfNeeded()
     }
 
-    func item(for url: URL) -> FileItem? {
+    package func item(for url: URL) -> FileItem? {
         viewModel.visibleItems.first { isSameFileURL($0.url, url) }
     }
 
-    func updateInlineRenameField(at row: Int, for itemURL: URL) {
+    package func updateInlineRenameField(at row: Int, for itemURL: URL) {
         guard let column = tableView.tableColumns.firstIndex(where: { $0.identifier.rawValue == "name" }),
               let cell = tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? NSTableCellView,
               let textField = cell.textField as? InlineRenameTextField else { return }
@@ -252,7 +252,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         textField.sessionGeneration = inlineRenameSession.generation(for: itemURL)
     }
 
-    func clearInlineRenameState() {
+    package func clearInlineRenameState() {
         inlineRenameRow = nil
         inlineRenameItem = nil
     }
@@ -272,7 +272,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
     }
 
-    func pruneInvalidSelection() {
+    package func pruneInvalidSelection() {
         guard tableView.numberOfRows > 0 else {
             tableView.deselectAll(nil)
             return
@@ -285,7 +285,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+    package func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard let item = item(forRow: row) else { return nil }
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setString(item.url.absoluteString, forType: .fileURL)
@@ -293,11 +293,11 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         return pasteboardItem
     }
 
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+    package func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         [.copy, .move]
     }
 
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+    package func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
         guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return [] }
         let urls = draggedFileURLs(from: info.draggingPasteboard)
         guard !urls.isEmpty else { return [] }
@@ -306,7 +306,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         return operation == .copy ? .copy : .move
     }
 
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+    package func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         guard let destination = dropDestination(forRow: row, operation: dropOperation) else { return false }
         let urls = draggedFileURLs(from: info.draggingPasteboard)
         guard !urls.isEmpty else { return false }
@@ -396,7 +396,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
 
-    static func sizeDisplayString(for item: FileItem) -> String {
+    package static func sizeDisplayString(for item: FileItem) -> String {
         item.isDirectory && !item.isSymbolicLink ? "--" : FileSizeFormatter.string(fromByteCount: item.size)
     }
 

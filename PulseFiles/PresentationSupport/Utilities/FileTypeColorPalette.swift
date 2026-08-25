@@ -1,6 +1,6 @@
 import AppKit
 
-enum FileVisualCategory: String, CaseIterable, Hashable {
+package enum FileVisualCategory: String, CaseIterable, Hashable {
     case folder
     case symbolicLink
     case package
@@ -19,7 +19,7 @@ enum FileVisualCategory: String, CaseIterable, Hashable {
 
 
 extension FileVisualCategory {
-    var displayName: String {
+    package var displayName: String {
         switch self {
         case .folder: return "Folders".localized
         case .symbolicLink: return "Symbolic links".localized
@@ -38,7 +38,7 @@ extension FileVisualCategory {
         }
     }
 
-    var settingsDescription: String {
+    package var settingsDescription: String {
         switch self {
         case .folder: return "Directories and folder rows.".localized
         case .symbolicLink: return "Aliases and symlinks when they are the primary file type.".localized
@@ -58,19 +58,19 @@ extension FileVisualCategory {
     }
 }
 
-enum FileVisualModifier: Hashable {
+package enum FileVisualModifier: Hashable {
     case hidden
     case executable
     case symbolicLink
     case package
 }
 
-struct FileVisualStyle: Equatable {
-    let category: FileVisualCategory
-    let modifiers: Set<FileVisualModifier>
+package struct FileVisualStyle: Equatable {
+    package let category: FileVisualCategory
+    package let modifiers: Set<FileVisualModifier>
 }
 
-enum FileTypeClassifier {
+package enum FileTypeClassifier {
     private static let executableMask = 0o111
     private static let archiveExtensions: Set<String> = [
         "7z", "bz2", "gz", "rar", "tar", "xz", "zip"
@@ -100,11 +100,11 @@ enum FileTypeClassifier {
         "dmg", "img", "iso", "pkg"
     ]
 
-    static func category(for item: FileItem) -> FileVisualCategory {
+    package static func category(for item: FileItem) -> FileVisualCategory {
         style(for: item).category
     }
 
-    static func style(for item: FileItem) -> FileVisualStyle {
+    package static func style(for item: FileItem) -> FileVisualStyle {
         var modifiers = Set<FileVisualModifier>()
         if item.isHidden {
             modifiers.insert(.hidden)
@@ -190,20 +190,20 @@ enum FileTypeClassifier {
     }
 }
 
-struct FileColorScheme {
-    let colors: [FileVisualCategory: NSColor]
+package struct FileColorScheme {
+    package let colors: [FileVisualCategory: NSColor]
 
-    init(colors: [FileVisualCategory: NSColor]) {
+    package init(colors: [FileVisualCategory: NSColor]) {
         self.colors = colors
     }
 
-    func color(for category: FileVisualCategory) -> NSColor {
+    package func color(for category: FileVisualCategory) -> NSColor {
         colors[category] ?? Self.default.colors[category] ?? NSColor.labelColor
     }
 }
 
 extension FileColorScheme {
-    static let `default` = FileColorScheme(colors: [
+    package static let `default` = FileColorScheme(colors: [
         .folder: NSColor.systemCyan,
         .symbolicLink: NSColor.systemPurple,
         .package: NSColor.systemGreen,
@@ -220,7 +220,7 @@ extension FileColorScheme {
         .fallback: NSColor.labelColor
     ])
 
-    static let minimal = FileColorScheme(colors: [
+    package static let minimal = FileColorScheme(colors: [
         .folder: NSColor.labelColor,
         .symbolicLink: NSColor.labelColor,
         .package: NSColor.labelColor,
@@ -237,7 +237,7 @@ extension FileColorScheme {
         .fallback: NSColor.labelColor
     ])
 
-    static let highContrast = FileColorScheme(colors: [
+    package static let highContrast = FileColorScheme(colors: [
         .folder: NSColor.systemBlue,
         .symbolicLink: NSColor.systemPurple,
         .package: NSColor.systemGreen,
@@ -254,7 +254,7 @@ extension FileColorScheme {
         .fallback: NSColor.labelColor
     ])
 
-    static let classicCommander = FileColorScheme(colors: [
+    package static let classicCommander = FileColorScheme(colors: [
         .folder: NSColor.systemBlue,
         .symbolicLink: NSColor.systemCyan,
         .package: NSColor.systemGreen,
@@ -272,27 +272,27 @@ extension FileColorScheme {
     ])
 }
 
-enum FileTypeColorPalette {
-    static let folder = FileColorScheme.default.color(for: .folder)
-    static let symbolicLink = FileColorScheme.default.color(for: .symbolicLink)
-    static let package = FileColorScheme.default.color(for: .package)
-    static let hidden = FileColorScheme.default.color(for: .hidden)
-    static let executable = FileColorScheme.default.color(for: .executable)
-    static let archive = FileColorScheme.default.color(for: .archive)
-    static let image = FileColorScheme.default.color(for: .image)
-    static let audio = FileColorScheme.default.color(for: .audio)
-    static let video = FileColorScheme.default.color(for: .video)
-    static let document = FileColorScheme.default.color(for: .document)
-    static let sourceCode = FileColorScheme.default.color(for: .sourceCode)
-    static let data = FileColorScheme.default.color(for: .data)
-    static let diskImage = FileColorScheme.default.color(for: .diskImage)
-    static let fallback = FileColorScheme.default.color(for: .fallback)
+package enum FileTypeColorPalette {
+    package static let folder = FileColorScheme.default.color(for: .folder)
+    package static let symbolicLink = FileColorScheme.default.color(for: .symbolicLink)
+    package static let package = FileColorScheme.default.color(for: .package)
+    package static let hidden = FileColorScheme.default.color(for: .hidden)
+    package static let executable = FileColorScheme.default.color(for: .executable)
+    package static let archive = FileColorScheme.default.color(for: .archive)
+    package static let image = FileColorScheme.default.color(for: .image)
+    package static let audio = FileColorScheme.default.color(for: .audio)
+    package static let video = FileColorScheme.default.color(for: .video)
+    package static let document = FileColorScheme.default.color(for: .document)
+    package static let sourceCode = FileColorScheme.default.color(for: .sourceCode)
+    package static let data = FileColorScheme.default.color(for: .data)
+    package static let diskImage = FileColorScheme.default.color(for: .diskImage)
+    package static let fallback = FileColorScheme.default.color(for: .fallback)
 
-    static var activeScheme = FileColorScheme.default
+    package static var activeScheme = FileColorScheme.default
 
     private static let hiddenAlpha: CGFloat = 0.62
 
-    static func textColor(for item: FileItem, isSelected: Bool, isActivePane: Bool, appearance: NSAppearance?) -> NSColor {
+    package static func textColor(for item: FileItem, isSelected: Bool, isActivePane: Bool, appearance: NSAppearance?) -> NSColor {
         textColor(
             for: FileTypeClassifier.style(for: item),
             isSelected: isSelected,
@@ -301,7 +301,7 @@ enum FileTypeColorPalette {
         )
     }
 
-    static func textColor(for style: FileVisualStyle, isSelected: Bool, isActivePane: Bool, appearance: NSAppearance?) -> NSColor {
+    package static func textColor(for style: FileVisualStyle, isSelected: Bool, isActivePane: Bool, appearance: NSAppearance?) -> NSColor {
         let categoryColor = color(for: style, appearance: appearance)
         guard isSelected else { return categoryColor }
 
@@ -310,13 +310,13 @@ enum FileTypeColorPalette {
         return blend(categoryColor, over: selectedTextColor, fraction: 0.28)
     }
 
-    static func color(for style: FileVisualStyle, appearance: NSAppearance?) -> NSColor {
+    package static func color(for style: FileVisualStyle, appearance: NSAppearance?) -> NSColor {
         let categoryColor = color(for: style.category, appearance: appearance)
         guard style.modifiers.contains(.hidden) else { return categoryColor }
         return categoryColor.withAlphaComponent(hiddenAlpha)
     }
 
-    static func color(for category: FileVisualCategory, appearance: NSAppearance?) -> NSColor {
+    package static func color(for category: FileVisualCategory, appearance: NSAppearance?) -> NSColor {
         activeScheme.color(for: category).resolvedColorIfNeeded(with: appearance)
     }
 
@@ -338,7 +338,7 @@ enum FileTypeColorPalette {
 
 
 private extension NSColor {
-    func resolvedColorIfNeeded(with appearance: NSAppearance?) -> NSColor {
+    package func resolvedColorIfNeeded(with appearance: NSAppearance?) -> NSColor {
         guard let appearance else { return self }
 
         var resolvedColor = self

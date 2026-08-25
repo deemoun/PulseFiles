@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class SettingsViewController: NSViewController {
+package final class SettingsViewController: NSViewController {
     enum Category: Int, CaseIterable {
         case general, appearance, navigation, access, experimental
         var title: String {
@@ -12,10 +12,10 @@ final class SettingsViewController: NSViewController {
         }
     }
 
-    var onChange: (() -> Void)?
-    var onOpenScratchDirectory: ((URL) -> Void)? { didSet { navigationPage.onOpenScratchDirectory = onOpenScratchDirectory } }
-    var onMaintenanceCleanup: (() -> Void)? { didSet { generalPage.onMaintenanceCleanup = onMaintenanceCleanup } }
-    var onScratchCleanupResult: ((FileOperationResult, String) -> Void)? { didSet { navigationPage.onScratchCleanupResult = onScratchCleanupResult } }
+    package var onChange: (() -> Void)?
+    package var onOpenScratchDirectory: ((URL) -> Void)? { didSet { navigationPage.onOpenScratchDirectory = onOpenScratchDirectory } }
+    package var onMaintenanceCleanup: (() -> Void)? { didSet { generalPage.onMaintenanceCleanup = onMaintenanceCleanup } }
+    package var onScratchCleanupResult: ((FileOperationResult, String) -> Void)? { didSet { navigationPage.onScratchCleanupResult = onScratchCleanupResult } }
 
     private let categoryControl = NSSegmentedControl()
     private let scrollView = NSScrollView()
@@ -24,11 +24,11 @@ final class SettingsViewController: NSViewController {
     private let navigationPage: NavigationSettingsPageController
     private let pages: [Category: SettingsPageController]
 
-    init(settings: SettingsService, stagingCleanupService: StagingCleanupService, scratchCleanupService: ScratchFolderCleanupService, accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, standardFolderAccess: any StandardFolderAccessProviding) {
+    package init(settings: SettingsService, stagingCleanupService: StagingCleanupService, scratchCleanupService: ScratchFolderCleanupService, accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, standardFolderAccess: any StandardFolderAccessProviding, folderSelection: any AuthorizedFolderSelecting) {
         let general = GeneralSettingsPageController(settings: settings, stagingCleanupService: stagingCleanupService)
         let appearance = AppearanceSettingsPageController(settings: settings)
-        let navigation = NavigationSettingsPageController(settings: settings, accessPolicy: accessPolicy, accessGrantService: accessGrantService, scratchCleanupService: scratchCleanupService)
-        let access = AccessSettingsPageController(accessPolicy: accessPolicy, accessGrantService: accessGrantService, standardAccess: standardFolderAccess)
+        let navigation = NavigationSettingsPageController(settings: settings, accessPolicy: accessPolicy, scratchCleanupService: scratchCleanupService, folderSelection: folderSelection)
+        let access = AccessSettingsPageController(accessPolicy: accessPolicy, accessGrantService: accessGrantService, standardAccess: standardFolderAccess, folderSelection: folderSelection)
         let experimental = ExperimentalSettingsPageController(settings: settings)
         self.generalPage = general; self.navigationPage = navigation
         self.pages = [.general: general, .appearance: appearance, .navigation: navigation, .access: access, .experimental: experimental]
@@ -37,10 +37,10 @@ final class SettingsViewController: NSViewController {
         preferredContentSize = NSSize(width: 720, height: 520)
     }
     required init?(coder: NSCoder) { nil }
-    override func loadView() { view = NSView() }
-    override func viewDidLoad() { super.viewDidLoad(); buildLayout(); showSelectedPage() }
+    package override func loadView() { view = NSView() }
+    package override func viewDidLoad() { super.viewDidLoad(); buildLayout(); showSelectedPage() }
 
-    func reloadFromSettings() { pages.values.forEach { $0.reloadFromSettings() }; showSelectedPage() }
+    package func reloadFromSettings() { pages.values.forEach { $0.reloadFromSettings() }; showSelectedPage() }
 
     private func buildLayout() {
         let title = NSTextField(labelWithString: "Settings".localized); title.font = .preferredFont(forTextStyle: .largeTitle)
@@ -71,12 +71,12 @@ final class SettingsViewController: NSViewController {
     }
     @objc private func categoryChanged(_ sender: NSSegmentedControl) { guard let category = Category(rawValue: sender.selectedSegment) else { return }; selectedCategory = category; showSelectedPage() }
     @objc private func done(_ sender: Any?) { closeSettings() }
-    override func keyDown(with event: NSEvent) { if event.keyCode == 53 { closeSettings() } else { super.keyDown(with: event) } }
+    package override func keyDown(with event: NSEvent) { if event.keyCode == 53 { closeSettings() } else { super.keyDown(with: event) } }
     @objc override func cancelOperation(_ sender: Any?) { closeSettings() }
     private func closeSettings() { if let window = view.window { window.close() } else { dismiss(nil) } }
 
-    var appLanguageSelectorForTesting: NSPopUpButton { generalPage.languageSelectorForTesting }
-    var categoryControlForTesting: NSSegmentedControl { categoryControl }
-    var visiblePageForTesting: NSView? { scrollView.documentView }
-    func pageForTesting(_ category: Category) -> SettingsPageController? { pages[category] }
+    package var appLanguageSelectorForTesting: NSPopUpButton { generalPage.languageSelectorForTesting }
+    package var categoryControlForTesting: NSSegmentedControl { categoryControl }
+    package var visiblePageForTesting: NSView? { scrollView.documentView }
+    package func pageForTesting(_ category: Category) -> SettingsPageController? { pages[category] }
 }

@@ -1,6 +1,6 @@
 import AppKit
 
-final class PaneStatusView: NSVisualEffectView {
+package final class PaneStatusView: NSVisualEffectView {
     struct Action {
         let title: String
         let accessibilityLabel: String
@@ -10,7 +10,7 @@ final class PaneStatusView: NSVisualEffectView {
     private let label = NSTextField(labelWithString: "")
     private let actionStack = NSStackView()
 
-    override init(frame frameRect: NSRect) {
+    package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         material = .hudWindow
         blendingMode = .withinWindow
@@ -41,7 +41,7 @@ final class PaneStatusView: NSVisualEffectView {
         nil
     }
 
-    func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?, partialRefreshFailure: DirectoryContentsReadError?, isPartialRefreshRetryScheduled: Bool, volumeStatus: VolumeStatusPresentation, actions: [Action] = []) {
+    package func configure(items: [FileItem], selectedItems: [FileItem], isLoading: Bool, errorMessage: String?, partialRefreshFailure: DirectoryContentsReadError?, isPartialRefreshRetryScheduled: Bool, volumeStatus: VolumeStatusPresentation, actions: [Action] = []) {
         configureActions(actions)
         if isLoading {
             label.stringValue = partialRefreshFailure == nil
@@ -85,14 +85,14 @@ final class PaneStatusView: NSVisualEffectView {
     }
 }
 
-final class PaneContentOverlayView: NSVisualEffectView {
+package final class PaneContentOverlayView: NSVisualEffectView {
     private let spinner = NSProgressIndicator()
     private let titleLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
     private let actionStack = NSStackView()
     private var passesEmptyStateEventsThrough = false
 
-    override init(frame frameRect: NSRect) {
+    package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         material = .hudWindow
         blendingMode = .withinWindow
@@ -143,11 +143,11 @@ final class PaneContentOverlayView: NSVisualEffectView {
         nil
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? {
+    package override func hitTest(_ point: NSPoint) -> NSView? {
         passesEmptyStateEventsThrough ? nil : super.hitTest(point)
     }
 
-    func configure(paneID: PaneID, isLoading: Bool, visibleItems: [FileItem], errorMessage: String?, actions: [PaneStatusView.Action]) {
+    package func configure(paneID: PaneID, isLoading: Bool, visibleItems: [FileItem], errorMessage: String?, actions: [PaneStatusView.Action]) {
         setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.contentOverlay(for: paneID))
         titleLabel.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.contentOverlayTitle(for: paneID))
         spinner.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.loadingIndicator(for: paneID))
@@ -215,7 +215,7 @@ final class PaneContentOverlayView: NSVisualEffectView {
 private final class ClosureButton: NSButton {
     private let handler: () -> Void
 
-    init(title: String, handler: @escaping () -> Void) {
+    package init(title: String, handler: @escaping () -> Void) {
         self.handler = handler
         super.init(frame: .zero)
         self.title = title

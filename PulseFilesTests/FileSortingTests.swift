@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesPane
 
 final class FileSortingTests: XCTestCase {
     func testFoldersSortBeforeFiles() {

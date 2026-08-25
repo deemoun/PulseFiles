@@ -1,9 +1,9 @@
 import Foundation
 
-enum QuickLocationSection: String, CaseIterable {
+package enum QuickLocationSection: String, CaseIterable {
     case ancestors, history, favorites, recent, volumes, workspace, oppositePane
 
-    var title: String {
+    package var title: String {
         switch self {
         case .ancestors: return "Parent Folders".localized
         case .history: return "History".localized
@@ -16,13 +16,13 @@ enum QuickLocationSection: String, CaseIterable {
     }
 }
 
-enum QuickLocationAvailability: Equatable {
+package enum QuickLocationAvailability: Equatable {
     case available
     case accessDenied
     case unavailable
 
-    var isNavigable: Bool { self == .available }
-    var status: String? {
+    package var isNavigable: Bool { self == .available }
+    package var status: String? {
         switch self {
         case .available: return nil
         case .accessDenied: return "Access required".localized
@@ -31,18 +31,18 @@ enum QuickLocationAvailability: Equatable {
     }
 }
 
-struct QuickLocationEntry: Identifiable, Equatable {
-    let id: String
-    let section: QuickLocationSection
-    let title: String
-    let url: URL
-    let availability: QuickLocationAvailability
+package struct QuickLocationEntry: Identifiable, Equatable {
+    package let id: String
+    package let section: QuickLocationSection
+    package let title: String
+    package let url: URL
+    package let availability: QuickLocationAvailability
 
-    var accessibilityIdentifier: String { AccessibilityIdentifiers.QuickLocations.entry(id) }
+    package var accessibilityIdentifier: String { AccessibilityIdentifiers.QuickLocations.entry(id) }
 }
 
-enum QuickLocationAssembler {
-    static func assemble(
+package enum QuickLocationAssembler {
+    package static func assemble(
         activeDirectory: URL,
         history: NavigationHistory,
         bookmarks: [Bookmark],

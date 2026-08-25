@@ -44,6 +44,23 @@ feature_directories=(
   PulseFiles/Debug
 )
 
+# Keep package target boundaries explicit. Debug is intentionally absent because it
+# remains an application-only adapter; see DOCUMENTATION.md.
+feature_target_mappings=(
+  "PulseFilesPane:PulseFiles/FilePane"
+  "PulseFilesSidebar:PulseFiles/Sidebar"
+  "PulseFilesSettings:PulseFiles/Settings"
+  "PulseFilesTerminal:PulseFiles/Terminal"
+)
+for mapping in "${feature_target_mappings[@]}"; do
+  target="${mapping%%:*}"
+  path="${mapping#*:}"
+  if ! rg -q "name: \"${target}\"" Package.swift || ! rg -q "path: \"${path}\"" Package.swift; then
+    echo "error: missing or stale SwiftPM feature target mapping: $target -> $path" >&2
+    fail=1
+  fi
+done
+
 for directory in "${feature_directories[@]}"; do
   [[ -d "$directory" ]] || continue
   if rg -n -U "$concrete_dependency" "$directory" --glob '*.swift'; then
@@ -52,7 +69,9 @@ for directory in "${feature_directories[@]}"; do
   fi
 done
 
-# Feature modules are peers. They communicate upward using model events or
+# SwiftPM feature targets are peers. Their source-directory mapping is kept here
+# in sync with Package.swift so imports cannot create undeclared lateral edges.
+# Feature modules communicate upward using model events or
 # small protocols; they must never import one another. The allowlist is an
 # exact path/import pair and is intentionally empty today. Additions require an
 # audited explanation beside the entry rather than a directory wildcard.

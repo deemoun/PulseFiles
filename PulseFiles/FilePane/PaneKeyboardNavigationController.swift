@@ -1,15 +1,15 @@
 import Foundation
 
-struct PaneKeyboardModifiers: OptionSet, Equatable {
-    let rawValue: UInt
+package struct PaneKeyboardModifiers: OptionSet, Equatable {
+    package let rawValue: UInt
 
-    static let command = PaneKeyboardModifiers(rawValue: 1 << 0)
-    static let shift = PaneKeyboardModifiers(rawValue: 1 << 1)
-    static let option = PaneKeyboardModifiers(rawValue: 1 << 2)
-    static let control = PaneKeyboardModifiers(rawValue: 1 << 3)
+    package static let command = PaneKeyboardModifiers(rawValue: 1 << 0)
+    package static let shift = PaneKeyboardModifiers(rawValue: 1 << 1)
+    package static let option = PaneKeyboardModifiers(rawValue: 1 << 2)
+    package static let control = PaneKeyboardModifiers(rawValue: 1 << 3)
 }
 
-enum PaneKeyboardNavigationAction: Equatable {
+package enum PaneKeyboardNavigationAction: Equatable {
     case moveFocus(delta: Int)
     case openFocusedItem
     case navigateToParent
@@ -23,8 +23,8 @@ enum PaneKeyboardNavigationAction: Equatable {
 /// horizontal actions even when navigation is unavailable: Right Arrow on a
 /// regular file and Left Arrow at a root or access-policy boundary are safe
 /// no-ops rather than events forwarded to `NSTableView`.
-final class PaneKeyboardNavigationController {
-    func action(keyCode: UInt16, modifiers: PaneKeyboardModifiers) -> PaneKeyboardNavigationAction {
+package final class PaneKeyboardNavigationController {
+    package func action(keyCode: UInt16, modifiers: PaneKeyboardModifiers) -> PaneKeyboardNavigationAction {
         guard modifiers.isEmpty else { return .unhandled }
 
         switch keyCode {

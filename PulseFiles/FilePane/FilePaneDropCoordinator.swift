@@ -1,41 +1,41 @@
 import AppKit
 
-struct DropTransferPolicy {
+package struct DropTransferPolicy {
     enum Operation: Equatable { case copy, move }
     typealias VolumeIdentifierProvider = (URL) -> String?
-    var volumeIdentifierProvider: VolumeIdentifierProvider = { url in
+    package var volumeIdentifierProvider: VolumeIdentifierProvider = { url in
         let values = try? url.resourceValues(forKeys: [.volumeURLKey])
         return (values?.allValues[.volumeURLKey] as? URL).map { $0.standardizedFileURL.path }
     }
-    func resolvedOperation(for sources: [URL], destinationDirectory: URL, isInternalAppDrag: Bool, optionForcesCopy: Bool) -> Operation {
+    package func resolvedOperation(for sources: [URL], destinationDirectory: URL, isInternalAppDrag: Bool, optionForcesCopy: Bool) -> Operation {
         guard !optionForcesCopy, isInternalAppDrag, !sources.isEmpty,
               sourcesShareVolume(with: destinationDirectory, sources: sources) else { return .copy }
         return .move
     }
-    func sourcesShareVolume(with destinationDirectory: URL, sources: [URL]) -> Bool {
+    package func sourcesShareVolume(with destinationDirectory: URL, sources: [URL]) -> Bool {
         guard let destinationVolume = volumeIdentifierProvider(destinationDirectory) else { return false }
         return sources.allSatisfy { volumeIdentifierProvider($0) == destinationVolume }
     }
 }
 
 /// Decodes pasteboard input and centralizes safe, non-mutating drop decisions.
-final class FilePaneDropCoordinator {
-    let transferPolicy: DropTransferPolicy
-    init(transferPolicy: DropTransferPolicy = DropTransferPolicy()) { self.transferPolicy = transferPolicy }
+package final class FilePaneDropCoordinator {
+    package let transferPolicy: DropTransferPolicy
+    package init(transferPolicy: DropTransferPolicy = DropTransferPolicy()) { self.transferPolicy = transferPolicy }
 
-    func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
+    package func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
         pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?.compactMap {
             ($0 as? URL) ?? ($0 as? NSURL)?.absoluteURL
         } ?? []
     }
 
-    func operation(for sources: [URL], destination: URL, pasteboard: NSPasteboard, optionForcesCopy: Bool) -> DropTransferPolicy.Operation {
+    package func operation(for sources: [URL], destination: URL, pasteboard: NSPasteboard, optionForcesCopy: Bool) -> DropTransferPolicy.Operation {
         transferPolicy.resolvedOperation(for: sources, destinationDirectory: destination,
             isInternalAppDrag: pasteboard.string(forType: .pulseFilesInternalDrag) != nil,
             optionForcesCopy: optionForcesCopy)
     }
 
-    static func permitsDrop(sources: [URL], destination: URL, operation: DropTransferPolicy.Operation, directoryValues: [URL: Bool]) -> Bool {
+    package static func permitsDrop(sources: [URL], destination: URL, operation: DropTransferPolicy.Operation, directoryValues: [URL: Bool]) -> Bool {
         guard directoryValues[destination] == true,
               sources.allSatisfy({ directoryValues[$0] != nil }) else { return false }
         let nested = sources.contains { source in
@@ -47,5 +47,5 @@ final class FilePaneDropCoordinator {
 }
 
 extension NSPasteboard.PasteboardType {
-    static let pulseFilesInternalDrag = NSPasteboard.PasteboardType("com.pulsefiles.internal-drag")
+    package static let pulseFilesInternalDrag = NSPasteboard.PasteboardType("com.pulsefiles.internal-drag")
 }

@@ -1,10 +1,10 @@
 import AppKit
 
-final class FileTableRowView: NSTableRowView {
-    var drawsActiveSelection = true
-    var drawsKeyboardFocus = false
+package final class FileTableRowView: NSTableRowView {
+    package var drawsActiveSelection = true
+    package var drawsKeyboardFocus = false
 
-    override func drawBackground(in dirtyRect: NSRect) {
+    package override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
         guard drawsKeyboardFocus else { return }
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 7, dy: 3), xRadius: 7, yRadius: 7)
@@ -13,7 +13,7 @@ final class FileTableRowView: NSTableRowView {
         path.stroke()
     }
 
-    override func drawSelection(in dirtyRect: NSRect) {
+    package override func drawSelection(in dirtyRect: NSRect) {
         guard drawsActiveSelection else { return }
         let rect = bounds.insetBy(dx: 8, dy: 4)
         let path = NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7)

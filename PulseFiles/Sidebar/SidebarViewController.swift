@@ -1,20 +1,20 @@
 import AppKit
 import ImageIO
 
-protocol DirectorySizing: Sendable {
+package protocol DirectorySizing: Sendable {
     func size(of root: URL) async throws -> DirectorySizeResult
 }
 
 extension DirectorySizingService: DirectorySizing {}
 
-final class SidebarViewController: NSViewController {
+package final class SidebarViewController: NSViewController {
     typealias MetadataReader = @Sendable (URL) throws -> String?
 
-    var onOpenLocation: ((URL, Bool) -> Void)?
+    package var onOpenLocation: ((URL, Bool) -> Void)?
 
     /// Test-only observation point invoked after an inspector detail row has
     /// passed its selection and cancellation checks and is about to be updated.
-    var onInspectorDetailUpdate: ((String, String) -> Void)?
+    package var onInspectorDetailUpdate: ((String, String) -> Void)?
 
     private enum SidebarMode: Int {
         case navigation
@@ -40,10 +40,10 @@ final class SidebarViewController: NSViewController {
     private let bookmarkService: any BookmarkPersisting
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
-    var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
+    package var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private let metadataReader: MetadataReader
     private let directorySizing: any DirectorySizing
-    var directorySizingForCompositionTesting: any DirectorySizing { directorySizing }
+    package var directorySizingForCompositionTesting: any DirectorySizing { directorySizing }
     private let scrollView = NSScrollView()
     private let documentView = SidebarDocumentView()
     private let modeControl = NSSegmentedControl()
@@ -56,7 +56,7 @@ final class SidebarViewController: NSViewController {
     private var representedSelectionID = 0
     private var liquidGlassStyle: LiquidGlassStyle
 
-    init(
+    package init(
         recentLocations: any RecentLocationRecording,
         bookmarkService: any BookmarkPersisting,
         settings: SettingsService,
@@ -79,7 +79,7 @@ final class SidebarViewController: NSViewController {
 
     required init?(coder: NSCoder) { nil }
 
-    override func loadView() {
+    package override func loadView() {
         view = NSVisualEffectView()
         (view as? NSVisualEffectView)?.material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         (view as? NSVisualEffectView)?.blendingMode = .withinWindow
@@ -87,7 +87,7 @@ final class SidebarViewController: NSViewController {
         liquidGlassStyle.applyPanelChrome(to: view)
     }
 
-    override func viewDidLoad() {
+    package override func viewDidLoad() {
         super.viewDidLoad()
         configureModeControl()
         configureScrollView()
@@ -96,18 +96,18 @@ final class SidebarViewController: NSViewController {
         recentLocations.onChange = { [weak self] _ in self?.rebuild() }
     }
 
-    func refresh() {
+    package func refresh() {
         (view as? NSVisualEffectView)?.material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         liquidGlassStyle.applyPanelChrome(to: view)
         rebuild()
     }
 
-    func refreshAppearance(style: LiquidGlassStyle) {
+    package func refreshAppearance(style: LiquidGlassStyle) {
         liquidGlassStyle = style
         refresh()
     }
 
-    func showSelection(_ items: [FileItem]) {
+    package func showSelection(_ items: [FileItem]) {
         let hadNoSelection = selectedItems.isEmpty
         selectedItems = items
         if items.isEmpty {
@@ -229,11 +229,11 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    func scratchItems() -> [SidebarItem] {
+    package func scratchItems() -> [SidebarItem] {
         Self.scratchItems(directory: settings.scratchDirectory, accessPolicy: accessPolicy)
     }
 
-    static func scratchItems(directory: URL?, accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
+    package static func scratchItems(directory: URL?, accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
         guard let directory, accessPolicy.canAccess(directory) else { return [] }
         return [SidebarItem(
             title: "Scratch Folder".localized,
@@ -267,12 +267,12 @@ final class SidebarViewController: NSViewController {
         ])
     }
 
-    func deviceItems() -> [SidebarItem] {
+    package func deviceItems() -> [SidebarItem] {
         Self.deviceItems(volumes: navigationModel.volumes, accessPolicy: accessPolicy)
     }
 
     /// Rebuilds navigation content after a mounted-volume change.
-    func refreshDevices() {
+    package func refreshDevices() {
         guard selectedMode == .navigation else { return }
         rebuild()
     }
@@ -286,7 +286,7 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    static func deviceItems(volumes: [Volume], accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
+    package static func deviceItems(volumes: [Volume], accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
         VolumeDiscoveryService.sortedVolumes(volumes)
             .filter { !$0.displayName.isEmpty }
             .map { volume in
@@ -302,14 +302,14 @@ final class SidebarViewController: NSViewController {
             }
     }
 
-    static func volumeSymbol(for volume: Volume) -> String {
+    package static func volumeSymbol(for volume: Volume) -> String {
         if volume.isNetwork { return "network" }
         if volume.isRemovable { return "externaldrive" }
         if volume.url.path == "/" { return "internaldrive" }
         return "opticaldiscdrive"
     }
 
-    static func volumeSubtitle(for volume: Volume, isAvailable: Bool) -> String {
+    package static func volumeSubtitle(for volume: Volume, isAvailable: Bool) -> String {
         var parts = [String]()
         if !isAvailable { parts.append("Permission required") }
         if let available = volume.availableCapacity, let total = volume.totalCapacity {

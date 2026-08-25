@@ -1,6 +1,9 @@
 import AppKit
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesPane
+@testable import PulseFilesSidebar
+@testable import PulseFilesSettings
 
 @MainActor
 final class ControllerWiringUITests: XCTestCase {

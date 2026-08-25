@@ -2,18 +2,18 @@ import AppKit
 
 /// Builds pane context menus while leaving selection/focus ownership in `FilePaneViewController`.
 @MainActor
-final class FilePaneContextMenuProvider: NSObject {
+package final class FilePaneContextMenuProvider: NSObject {
     enum Context { case parent, item(FileItem, hasOppositePane: Bool), background(showsHiddenFiles: Bool) }
     struct Entry: Equatable { let title: String; let command: MainCommand?; let separator: Bool }
-    var onCommand: ((MainCommand) -> Void)?
-    var onOpenWithApplication: ((URL, URL?) -> Void)?
+    package var onCommand: ((MainCommand) -> Void)?
+    package var onOpenWithApplication: ((URL, URL?) -> Void)?
     private let openWithApplicationResolver: OpenWithMenuApplicationResolver
 
-    init(openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil) {
+    package init(openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil) {
         self.openWithApplicationResolver = openWithApplicationResolver ?? OpenWithMenuApplicationResolver()
     }
 
-    static func entries(for context: Context) -> [Entry] {
+    package static func entries(for context: Context) -> [Entry] {
         func item(_ title: String, _ command: MainCommand) -> Entry { Entry(title: title.localized, command: command, separator: false) }
         let separator = Entry(title: "", command: nil, separator: true)
         switch context {
@@ -35,7 +35,7 @@ final class FilePaneContextMenuProvider: NSObject {
         }
     }
 
-    func menu(for context: Context) -> NSMenu {
+    package func menu(for context: Context) -> NSMenu {
         let menu = NSMenu(title: "File")
         for entry in Self.entries(for: context) {
             if entry.separator { menu.addItem(.separator()); continue }
@@ -89,8 +89,8 @@ final class FilePaneContextMenuProvider: NSObject {
 }
 
 /// Carries an Open With selection without coupling menu construction to filesystem operations.
-final class OpenWithRequest {
-    let fileURL: URL
-    let applicationURL: URL
-    init(fileURL: URL, applicationURL: URL) { self.fileURL = fileURL; self.applicationURL = applicationURL }
+package final class OpenWithRequest {
+    package let fileURL: URL
+    package let applicationURL: URL
+    package init(fileURL: URL, applicationURL: URL) { self.fileURL = fileURL; self.applicationURL = applicationURL }
 }

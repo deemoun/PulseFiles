@@ -1,16 +1,16 @@
 import AppKit
 
-final class SidebarInfoRowView: NSView {
+package final class SidebarInfoRowView: NSView {
     private let valueLabel = NSTextField(labelWithString: "")
 
-    init(info: SidebarInfoRow) {
+    package init(info: SidebarInfoRow) {
         super.init(frame: .zero)
         setup(info: info)
     }
 
     required init?(coder: NSCoder) { nil }
 
-    func setValue(_ value: String) {
+    package func setValue(_ value: String) {
         valueLabel.stringValue = value
         valueLabel.toolTip = value
     }
@@ -61,11 +61,11 @@ final class SidebarInfoRowView: NSView {
     }
 }
 
-final class SidebarDocumentView: NSView {
-    override var isFlipped: Bool { true }
+package final class SidebarDocumentView: NSView {
+    package override var isFlipped: Bool { true }
 }
 
-final class SidebarRowView: NSControl {
+package final class SidebarRowView: NSControl {
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let imageView = NSImageView()
@@ -75,7 +75,7 @@ final class SidebarRowView: NSControl {
         didSet { updateChrome() }
     }
 
-    init(item: SidebarItem) {
+    package init(item: SidebarItem) {
         super.init(frame: .zero)
         setup(item: item)
     }
@@ -84,7 +84,7 @@ final class SidebarRowView: NSControl {
         nil
     }
 
-    override func updateTrackingAreas() {
+    package override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea {
             removeTrackingArea(trackingArea)
@@ -95,20 +95,20 @@ final class SidebarRowView: NSControl {
         trackingArea = area
     }
 
-    override func mouseEntered(with event: NSEvent) {
+    package override func mouseEntered(with event: NSEvent) {
         isHovering = true
     }
 
-    override func mouseExited(with event: NSEvent) {
+    package override func mouseExited(with event: NSEvent) {
         isHovering = false
     }
 
-    override func mouseDown(with event: NSEvent) {
+    package override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         highlight(true)
     }
 
-    override func mouseUp(with event: NSEvent) {
+    package override func mouseUp(with event: NSEvent) {
         guard isEnabled else { return }
         let shouldOpen = bounds.contains(convert(event.locationInWindow, from: nil))
         highlight(false)

@@ -1,10 +1,10 @@
 import AppKit
 
-final class BreadcrumbView: NSStackView {
-    var onSelect: ((URL) -> Void)?
+package final class BreadcrumbView: NSStackView {
+    package var onSelect: ((URL) -> Void)?
     private(set) var url: URL = FileManager.default.homeDirectoryForCurrentUser
 
-    init() {
+    package init() {
         super.init(frame: .zero)
         orientation = .horizontal
         spacing = 4
@@ -15,7 +15,7 @@ final class BreadcrumbView: NSStackView {
         nil
     }
 
-    func configure(url: URL) {
+    package func configure(url: URL) {
         self.url = url
         arrangedSubviews.forEach { removeArrangedSubview($0); $0.removeFromSuperview() }
         let components = url.standardizedFileURL.pathComponents
