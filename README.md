@@ -82,7 +82,7 @@ Copy, move, rename, trash, and permanent-delete operations are preflighted befor
 
 ### Opt-in terminal
 
-The Experimental Terminal is disabled and hidden by default. It must be enabled in Settings, shows a first-use warning, and is not a security boundary: commands can modify or delete any files that macOS permits the app to access. Cancellation terminates the process on a best-effort basis and cannot roll back commands that already ran.
+The Experimental Terminal is disabled and hidden by default. It must be enabled in Settings and shows a first-use warning. Once acknowledged, opening the panel starts one persistent interactive shell in the active pane's authorized folder; standard navigation keys, selection/copy, paste, and Option-key shell shortcuts are forwarded with terminal semantics. The terminal is not a security boundary: commands can modify or delete any files that macOS permits the app to access. Closing the panel terminates the shell on a best-effort basis and cannot roll back commands that already ran.
 
 Implementation details for these boundaries are in the [architecture and maintenance guide](DOCUMENTATION.md#filesystem-access-and-safety), and release scenarios are in the [release checklist](RELEASE_CHECKLIST.md).
 

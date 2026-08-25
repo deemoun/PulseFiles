@@ -53,7 +53,18 @@ final class TerminalViewController: NSViewController {
         runningProcess?.resize(columns: max(1, Int(size.width / 7.8)), rows: max(1, Int(size.height / 16)))
     }
     func refreshAppearance() { view.layer?.cornerRadius = LiquidGlassStyle.isEnabled ? LiquidGlassStyle.cornerRadius : LiquidGlassStyle.compactCornerRadius; view.layer?.borderColor = LiquidGlassStyle.panelStroke.cgColor }
-    func focusCommandField() { view.window?.makeFirstResponder(terminalView) }
+    func focusCommandField() {
+        view.window?.makeFirstResponder(terminalView)
+        startSessionIfAllowed()
+    }
+
+    /// Starts the persistent shell as soon as the panel becomes active, so the
+    /// terminal presents a prompt instead of looking like a non-functional log.
+    /// The experiment flag and first-use acknowledgement are still authoritative.
+    func startSessionIfAllowed() {
+        guard runningProcess == nil, isShellInteractionAllowedProvider?() ?? true else { return }
+        startSession()
+    }
 
     /// Stop is deliberately explicit: it terminates the shell and releases its
     /// security-scoped folder access. The next keystroke starts a fresh shell.
@@ -71,8 +82,8 @@ final class TerminalViewController: NSViewController {
     func flushOutputForTesting() { flushBufferedOutput() }
 
     private func buildLayout() {
-        terminalView.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.textView); terminalView.isEditable = false; terminalView.isSelectable = true
-        terminalView.font = .monospacedSystemFont(ofSize: 13, weight: .regular); terminalView.textColor = .systemGreen; terminalView.backgroundColor = .black; terminalView.drawsBackground = true; terminalView.textContainerInset = NSSize(width: 12, height: 10)
+        terminalView.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.textView); terminalView.isEditable = true; terminalView.isSelectable = true
+        terminalView.font = .monospacedSystemFont(ofSize: 13, weight: .regular); terminalView.textColor = .textColor; terminalView.insertionPointColor = .textColor; terminalView.backgroundColor = .textBackgroundColor; terminalView.drawsBackground = true; terminalView.textContainerInset = NSSize(width: 12, height: 10)
         scrollView.documentView = terminalView; scrollView.hasVerticalScroller = true; scrollView.borderType = .noBorder; scrollView.drawsBackground = false; scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView); NSLayoutConstraint.activate([scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor), scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor), scrollView.topAnchor.constraint(equalTo: view.topAnchor), scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor)])
     }
@@ -104,7 +115,7 @@ final class TerminalViewController: NSViewController {
     private func flushBufferedOutput() { outputLock.lock(); let output = pendingOutput; pendingOutput = ""; isOutputFlushScheduled = false; outputLock.unlock(); if !output.isEmpty { append(TerminalControlSequenceRenderer.render(output)) } }
     private func discardBufferedOutput() { outputLock.lock(); pendingOutput = ""; outputLock.unlock() }
     private func appendLine(_ text: String) { append(text + "\n") }
-    private func append(_ text: String) { let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor.systemGreen, .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]; terminalView.textStorage?.setAttributedString(NSAttributedString(string: bounded(terminalView.string + text), attributes: attributes)); let end = terminalView.string.count; terminalView.setSelectedRange(NSRange(location: end, length: 0)); terminalView.scrollRangeToVisible(NSRange(location: end, length: 0)) }
+    private func append(_ text: String) { let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor.textColor, .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]; terminalView.textStorage?.setAttributedString(NSAttributedString(string: bounded(terminalView.string + text), attributes: attributes)); let end = terminalView.string.utf16.count; terminalView.setSelectedRange(NSRange(location: end, length: 0)); terminalView.scrollRangeToVisible(NSRange(location: end, length: 0)) }
     private func bounded(_ text: String) -> String {
         func exceeds(_ value: String) -> Bool {
             value.utf8.count > Self.maximumRetainedOutputBytes
@@ -161,8 +172,40 @@ private enum TerminalControlSequenceRenderer {
     }
 }
 
-private final class TerminalTextView: NSTextView {
+final class TerminalTextView: NSTextView {
     var onInput: ((Data) -> Void)?
-    override func keyDown(with event: NSEvent) { if let characters = event.characters { onInput?(Data(characters.utf8)) } }
-    override func insertText(_ string: Any, replacementRange: NSRange) { if let text = string as? String { onInput?(Data(text.utf8)) } }
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers.contains(.command) {
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "v": paste(nil)
+            case "c", "a": super.keyDown(with: event)
+            default: nextResponder?.keyDown(with: event)
+            }
+            return
+        }
+        guard let data = Self.inputData(keyCode: event.keyCode, characters: event.characters, modifiers: modifiers) else { return }
+        onInput?(data)
+    }
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        if let text = string as? String { onInput?(Data(text.utf8)) }
+    }
+    override func paste(_ sender: Any?) {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
+        onInput?(Data(text.utf8))
+    }
+    override func cut(_ sender: Any?) {}
+    override func deleteBackward(_ sender: Any?) { onInput?(Data([0x7f])) }
+
+    static func inputData(keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags = []) -> Data? {
+        let escapeSequences: [UInt16: String] = [
+            123: "\u{1B}[D", 124: "\u{1B}[C", 125: "\u{1B}[B", 126: "\u{1B}[A",
+            115: "\u{1B}[H", 119: "\u{1B}[F", 116: "\u{1B}[5~", 121: "\u{1B}[6~",
+            117: "\u{1B}[3~"
+        ]
+        if let sequence = escapeSequences[keyCode] { return Data(sequence.utf8) }
+        guard var characters, !characters.isEmpty else { return nil }
+        if modifiers.contains(.option) { characters = "\u{1B}" + characters }
+        return Data(characters.utf8)
+    }
 }
