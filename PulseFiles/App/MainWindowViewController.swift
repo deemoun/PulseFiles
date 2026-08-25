@@ -72,7 +72,7 @@ struct RenamePaneRefreshPlan {
     }
 }
 
-final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflowPresenting, WorkflowPresentationCallbacks, MainCommandHandling {
+final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflowPresenting, WorkflowPresentationCallbacks, MainCommandHandling, FileOperationPresenting {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220
         static let maxWidth: CGFloat = 340
@@ -194,12 +194,23 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private var isTerminalInstalled: Bool { terminalLayoutCoordinator.isInstalled }
     private var isSinglePaneMode = false
     private let fileOperationCoordinator = FileOperationCoordinator()
+    private lazy var operationCoordinator = MainWindowFileOperationCoordinator(
+        fileOperations: fileOperations,
+        state: fileOperationCoordinator,
+        accessPolicy: accessPolicy,
+        presenter: self,
+        onActivityChanged: { [weak self] in self?.refreshCommandAvailability() },
+        onDefaultRefresh: { [weak self] in self?.refreshBothPanes() },
+        onResult: { [weak self] name, result in self?.recordOperationSummary(name, result: result) },
+        onOperationStarted: { [weak self] in self?.clearClipboardFeedback() }
+    )
     var quickLookPreviewURL: NSURL?
     private var quickLookProbeGeneration = 0
-    private var viewerWindowControllers: [NSWindowController] = []
+    private lazy var readOnlyViewerCoordinator = ReadOnlyViewerPresentationCoordinator(service: readOnlyViewerService)
+    private var fileOperationPreviousWindowTitle: String?
     private var volumeChangeProbeGeneration = 0
-    private var isFileOperationActive: Bool { fileOperationCoordinator.isActive }
-    private var undoRecovery: FileOperationRecovery? { fileOperationCoordinator.undoRecovery }
+    private var isFileOperationActive: Bool { operationCoordinator.isActive }
+    private var undoRecovery: FileOperationRecovery? { operationCoordinator.undoRecovery }
 
     var compositionForTesting: (
         paneFileSystems: [any FileSystemServicing],
@@ -985,16 +996,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
             showError(message: "Nothing Selected".localized, detail: "Select a file to view.".localized)
             return
         }
-        let viewer = FileViewerViewController(url: item.url, service: readOnlyViewerService)
-        let window = NSWindow(contentViewController: viewer)
-        window.title = item.filename
-        window.setContentSize(NSSize(width: 820, height: 620))
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        let controller = NSWindowController(window: window)
-        viewerWindowControllers.removeAll { $0.window == nil }
-        viewerWindowControllers.append(controller)
-        controller.showWindow(nil)
-        window.makeKeyAndOrderFront(nil)
+        readOnlyViewerCoordinator.present(item.url)
     }
 }
 
@@ -1102,7 +1104,7 @@ extension MainWindowViewController {
         controller.onMaintenanceCleanup = { [weak self] in self?.refreshBothPanes() }
         controller.onScratchCleanupResult = { [weak self] result, operationName in
             self?.refreshBothPanes()
-            self?.showOperationResult(result, operationName: operationName)
+            self?.presentFileOperationResult(result, operationName: operationName)
         }
         workflows.auxiliaryPanels.showSettings(controller, sender: sender)
     }
@@ -1605,22 +1607,17 @@ extension MainWindowViewController {
         captureRecovery: Bool = false,
         operation: @escaping (FileOperationRequest, @escaping FileConflictHandler, FileOperationProgressHandler?) async throws -> FileOperationResult
     ) {
-        let request: FileOperationRequest
-        do { request = try workflows.fileTransfer.request(sources: sources, destination: destinationDirectory) }
-        catch { showError(message: "Cannot Complete \(kind)".localized, detail: error.localizedDescription); return }
-        let start: () -> Void = { [weak self] in
-            self?.startFileOperation(named: kind, captureRecovery: captureRecovery) { [weak self] progressHandler in
-                try await operation(request, { destination in
-                    guard let self else { return .cancel }
-                    return await self.promptForConflict(destination: destination, operationName: kind)
-                }, progressHandler)
-            }
-        }
-
-        if shouldConfirm {
-            confirmFileOperation(kind, urls: sources, destinationDirectory: destinationDirectory, confirmButtonTitle: kind, completion: start)
-        } else {
-            start()
+        do {
+            try operationCoordinator.transfer(
+                named: kind,
+                sources: sources,
+                destinationDirectory: destinationDirectory,
+                shouldConfirm: shouldConfirm,
+                captureRecovery: captureRecovery,
+                operation: operation
+            )
+        } catch {
+            showError(message: "Cannot Complete \(kind)".localized, detail: error.localizedDescription)
         }
     }
 
@@ -1688,33 +1685,18 @@ extension MainWindowViewController {
     }
 
     private func beginDroppedItemTransfer(_ urls: [URL], destinationDirectory: URL, copy: Bool) {
-
         let kind = copy ? "Copy".localized : "Move".localized
-        let request = FileOperationRequest(sources: urls, destinationDirectory: destinationDirectory)
-        let start: () -> Void = { [weak self, fileOperations] in
-            self?.startFileOperation(named: kind, captureRecovery: true) { [weak self] progressHandler in
-                if copy {
-                    return try await fileOperations.copy(request, conflictHandler: { destination in
-                        guard let self else { return .cancel }
-                        return await self.promptForConflict(destination: destination, operationName: kind)
-                    }, progressHandler: progressHandler)
-                }
-                return try await fileOperations.move(request, conflictHandler: { destination in
-                    guard let self else { return .cancel }
-                    return await self.promptForConflict(destination: destination, operationName: kind)
-                }, progressHandler: progressHandler)
-            }
-        }
         let shouldConfirm = copy ? settings.confirmCopyOperations : settings.confirmMoveOperations
-        if shouldConfirm {
-            confirmFileOperation(kind, urls: urls, destinationDirectory: destinationDirectory, confirmButtonTitle: kind, completion: start)
-        } else {
-            start()
+        performFileTransfer(kind: kind, sources: urls, destinationDirectory: destinationDirectory, shouldConfirm: shouldConfirm, captureRecovery: true) { [fileOperations] request, conflicts, progress in
+            if copy {
+                return try await fileOperations.copy(request, conflictHandler: conflicts, progressHandler: progress)
+            }
+            return try await fileOperations.move(request, conflictHandler: conflicts, progressHandler: progress)
         }
     }
 
-    private func confirmFileOperation(
-        _ operationName: String,
+    func presentFileOperationConfirmation(
+        operationName: String,
         urls: [URL],
         destinationDirectory: URL?,
         confirmButtonTitle: String,
@@ -1796,40 +1778,11 @@ extension MainWindowViewController {
         return lines.joined(separator: "\n")
     }
 
-    private func undoLastOperation() {
-        guard let recovery = undoRecovery else {
-            showError(message: "Undo Unavailable".localized, detail: "The last operation cannot be safely undone.".localized)
-            return
-        }
-        fileOperationCoordinator.clearRecovery()
-        startFileOperation(named: recovery.undoTitle.localized) { [fileOperations] progressHandler in
-            try await fileOperations.undo(recovery, progressHandler: progressHandler)
-        }
-    }
+    private func undoLastOperation() { operationCoordinator.undo() }
 
-    private func cancelActiveFileOperation() {
-        guard isFileOperationActive else { return }
-        fileOperationCoordinator.cancel()
-        fileOperationProgressWindowController.showCancellationPending()
-    }
+    private func cancelActiveFileOperation() { operationCoordinator.cancel() }
 
-    private func detachActiveFileOperation() {
-        guard fileOperationCoordinator.detach() != nil else { return }
-        // Incrementing the generation makes late progress and completion from
-        // this worker observational only. A blocking FileManager call cannot
-        // reliably be cancelled, so it would be unsafe to call it cancelled.
-        fileOperationProgressWindowController.dismiss()
-        refreshCommandAvailability()
-        refreshBothPanes()
-        showAlert(
-            message: "Operation Needs Verification".localized,
-            detail: "PulseFiles stopped waiting because the operation made no progress or did not finish after cancellation. Its final filesystem state is unknown; refresh and verify the affected items before trying another operation.".localized,
-            style: .warning
-        )
-        // The coordinator retains the task until its worker actually
-        // returns, preventing a discarded worker from being deallocated while
-        // it still owns filesystem state.
-    }
+    private func detachActiveFileOperation() { operationCoordinator.detach() }
 
     private func recordOperationSummary(_ operation: String, result: FileOperationResult) {
         recentOperationSummaries.append(DiagnosticOperationSummary(operation: operation, result: result))
@@ -1864,65 +1817,48 @@ extension MainWindowViewController {
     }
 
     private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult, refresh: ((FileOperationResult) -> Void)? = nil, completion: ((FileOperationResult) -> Void)? = nil) {
-        guard let generation = fileOperationCoordinator.begin() else { return }
-        let previousWindowTitle = view.window?.title
-        refreshCommandAvailability()
-        fileOperationProgressWindowController.show(operationName: operationName, parentWindow: view.window)
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer {
-                if self.fileOperationCoordinator.acceptsUpdates(for: generation) {
-                    if let previousWindowTitle {
-                        self.view.window?.title = previousWindowTitle
-                    }
-                    self.fileOperationProgressWindowController.dismiss()
-                    self.fileOperationCoordinator.finish(generation: generation, result: nil, captureRecovery: false)
-                    self.refreshCommandAvailability()
-                }
-            }
-
-            do {
-                // Keep the operation coordinator and every AppKit update on the
-                // main actor, while ensuring a service implementation cannot do
-                // synchronous filesystem work on the UI executor before its
-                // first suspension point.
-                let result = try await fileOperationCoordinator.runDetached {
-                    try await operation { [weak self] progress in
-                        guard self?.fileOperationCoordinator.acceptsUpdates(for: generation) == true else { return }
-                        self?.updateFileOperationProgress(progress, operationName: operationName)
-                    }
-                }
-                guard self.fileOperationCoordinator.acceptsUpdates(for: generation) else { return }
-                if captureRecovery { self.fileOperationCoordinator.captureRecovery(from: result) }
-                self.recordOperationSummary(operationName, result: result)
-                self.clearClipboardFeedback()
-                if let refresh {
-                    refresh(result)
-                } else {
-                    self.refreshBothPanes()
-                }
-                completion?(result)
-                self.showOperationResult(result, operationName: operationName)
-            } catch {
-                guard self.fileOperationCoordinator.acceptsUpdates(for: generation) else { return }
-                let localizedError = error as? LocalizedError
-                let detail = localizedError?.failureReason ?? error.localizedDescription
-                self.showError(message: "Could Not %@ Items".localized(with: operationName), detail: detail)
-            }
-        }
-        fileOperationCoordinator.retain(task, for: generation)
+        operationCoordinator.start(named: operationName, captureRecovery: captureRecovery, operation: operation, refresh: refresh, completion: completion)
     }
 
-    private func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
+    func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
         fileOperationProgressWindowController.update(operationName: operationName, progress: progress)
         view.window?.title = "\(operationName): \(progress.currentItemName)"
+    }
+
+    func beginFileOperationProgress(named operationName: String) {
+        fileOperationPreviousWindowTitle = view.window?.title
+        fileOperationProgressWindowController.show(operationName: operationName, parentWindow: view.window)
+    }
+
+    func endFileOperationProgress() {
+        if let title = fileOperationPreviousWindowTitle { view.window?.title = title }
+        fileOperationPreviousWindowTitle = nil
+        fileOperationProgressWindowController.dismiss()
+    }
+
+    func showFileOperationCancellationPending() { fileOperationProgressWindowController.showCancellationPending() }
+
+    func presentFileOperationError(operationName: String, detail: String) {
+        showError(message: "Could Not %@ Items".localized(with: operationName), detail: detail)
+    }
+
+    func presentUndoUnavailable() {
+        showError(message: "Undo Unavailable".localized, detail: "The last operation cannot be safely undone.".localized)
+    }
+
+    func presentDetachedFileOperationWarning() {
+        showAlert(
+            message: "Operation Needs Verification".localized,
+            detail: "PulseFiles stopped waiting because the operation made no progress or did not finish after cancellation. Its final filesystem state is unknown; refresh and verify the affected items before trying another operation.".localized,
+            style: .warning
+        )
     }
 
     static func operationResultPresentation(_ result: FileOperationResult, operationName: String) -> (message: String, detail: String, style: NSAlert.Style)? {
         FileOperationCoordinator.resultPresentation(result, operationName: operationName)
     }
 
-    private func showOperationResult(_ result: FileOperationResult, operationName: String) {
+    func presentFileOperationResult(_ result: FileOperationResult, operationName: String) {
         guard let presentation = Self.operationResultPresentation(result, operationName: operationName) else { return }
         showAlert(message: presentation.message, detail: presentation.detail, style: presentation.style)
     }
@@ -1941,7 +1877,7 @@ extension MainWindowViewController {
     }
 
     @MainActor
-    private func promptForConflict(destination: URL, operationName: String) async -> FileConflictResolution {
+    func resolveFileOperationConflict(destination: URL, operationName: String) async -> FileConflictResolution {
         let keepBothDestination = FileOperationService.keepBothDestination(
             for: destination,
             fileExists: { FileManager.default.fileExists(atPath: $0.path) }
@@ -2148,7 +2084,7 @@ extension MainWindowViewController {
     func startWorkflowOperation(named name: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult) { startFileOperation(named: name, operation: operation) }
     func presentWorkflowError(message: String, detail: String) { showError(message: message, detail: detail) }
     func workflowFailed(message: String, detail: String) { showError(message: message, detail: detail) }
-    func resolveWorkflowConflict(destination: URL, operationName: String) async -> FileConflictResolution { await promptForConflict(destination: destination, operationName: operationName) }
+    func resolveWorkflowConflict(destination: URL, operationName: String) async -> FileConflictResolution { await resolveFileOperationConflict(destination: destination, operationName: operationName) }
 
     @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
     @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
