@@ -193,8 +193,6 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private let mainStack = NSView()
     weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
-    private var patternSelectionPanelController: PatternSelectionPanelController?
-    private var quickLocationsPopover: NSPopover?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var flagsChangedEventMonitor: Any?
@@ -222,7 +220,6 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private var quickLookProbeGeneration = 0
     private lazy var readOnlyViewerCoordinator = ReadOnlyViewerPresentationCoordinator(service: readOnlyViewerService)
     private var fileOperationPreviousWindowTitle: String?
-    private var volumeChangeProbeGeneration = 0
     private var isFileOperationActive: Bool { operationCoordinator.isActive }
     private var undoRecovery: FileOperationRecovery? { operationCoordinator.undoRecovery }
 
@@ -305,14 +302,16 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
             self.sidebar.refreshDevices()
             let panes = [self.leftPane, self.rightPane]
             let directories = panes.map(\.currentDirectory)
-            self.volumeChangeProbeGeneration += 1
-            let generation = self.volumeChangeProbeGeneration
+            let generation = self.workflows.paneSynchronization.beginVolumeProbe()
             Task { [weak self] in
                 guard let self else { return }
                 let actions = await self.navigationCoordinator.volumeChangeActions(for: directories, change: change)
                 // Ignore a completion that belongs to an older mount event.
-                guard generation == self.volumeChangeProbeGeneration,
-                      panes.map(\.currentDirectory) == directories else { return }
+                guard self.workflows.paneSynchronization.acceptsVolumeProbe(
+                    generation,
+                    originalDirectories: directories,
+                    currentDirectories: panes.map(\.currentDirectory)
+                ) else { return }
                 for (pane, action) in zip(panes, actions) where action == .fallBack {
                     pane.fallBackIfCurrentDirectoryIsUnavailable()
                 }
@@ -665,43 +664,11 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
 
     private func presentDisabledCommandFeedback(command: MainCommand, reason: MainCommandRoutingDisabledReason) {
         DiagnosticLogger.log(.warning, category: "MainWindow", "Command rejected: command=\(command); reason=\(reason)")
-        let feedback: (String, String)
-        switch reason {
-        case .fileOperationInProgress:
-            feedback = ("Operation in Progress", "Wait for the current file operation to finish before starting another file-changing action.")
-        case .noOppositePane:
-            feedback = ("Opposite Pane Unavailable", "Use dual-pane mode before using this command.")
-        case .noSelection:
-            if targetPane().focusedDestination == .parent {
-                feedback = parentRowCommandFeedback
-            } else {
-                feedback = ("Nothing Selected", "Select one or more items before using this command.")
-            }
-        case .noFocusedItem, .noRealFocusedItem:
-            if targetPane().focusedDestination == .parent {
-                feedback = parentRowCommandFeedback
-            } else {
-                feedback = ("Nothing Focused", "Focus an item before using this command.")
-            }
-        case .sandboxRejectedSelection:
-            feedback = ("Access Denied", "The selected item is outside the locations PulseFiles is allowed to access.")
-        case .noActiveFileOperation:
-            feedback = ("No Operation in Progress", "There is no active file operation to cancel.")
-        case .noUndoRecovery:
-            feedback = ("Undo Unavailable", "The last operation cannot be safely undone.")
-        case .focusedItemIsNotSymbolicLink:
-            feedback = ("Not a Symbolic Link", "Focus a symbolic link before using this command.")
-        case .lastTab:
-            feedback = ("Last Tab", "Each pane must keep at least one tab open.")
-        }
-        showError(message: feedback.0.localized, detail: feedback.1.localized)
-    }
-
-    private var parentRowCommandFeedback: (String, String) {
-        (
-            "Parent Folder Focused",
-            "This command requires an item inside the current folder. Press Right Arrow or Return to open the parent folder."
+        let feedback = workflows.commandPresentation.feedback(
+            for: reason,
+            parentRowFocused: targetPane().focusedDestination == .parent
         )
+        showError(message: feedback.message.localized, detail: feedback.detail.localized)
     }
 
     private func promptForArchiveCreation() {
@@ -737,15 +704,13 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
             )
             guard active === self.targetPane() else { return }
             let controller = QuickLocationsViewController(entries: entries, allowsInactivePane: !isSinglePaneMode)
-            let popover = NSPopover(); popover.behavior = .transient; popover.contentViewController = controller
+            let popover = workflows.auxiliaryPanels.showQuickLocations(controller, relativeTo: active.view)
             controller.onCancel = { [weak popover] in popover?.performClose(nil) }
             controller.onActivate = { [weak self, weak popover] entry, inactive in
                 guard let self, self.accessPolicy.canAccess(entry.url) else { NSSound.beep(); return }
                 self.targetPane(useInactive: inactive).navigate(to: entry.url)
                 popover?.performClose(nil)
             }
-            quickLocationsPopover = popover
-            popover.show(relativeTo: active.view.bounds, of: active.view, preferredEdge: .maxY)
         }
     }
 
@@ -755,16 +720,8 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         controller.onApply = { [weak pane] matches in
             pane?.applyMarks(matchingURLs: matches, mutation: mutation)
         }
-        controller.onClose = { [weak self, weak pane] in
+        workflows.auxiliaryPanels.showPatternSelection(controller, window: view.window) { [weak self, weak pane] in
             if let pane { self?.view.window?.makeFirstResponder(pane.tableView) }
-            self?.patternSelectionPanelController = nil
-        }
-        patternSelectionPanelController = controller
-        guard let panel = controller.window else { return }
-        if let window = view.window {
-            window.beginSheet(panel)
-        } else {
-            controller.showWindow(nil)
         }
     }
 
@@ -787,10 +744,11 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private func synchronizeOppositePane() {
         let source = targetPane()
         let destination = targetPane(useInactive: true)
+        let synchronizedDirectory = workflows.paneSynchronization.synchronizedDirectory(from: source.currentDirectory)
         do {
-            try accessPolicy.validateAccess(to: source.currentDirectory)
+            try accessPolicy.validateAccess(to: synchronizedDirectory)
             destination.preparePendingSelection(source.focusedItem?.url)
-            destination.navigate(to: source.currentDirectory)
+            destination.navigate(to: synchronizedDirectory)
             view.window?.makeFirstResponder(source.tableView)
         } catch {
             showError(message: "Could Not Sync Opposite Pane".localized, detail: error.localizedDescription)
@@ -801,12 +759,12 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         guard let item = targetPane().focusedItem else { return }
         let source = targetPane()
         let destination = targetPane(useInactive: true)
+        let plan = workflows.paneSynchronization.revealPlan(for: item.url)
         do {
-            try accessPolicy.validateAccess(to: item.url)
-            let parent = item.url.deletingLastPathComponent()
-            try accessPolicy.validateAccess(to: parent)
-            destination.preparePendingSelection(item.url)
-            destination.navigate(to: parent)
+            try accessPolicy.validateAccess(to: plan.item)
+            try accessPolicy.validateAccess(to: plan.directory)
+            destination.preparePendingSelection(plan.item)
+            destination.navigate(to: plan.directory)
             view.window?.makeFirstResponder(source.tableView)
         } catch {
             showError(message: "Could Not Reveal Item".localized, detail: error.localizedDescription)

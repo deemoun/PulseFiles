@@ -9,6 +9,8 @@ struct MainWindowWorkflowDependencies {
     let archiveAndRename: ArchiveAndRenameWorkflowCoordinator
     let openWith: OpenWithWorkflowCoordinator
     let goToFolder: GoToFolderWorkflowCoordinator
+    let commandPresentation: CommandPresentationCoordinator
+    let paneSynchronization: PaneNavigationSynchronizationCoordinator
 
     static func production(from dependencies: MainWindowDependencies, accessPolicy: SandboxFileAccessPolicy) -> Self {
         Self(
@@ -18,7 +20,9 @@ struct MainWindowWorkflowDependencies {
             auxiliaryPanels: .init(),
             archiveAndRename: .init(fileOperations: dependencies.fileOperations),
             openWith: .init(accessPolicy: accessPolicy),
-            goToFolder: .init(probe: dependencies.fileSystemProbe, accessPolicy: accessPolicy)
+            goToFolder: .init(probe: dependencies.fileSystemProbe, accessPolicy: accessPolicy),
+            commandPresentation: .init(),
+            paneSynchronization: .init()
         )
     }
 }
