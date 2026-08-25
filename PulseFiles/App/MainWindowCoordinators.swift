@@ -99,6 +99,7 @@ struct MainWindowDependencies {
     let recentLocations: any RecentLocationRecording
     let bookmarks: any BookmarkPersisting
     let volumeDiscovery: any VolumeDiscovering
+    let directorySizing: any DirectorySizing
     let clipboard: any FileClipboardProviding
     let applicationOpener: any ApplicationOpening
     let fileSize: any FileSizeResolving
@@ -131,6 +132,7 @@ struct MainWindowDependencies {
             recentLocations: RecentLocationService(),
             bookmarks: BookmarkService(),
             volumeDiscovery: VolumeDiscoveryService(),
+            directorySizing: DirectorySizingService(accessPolicy: accessPolicy),
             clipboard: FileClipboard(),
             applicationOpener: WorkspaceApplicationOpener(),
             fileSize: SystemFileSizeService(),
@@ -151,7 +153,8 @@ struct MainWindowDependencies {
     func replacingPaneComposition(
         accessPolicy: SandboxFileAccessPolicy,
         paneFileSystem: any FileSystemServicing,
-        folderAccessGrants: any FolderAccessGrantProviding
+        folderAccessGrants: any FolderAccessGrantProviding,
+        directorySizing: any DirectorySizing
     ) -> Self {
         Self(
             accessPolicy: accessPolicy,
@@ -167,6 +170,7 @@ struct MainWindowDependencies {
             recentLocations: recentLocations,
             bookmarks: bookmarks,
             volumeDiscovery: volumeDiscovery,
+            directorySizing: directorySizing,
             clipboard: clipboard,
             applicationOpener: applicationOpener,
             fileSize: fileSize,

@@ -14,7 +14,8 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
             bookmarkService: BookmarkService(defaults: defaultsFixture.defaults),
             settings: settings,
             accessPolicy: policy,
-            volumeDiscovery: FixtureVolumeDiscovery(volumes: [])
+            volumeDiscovery: FixtureVolumeDiscovery(volumes: []),
+            directorySizing: SidebarSizingFake()
         )
 
         let items = sidebar.scratchItems()
@@ -81,7 +82,8 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
             bookmarkService: BookmarkService(defaults: defaults),
             settings: SettingsService(defaults: defaults, accessPolicy: policy),
             accessPolicy: policy,
-            volumeDiscovery: discovery
+            volumeDiscovery: discovery,
+            directorySizing: SidebarSizingFake()
         )
 
         _ = sidebar.view
@@ -172,5 +174,11 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
     private final class MutableVolumeDiscovery: VolumeDiscovering {
         var volumes: [Volume] = []
         func mountedVolumes() async -> [Volume] { volumes }
+    }
+}
+
+private struct SidebarSizingFake: DirectorySizing {
+    func size(of root: URL) async throws -> DirectorySizeResult {
+        DirectorySizeResult(bytes: 0, completeness: .complete)
     }
 }

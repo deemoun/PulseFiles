@@ -94,6 +94,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
             settings: SettingsService(defaults: defaults),
             accessPolicy: .current,
             volumeDiscovery: VolumeDiscoveryService(),
+            directorySizing: ImmediateSidebarSizing(),
             metadataReader: { url in
                 if url.lastPathComponent == "first.jpg" {
                     firstMetadataStarted.fulfill()
@@ -163,6 +164,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
             settings: SettingsService(defaults: defaults),
             accessPolicy: .current,
             volumeDiscovery: VolumeDiscoveryService(),
+            directorySizing: ImmediateSidebarSizing(),
             metadataReader: { _ in throw MetadataReaderError.failed }
         )
         sidebar.onInspectorDetailUpdate = { identifier, value in
@@ -215,7 +217,13 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
     }
 }
 
-private final class ControlledSidebarSizing: SidebarDirectorySizing, @unchecked Sendable {
+private struct ImmediateSidebarSizing: DirectorySizing {
+    func size(of root: URL) async throws -> DirectorySizeResult {
+        DirectorySizeResult(bytes: 0, completeness: .complete)
+    }
+}
+
+private final class ControlledSidebarSizing: DirectorySizing, @unchecked Sendable {
     private let lock = NSLock()
     private var continuations: [String: CheckedContinuation<DirectorySizeResult, Error>] = [:]
 

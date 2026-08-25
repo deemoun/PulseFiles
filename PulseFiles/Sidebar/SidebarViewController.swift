@@ -1,11 +1,11 @@
 import AppKit
 import ImageIO
 
-protocol SidebarDirectorySizing: Sendable {
+protocol DirectorySizing: Sendable {
     func size(of root: URL) async throws -> DirectorySizeResult
 }
 
-extension DirectorySizingService: SidebarDirectorySizing {}
+extension DirectorySizingService: DirectorySizing {}
 
 final class SidebarViewController: NSViewController {
     typealias MetadataReader = @Sendable (URL) throws -> String?
@@ -42,7 +42,8 @@ final class SidebarViewController: NSViewController {
     private let accessPolicy: SandboxFileAccessPolicy
     var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
     private let metadataReader: MetadataReader
-    private let directorySizing: any SidebarDirectorySizing
+    private let directorySizing: any DirectorySizing
+    var directorySizingForCompositionTesting: any DirectorySizing { directorySizing }
     private let scrollView = NSScrollView()
     private let documentView = SidebarDocumentView()
     private let modeControl = NSSegmentedControl()
@@ -60,7 +61,7 @@ final class SidebarViewController: NSViewController {
         settings: SettingsService,
         accessPolicy: SandboxFileAccessPolicy,
         volumeDiscovery: any VolumeDiscovering,
-        directorySizing: (any SidebarDirectorySizing)? = nil,
+        directorySizing: any DirectorySizing,
         metadataReader: @escaping MetadataReader = SidebarViewController.gpsLocation
     ) {
         self.recentLocations = recentLocations
@@ -68,7 +69,7 @@ final class SidebarViewController: NSViewController {
         self.settings = settings
         self.accessPolicy = accessPolicy
         self.navigationModel = SidebarNavigationModel(volumeDiscovery: volumeDiscovery)
-        self.directorySizing = directorySizing ?? DirectorySizingService(accessPolicy: accessPolicy)
+        self.directorySizing = directorySizing
         self.metadataReader = metadataReader
         super.init(nibName: nil, bundle: nil)
     }
