@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class AuxiliaryPanelCoordinator: NSObject, NSWindowDelegate {
+final class AuxiliaryPresentationCoordinator: NSObject, NSWindowDelegate {
     private(set) var settingsWindowController: NSWindowController?
     private(set) var debugLogWindowController: NSWindowController?
     var onWindowClosed: (() -> Void)?

@@ -2,14 +2,6 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
-@MainActor
-protocol ArchiveAndRenameWorkflowPresenting: AnyObject {
-    var workflowWindow: NSWindow? { get }
-    func startWorkflowOperation(named name: String, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult)
-    func presentWorkflowError(message: String, detail: String)
-    func resolveWorkflowConflict(destination: URL, operationName: String) async -> FileConflictResolution
-}
-
 /// Owns archive and multi-item rename dialogs and translates their answers into
 /// service requests. Pane selection remains a responsibility of the caller.
 @MainActor
@@ -18,7 +10,7 @@ final class ArchiveAndRenameWorkflowCoordinator {
 
     init(fileOperations: any FileOperationCoordinating) { self.fileOperations = fileOperations }
 
-    func promptForArchiveCreation(sources: [URL], directory: URL, presenter: any ArchiveAndRenameWorkflowPresenting) {
+    func promptForArchiveCreation(sources: [URL], directory: URL, presenter: any WorkflowWindowProviding & WorkflowAlertPresenting & WorkflowOperationExecuting & WorkflowConflictResolving) {
         guard !sources.isEmpty else { NSSound.beep(); return }
         let panel = NSSavePanel(); panel.title = "Create Archive".localized; panel.nameFieldStringValue = "Archive.zip".localized
         panel.directoryURL = directory; panel.allowedContentTypes = [.zip]
@@ -30,7 +22,7 @@ final class ArchiveAndRenameWorkflowCoordinator {
         }
     }
 
-    func confirmArchiveExtraction(archive: URL?, directory: URL, presenter: any ArchiveAndRenameWorkflowPresenting) {
+    func confirmArchiveExtraction(archive: URL?, directory: URL, presenter: any WorkflowWindowProviding & WorkflowAlertPresenting & WorkflowOperationExecuting & WorkflowConflictResolving) {
         guard let archive else { NSSound.beep(); return }
         let alert = NSAlert(); alert.messageText = "Extract Archive?".localized
         alert.informativeText = "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision.".localized
@@ -45,7 +37,7 @@ final class ArchiveAndRenameWorkflowCoordinator {
         }
     }
 
-    func promptForBatchRename(sources: [URL], presenter: any ArchiveAndRenameWorkflowPresenting) {
+    func promptForBatchRename(sources: [URL], presenter: any WorkflowWindowProviding & WorkflowAlertPresenting & WorkflowOperationExecuting & WorkflowConflictResolving) {
         guard !sources.isEmpty else { NSSound.beep(); return }
         let alert = NSAlert(); alert.messageText = "Batch Rename".localized
         alert.informativeText = "Enter a base name. PulseFiles will preview every destination before changing files.".localized
@@ -63,7 +55,7 @@ final class ArchiveAndRenameWorkflowCoordinator {
                         await fileOperations.batchRename(plan, progressHandler: progress)
                     }
                 }
-            } catch { presenter.presentWorkflowError(message: "Could Not Plan Batch Rename".localized, detail: error.localizedDescription) }
+            } catch { presenter.workflowFailed(message: "Could Not Plan Batch Rename".localized, detail: error.localizedDescription) }
         }
     }
 

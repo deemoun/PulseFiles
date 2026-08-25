@@ -72,7 +72,7 @@ struct RenamePaneRefreshPlan {
     }
 }
 
-final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflowPresenting, WorkflowPresentationCallbacks, MainCommandHandling, FileOperationPresenting {
+final class MainWindowViewController: NSViewController, WorkflowWindowProviding, WorkflowAlertPresenting, WorkflowOperationExecuting, WorkflowConflictResolving, MainCommandHandling, FileOperationPresenting {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220
         static let maxWidth: CGFloat = 340
@@ -103,7 +103,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
     private lazy var rightStartupResolution = settings.startupDirectoryResolution(for: .right)
 
-    private lazy var leftPane = FilePaneViewController(
+    lazy var leftPane = FilePaneViewController(
         paneID: .left,
         viewModel: FilePaneViewModel(
             initialDirectory: leftStartupResolution.directory,
@@ -120,7 +120,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         authorizedFolderSelection: authorizedFolderSelection,
         liquidGlassStyle: liquidGlassStyle
     )
-    private lazy var rightPane = FilePaneViewController(
+    lazy var rightPane = FilePaneViewController(
         paneID: .right,
         viewModel: FilePaneViewModel(
             initialDirectory: rightStartupResolution.directory,
@@ -191,7 +191,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     private let contentSplitView = NSSplitView()
     private let paneSplitView = MinimalDividerSplitView()
     private let mainStack = NSView()
-    private weak var toolbarSearchField: NSSearchField?
+    weak var toolbarSearchField: NSSearchField?
     private weak var sidebarToolbarItem: NSToolbarItem?
     private var patternSelectionPanelController: PatternSelectionPanelController?
     private var quickLocationsPopover: NSPopover?
@@ -244,7 +244,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         )
     }
 
-    private var activePaneID: PaneID = .left {
+    var activePaneID: PaneID = .left {
         didSet {
             guard oldValue != activePaneID else { return }
             updateActivePane()
@@ -462,7 +462,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         commandBar.onAction = { [weak self] action in self?.performCommand(MainCommand(commandBarAction: action), entrySurface: .commandBar) }
     }
 
-    private func targetPane(useInactive: Bool = false) -> FilePaneViewController {
+    func targetPane(useInactive: Bool = false) -> FilePaneViewController {
         let paneID = useInactive ? activePaneID.opposite : activePaneID
         return paneID == .left ? leftPane : rightPane
     }
@@ -1276,8 +1276,7 @@ extension MainWindowViewController {
         if showWarning {
             showFirstUseTerminalWarningIfNeeded()
         }
-        terminalLayoutCoordinator.install(terminal.view, in: contentSplitView, heightConstraint: &terminalHeightConstraint)
-        terminal.startSessionIfAllowed()
+        terminalLayoutCoordinator.install(terminal, in: contentSplitView, heightConstraint: &terminalHeightConstraint)
     }
 
     private func showTerminalDisabledAlert() {
@@ -1321,8 +1320,7 @@ extension MainWindowViewController {
     private func removeTerminalPanel() {
         guard isTerminalInstalled else { return }
         DiagnosticLogger.log(.info, category: "Terminal", "Removing terminal panel")
-        terminal.resetSession()
-        terminalLayoutCoordinator.remove(terminal.view, from: contentSplitView, heightConstraint: terminalHeightConstraint)
+        terminalLayoutCoordinator.remove(terminal, from: contentSplitView, heightConstraint: terminalHeightConstraint)
     }
 
     private func toggleSidebar() {
@@ -1346,8 +1344,7 @@ extension MainWindowViewController {
 
     private func applySidebarSplitPosition() {
         guard isSidebarInstalled, rootSplitView.arrangedSubviews.count > 1 else { return }
-        let width = clampedSidebarWidth(CGFloat(settings.sidebarWidth))
-        rootSplitView.setPosition(max(SidebarMetrics.contentMinWidth, rootSplitView.bounds.width - width), ofDividerAt: 0)
+        sidebarLayoutCoordinator.applyPersistedWidth(settings.sidebarWidth, sidebarView: sidebar.view, in: rootSplitView)
     }
 
     private func installSidebarView() {
@@ -1361,12 +1358,12 @@ extension MainWindowViewController {
     }
 
     private func persistSidebarWidthFromSplitPosition() {
-        guard isSidebarInstalled, rootSplitView.arrangedSubviews.count > 1, rootSplitView.bounds.width > 0 else { return }
-        settings.sidebarWidth = Double(clampedSidebarWidth(sidebar.view.frame.width))
+        guard let width = sidebarLayoutCoordinator.persistedWidth(sidebarView: sidebar.view, in: rootSplitView) else { return }
+        settings.sidebarWidth = width
     }
 
     private func clampedSidebarWidth(_ width: CGFloat) -> CGFloat {
-        min(max(width, SidebarMetrics.minWidth), SidebarMetrics.maxWidth)
+        sidebarLayoutCoordinator.clampedWidth(width)
     }
 
     private func updateSidebarToolbarItem() {
@@ -1974,7 +1971,7 @@ extension MainWindowViewController {
         }
     }
 
-    private func pane(for paneID: PaneID) -> FilePaneViewController {
+    func pane(for paneID: PaneID) -> FilePaneViewController {
         paneID == .left ? leftPane : rightPane
     }
 
@@ -2049,52 +2046,7 @@ extension MainWindowViewController {
     }
 }
 
-#if DEBUG
-/// Narrow, debug-only seam used by the deterministic AppKit UI harness.
-/// It keeps the harness on the same controller routing used by menu and
-/// keyboard actions without exposing mutable production UI state in releases.
-extension MainWindowViewController {
-    struct UIHarnessState: Equatable {
-        let activePaneID: PaneID
-        let leftDirectory: URL
-        let rightDirectory: URL
-        let leftSearchQuery: String
-        let rightSearchQuery: String
-        let leftFocusedURL: URL?
-        let rightFocusedURL: URL?
-        let leftMarkedURLs: [URL]
-        let rightMarkedURLs: [URL]
-    }
 
-    var uiHarnessState: UIHarnessState {
-        UIHarnessState(
-            activePaneID: activePaneID,
-            leftDirectory: leftPane.currentDirectory,
-            rightDirectory: rightPane.currentDirectory,
-            leftSearchQuery: leftPane.viewModel.searchQuery,
-            rightSearchQuery: rightPane.viewModel.searchQuery,
-            leftFocusedURL: leftPane.viewModel.focusedURL,
-            rightFocusedURL: rightPane.viewModel.focusedURL,
-            leftMarkedURLs: leftPane.selectedItems.map(\.url),
-            rightMarkedURLs: rightPane.selectedItems.map(\.url)
-        )
-    }
-
-    func uiHarnessNavigate(_ paneID: PaneID, to directory: URL) {
-        activePaneID = paneID
-        targetPane().navigate(to: directory)
-    }
-
-    func uiHarnessSetSearchQuery(_ query: String) {
-        targetPane().setSearchQuery(query)
-        toolbarSearchField?.stringValue = query
-    }
-
-    func uiHarnessPane(_ paneID: PaneID) -> FilePaneViewController {
-        pane(for: paneID)
-    }
-}
-#endif
 
 extension MainWindowViewController {
     var workflowWindow: NSWindow? { view.window }
