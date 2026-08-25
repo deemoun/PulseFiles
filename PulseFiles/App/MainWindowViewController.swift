@@ -273,7 +273,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         self.fileSizeService = dependencies.fileSize
         self.readOnlyViewerService = dependencies.readOnlyViewer
         self.diagnosticsExporter = dependencies.diagnosticsExporter
-        self.terminal = TerminalViewController(terminalService: dependencies.terminalState, processFactory: { PTYTerminalProcess() }, accessPolicy: dependencies.accessPolicy, liquidGlassStyle: LiquidGlassStyle(liquidGlassEnabled: settings.liquidGlassEnabled))
+        self.terminal = TerminalViewController(terminalService: dependencies.terminalState, processFactory: dependencies.terminalProcessFactory, accessPolicy: dependencies.accessPolicy, liquidGlassStyle: LiquidGlassStyle(liquidGlassEnabled: settings.liquidGlassEnabled))
         self.terminalPresentationCoordinator = TerminalPresentationCoordinator(service: dependencies.terminalState)
         self.stagingCleanupFactory = dependencies.stagingCleanup
         self.scratchCleanupFactory = dependencies.scratchCleanup
@@ -282,6 +282,10 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    func startTerminalSessionForCompositionTesting() {
+        terminal.startSessionIfAllowed()
     }
 
     override func loadView() {

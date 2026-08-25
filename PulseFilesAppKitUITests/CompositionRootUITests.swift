@@ -35,6 +35,32 @@ final class CompositionRootUITests: XCTestCase {
         XCTAssertTrue(composition.terminalPolicy === policy)
         XCTAssertTrue(composition.folderAccessGrants === grants)
     }
+
+    func testStartingTerminalSessionUsesInjectedProcessFactory() {
+        let policy = SandboxFileAccessPolicy.current
+        let process = CompositionTerminalProcessSpy()
+        var factoryInvocationCount = 0
+        let dependencies = MainWindowDependencies.production(accessPolicy: policy)
+            .replacingTerminalProcessFactory {
+                factoryInvocationCount += 1
+                return process
+            }
+        let settings = SettingsService(accessPolicy: policy)
+        settings.experimentalTerminalEnabled = true
+        settings.hasAcknowledgedTerminalWarning = true
+        let controller = MainWindowViewController(
+            settings: settings,
+            dependencies: dependencies,
+            workflowDependencies: .production(from: dependencies, accessPolicy: policy),
+            sandboxRootEnsurer: {}
+        )
+
+        controller.loadViewIfNeeded()
+        controller.startTerminalSessionForCompositionTesting()
+
+        XCTAssertEqual(factoryInvocationCount, 1)
+        XCTAssertTrue(process.didRun)
+    }
 }
 
 private final class CompositionDirectorySizingSpy: DirectorySizing, @unchecked Sendable {
@@ -63,4 +89,18 @@ private final class CompositionGrantSpy: FolderAccessGrantProviding {
     func grantAccess(to directory: URL) throws -> FolderAccessGrant {
         FolderAccessGrant(url: directory, bookmarkData: Data())
     }
+}
+
+private final class CompositionTerminalProcessSpy: TerminalProcess {
+    var isRunning = true
+    var terminationStatus: Int32 = 0
+    var outputHandler: ((Data) -> Void)?
+    var terminationHandler: ((TerminalProcess) -> Void)?
+    private(set) var didRun = false
+
+    func configure(executableURL: URL, arguments: [String], environment: [String: String], currentDirectoryURL: URL) {}
+    func run() throws { didRun = true }
+    func write(_ data: Data) {}
+    func resize(columns: Int, rows: Int) {}
+    func terminate() { isRunning = false }
 }

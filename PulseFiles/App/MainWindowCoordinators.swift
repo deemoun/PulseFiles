@@ -106,6 +106,7 @@ struct MainWindowDependencies {
     let readOnlyViewer: any ViewerContentLoading
     let diagnosticsExporter: any DiagnosticsExporting
     let terminalState: any TerminalStateProviding
+    let terminalProcessFactory: () -> TerminalProcess
     let thumbnailLoader: any ThumbnailLoading
     let standardFolderAccess: any StandardFolderAccessProviding
     let symbolicLinkResolver: SymbolicLinkResolutionService
@@ -139,6 +140,7 @@ struct MainWindowDependencies {
             readOnlyViewer: ReadOnlyViewerService(accessPolicy: accessPolicy),
             diagnosticsExporter: DiagnosticsExportService(),
             terminalState: TerminalService(),
+            terminalProcessFactory: { PTYTerminalProcess() },
             thumbnailLoader: ThumbnailLoadingService(),
             standardFolderAccess: StandardFolderAccessService(accessPolicy: accessPolicy),
             symbolicLinkResolver: SymbolicLinkResolutionService(),
@@ -177,6 +179,35 @@ struct MainWindowDependencies {
             readOnlyViewer: readOnlyViewer,
             diagnosticsExporter: diagnosticsExporter,
             terminalState: terminalState,
+            terminalProcessFactory: terminalProcessFactory,
+            thumbnailLoader: thumbnailLoader,
+            standardFolderAccess: standardFolderAccess,
+            symbolicLinkResolver: symbolicLinkResolver,
+            stagingCleanup: stagingCleanup,
+            scratchCleanup: scratchCleanup
+        )
+    }
+
+    func replacingTerminalProcessFactory(_ factory: @escaping () -> TerminalProcess) -> Self {
+        Self(
+            accessPolicy: accessPolicy,
+            paneFileSystem: paneFileSystem,
+            folderAccessGrants: folderAccessGrants,
+            authorizedFolderSelection: authorizedFolderSelection,
+            fileOperations: fileOperations,
+            fileSystemProbe: fileSystemProbe,
+            descendantSearch: descendantSearch,
+            recentLocations: recentLocations,
+            bookmarks: bookmarks,
+            volumeDiscovery: volumeDiscovery,
+            directorySizing: directorySizing,
+            clipboard: clipboard,
+            applicationOpener: applicationOpener,
+            fileSize: fileSize,
+            readOnlyViewer: readOnlyViewer,
+            diagnosticsExporter: diagnosticsExporter,
+            terminalState: terminalState,
+            terminalProcessFactory: factory,
             thumbnailLoader: thumbnailLoader,
             standardFolderAccess: standardFolderAccess,
             symbolicLinkResolver: symbolicLinkResolver,
