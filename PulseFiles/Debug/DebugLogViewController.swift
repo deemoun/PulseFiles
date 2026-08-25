@@ -29,9 +29,11 @@ final class DebugLogViewController: NSViewController {
     private var filteredEntries: [DiagnosticLogEntry] = []
     private var selectedLevel: DiagnosticLogLevel?
     private var selectedCategory: String?
+    private let liquidGlassStyle: LiquidGlassStyle
 
-    init(logService: DiagnosticLogService? = nil) {
+    init(logService: DiagnosticLogService? = nil, liquidGlassStyle: LiquidGlassStyle) {
         self.logService = logService ?? .shared
+        self.liquidGlassStyle = liquidGlassStyle
         super.init(nibName: nil, bundle: nil)
         preferredContentSize = NSSize(width: 900, height: 520)
     }
@@ -43,7 +45,7 @@ final class DebugLogViewController: NSViewController {
     override func loadView() {
         view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = LiquidGlassStyle.windowBackground.cgColor
+        view.layer?.backgroundColor = liquidGlassStyle.windowBackground.cgColor
     }
 
     override func viewDidLoad() {

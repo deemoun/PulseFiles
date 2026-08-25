@@ -114,7 +114,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
                 appearance: view.effectiveAppearance
             )
         } else {
-            text.textColor = LiquidGlassStyle.label
+            text.textColor = NSColor.labelColor
         }
         text.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text)
@@ -367,7 +367,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
     private func parentCell(for identifier: String) -> NSView {
         let cell = NSTableCellView()
         let text = NSTextField(labelWithString: identifier == "name" ? ".." : "--")
-        text.textColor = LiquidGlassStyle.secondaryLabel
+        text.textColor = NSColor.secondaryLabelColor
         text.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text)
         if identifier == "name" {

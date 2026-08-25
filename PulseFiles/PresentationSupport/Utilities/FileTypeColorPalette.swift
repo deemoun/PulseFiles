@@ -198,7 +198,7 @@ struct FileColorScheme {
     }
 
     func color(for category: FileVisualCategory) -> NSColor {
-        colors[category] ?? Self.default.colors[category] ?? LiquidGlassStyle.label
+        colors[category] ?? Self.default.colors[category] ?? NSColor.labelColor
     }
 }
 
@@ -213,28 +213,28 @@ extension FileColorScheme {
         .image: NSColor.systemTeal,
         .audio: NSColor.systemPink,
         .video: NSColor.systemIndigo,
-        .document: LiquidGlassStyle.label,
-        .sourceCode: LiquidGlassStyle.label,
-        .data: LiquidGlassStyle.label,
+        .document: NSColor.labelColor,
+        .sourceCode: NSColor.labelColor,
+        .data: NSColor.labelColor,
         .diskImage: NSColor.systemBrown,
-        .fallback: LiquidGlassStyle.label
+        .fallback: NSColor.labelColor
     ])
 
     static let minimal = FileColorScheme(colors: [
-        .folder: LiquidGlassStyle.label,
-        .symbolicLink: LiquidGlassStyle.label,
-        .package: LiquidGlassStyle.label,
+        .folder: NSColor.labelColor,
+        .symbolicLink: NSColor.labelColor,
+        .package: NSColor.labelColor,
         .hidden: NSColor.secondaryLabelColor,
-        .executable: LiquidGlassStyle.label,
-        .archive: LiquidGlassStyle.label,
-        .image: LiquidGlassStyle.label,
-        .audio: LiquidGlassStyle.label,
-        .video: LiquidGlassStyle.label,
-        .document: LiquidGlassStyle.label,
-        .sourceCode: LiquidGlassStyle.label,
-        .data: LiquidGlassStyle.label,
-        .diskImage: LiquidGlassStyle.label,
-        .fallback: LiquidGlassStyle.label
+        .executable: NSColor.labelColor,
+        .archive: NSColor.labelColor,
+        .image: NSColor.labelColor,
+        .audio: NSColor.labelColor,
+        .video: NSColor.labelColor,
+        .document: NSColor.labelColor,
+        .sourceCode: NSColor.labelColor,
+        .data: NSColor.labelColor,
+        .diskImage: NSColor.labelColor,
+        .fallback: NSColor.labelColor
     ])
 
     static let highContrast = FileColorScheme(colors: [

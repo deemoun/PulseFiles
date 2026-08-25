@@ -35,7 +35,7 @@ final class MainWindowController: NSWindowController {
             display: false
         )
         window.minSize = NSSize(width: 920, height: 560)
-        window.backgroundColor = LiquidGlassStyle.windowBackground
+        window.backgroundColor = LiquidGlassStyle(liquidGlassEnabled: settings.liquidGlassEnabled).windowBackground
         window.isMovableByWindowBackground = true
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden

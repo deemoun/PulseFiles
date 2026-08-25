@@ -53,6 +53,7 @@ final class FilePaneViewController: NSViewController {
     let thumbnailLoader: any ThumbnailLoading
     let thumbnailRequests = ThumbnailRequestCoordinator()
     private(set) var presentationMode: PanePresentationMode
+    private var liquidGlassStyle: LiquidGlassStyle
 
     init(
         paneID: PaneID,
@@ -60,7 +61,8 @@ final class FilePaneViewController: NSViewController {
         presentationMode: PanePresentationMode = .list,
         thumbnailLoader: any ThumbnailLoading,
         openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil,
-        authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
+        authorizedFolderSelection: AuthorizedFolderSelectionCoordinator,
+        liquidGlassStyle: LiquidGlassStyle
     ) {
         self.paneID = paneID
         self.viewModel = viewModel
@@ -68,6 +70,7 @@ final class FilePaneViewController: NSViewController {
         self.thumbnailLoader = thumbnailLoader
         self.contextMenuProvider = FilePaneContextMenuProvider(openWithApplicationResolver: openWithApplicationResolver ?? OpenWithMenuApplicationResolver())
         self.authorizedFolderSelection = authorizedFolderSelection
+        self.liquidGlassStyle = liquidGlassStyle
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -149,7 +152,7 @@ final class FilePaneViewController: NSViewController {
         paneView.onMouseDown = { [weak self] in self.map { $0.navigationDelegate?.filePane($0, didEmit: .activate) } }
         view = paneView
         view.setAccessibilityIdentifier(AccessibilityIdentifiers.Pane.container(for: paneID))
-        LiquidGlassStyle.applyPanelChrome(to: view)
+        liquidGlassStyle.applyPanelChrome(to: view)
     }
 
     override func viewDidLoad() {
@@ -353,8 +356,8 @@ final class FilePaneViewController: NSViewController {
     func updatePaneChrome() {
         activeStripe.layer?.backgroundColor = isPaneActive ? NSColor.systemBlue.cgColor : NSColor.clear.cgColor
         view.layer?.borderWidth = 1
-        view.layer?.borderColor = isPaneActive ? LiquidGlassStyle.activeStroke.cgColor : LiquidGlassStyle.panelStroke.cgColor
-        view.layer?.backgroundColor = isPaneActive ? LiquidGlassStyle.activeFill.cgColor : LiquidGlassStyle.panelFill.cgColor
+        view.layer?.borderColor = isPaneActive ? liquidGlassStyle.activeStroke.cgColor : liquidGlassStyle.panelStroke.cgColor
+        view.layer?.backgroundColor = isPaneActive ? liquidGlassStyle.activeFill.cgColor : liquidGlassStyle.panelFill.cgColor
     }
 
     func focusDefaultRowForActivation() {
@@ -443,7 +446,7 @@ final class FilePaneViewController: NSViewController {
     }
 
     func buildHeader() {
-        header.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+        header.material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         header.blendingMode = .withinWindow
         header.state = .active
         header.wantsLayer = true
@@ -453,7 +456,7 @@ final class FilePaneViewController: NSViewController {
         directoryIcon.setContentHuggingPriority(.required, for: .horizontal)
 
         hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Toggle Hidden Files".localized)
-        LiquidGlassStyle.applyButtonChrome(to: hiddenButton)
+        liquidGlassStyle.applyButtonChrome(to: hiddenButton)
         hiddenButton.target = self
         hiddenButton.action = #selector(toggleHidden)
         hiddenButton.toolTip = "Toggle hidden files".localized
@@ -654,10 +657,11 @@ final class FilePaneViewController: NSViewController {
         tableView.scrollRowToVisible(row)
     }
 
-    func refreshAppearance() {
-        header.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
-        LiquidGlassStyle.applyButtonChrome(to: hiddenButton)
-        LiquidGlassStyle.applyPanelChrome(to: view)
+    func refreshAppearance(style: LiquidGlassStyle) {
+        liquidGlassStyle = style
+        header.material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+        liquidGlassStyle.applyButtonChrome(to: hiddenButton)
+        liquidGlassStyle.applyPanelChrome(to: view)
         updatePaneChrome()
         requestTableReload()
     }

@@ -80,6 +80,9 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     }
 
     private let settings: SettingsService
+    private var liquidGlassStyle: LiquidGlassStyle {
+        LiquidGlassStyle(liquidGlassEnabled: settings.liquidGlassEnabled)
+    }
     private let accessPolicy: SandboxFileAccessPolicy
     private let authorizedFolderSelection: AuthorizedFolderSelectionCoordinator
     private let sandboxRootEnsurer: () -> Void
@@ -114,7 +117,8 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         ),
         presentationMode: settings.presentationMode(for: .left),
         thumbnailLoader: thumbnailLoader,
-        authorizedFolderSelection: authorizedFolderSelection
+        authorizedFolderSelection: authorizedFolderSelection,
+        liquidGlassStyle: liquidGlassStyle
     )
     private lazy var rightPane = FilePaneViewController(
         paneID: .right,
@@ -130,7 +134,8 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         ),
         presentationMode: settings.presentationMode(for: .right),
         thumbnailLoader: thumbnailLoader,
-        authorizedFolderSelection: authorizedFolderSelection
+        authorizedFolderSelection: authorizedFolderSelection,
+        liquidGlassStyle: liquidGlassStyle
     )
     private lazy var sidebar = SidebarViewController(
         recentLocations: recentLocations,
@@ -138,10 +143,11 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         settings: settings,
         accessPolicy: accessPolicy,
         volumeDiscovery: volumeDiscovery,
-        directorySizing: directorySizing
+        directorySizing: directorySizing,
+        liquidGlassStyle: liquidGlassStyle
     )
     private let terminal: TerminalViewController
-    private let commandBar = CommandBarView()
+    private lazy var commandBar = CommandBarView(style: liquidGlassStyle)
     private lazy var fileOperationProgressWindowController = FileOperationProgressWindowController { [weak self] in
         self?.cancelActiveFileOperation()
     } onStopWaiting: { [weak self] in
@@ -270,7 +276,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
         self.fileSizeService = dependencies.fileSize
         self.readOnlyViewerService = dependencies.readOnlyViewer
         self.diagnosticsExporter = dependencies.diagnosticsExporter
-        self.terminal = TerminalViewController(terminalService: dependencies.terminalState, accessPolicy: dependencies.accessPolicy)
+        self.terminal = TerminalViewController(terminalService: dependencies.terminalState, accessPolicy: dependencies.accessPolicy, liquidGlassStyle: LiquidGlassStyle(liquidGlassEnabled: settings.liquidGlassEnabled))
         self.terminalPresentationCoordinator = TerminalPresentationCoordinator(service: dependencies.terminalState)
         self.stagingCleanupFactory = dependencies.stagingCleanup
         self.scratchCleanupFactory = dependencies.scratchCleanup
@@ -284,7 +290,7 @@ final class MainWindowViewController: NSViewController, ArchiveAndRenameWorkflow
     override func loadView() {
         view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = LiquidGlassStyle.windowBackground.cgColor
+        view.layer?.backgroundColor = liquidGlassStyle.windowBackground.cgColor
     }
 
     override func viewDidLoad() {
@@ -1122,15 +1128,16 @@ extension MainWindowViewController {
 
 
     private func presentDebugLogs(_ sender: Any?) {
-        workflows.auxiliaryPanels.showDebugLogs(DebugLogViewController(), sender: sender)
+        workflows.auxiliaryPanels.showDebugLogs(DebugLogViewController(liquidGlassStyle: liquidGlassStyle), sender: sender)
     }
 
 
     private func applySettingsChanges() {
         DiagnosticLogger.log(.info, category: "MainWindow", "Applying settings changes: terminalEnabled=\(settings.experimentalTerminalEnabled); terminalDefaultVisible=\(settings.defaultTerminalVisible); sidebarDefaultVisible=\(settings.defaultSidebarVisible); singlePane=\(settings.defaultSinglePaneMode)")
         FileTypeColorPalette.activeScheme = settings.fileColorScheme
-        view.layer?.backgroundColor = LiquidGlassStyle.windowBackground.cgColor
-        view.window?.backgroundColor = LiquidGlassStyle.windowBackground
+        let style = liquidGlassStyle
+        view.layer?.backgroundColor = style.windowBackground.cgColor
+        view.window?.backgroundColor = style.windowBackground
         setSidebarVisible(settings.defaultSidebarVisible)
         let shouldShowTerminal = settings.experimentalTerminalEnabled && settings.defaultTerminalVisible
         if !settings.experimentalTerminalEnabled {
@@ -1162,13 +1169,13 @@ extension MainWindowViewController {
                 rightPane.navigate(to: accessPolicy.validatedDirectory(rightPane.currentDirectory))
             }
         }
-        sidebar.refresh()
-        commandBar.refreshAppearance()
-        terminal.refreshAppearance()
+        sidebar.refreshAppearance(style: style)
+        commandBar.refreshAppearance(style: style)
+        terminal.refreshAppearance(style: style)
         view.layoutSubtreeIfNeeded()
         applySidebarSplitPosition()
-        leftPane.refreshAppearance()
-        rightPane.refreshAppearance()
+        leftPane.refreshAppearance(style: style)
+        rightPane.refreshAppearance(style: style)
     }
 
     @objc private func toolbarViewOptions(_ sender: Any?) {
@@ -2374,7 +2381,7 @@ private final class MinimalDividerSplitView: NSSplitView {
             width: lineWidth,
             height: max(0, rect.height - 16)
         )
-        LiquidGlassStyle.subtleStroke.setFill()
+        liquidGlassStyle.subtleStroke.setFill()
         lineRect.fill()
     }
 }

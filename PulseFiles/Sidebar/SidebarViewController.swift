@@ -54,6 +54,7 @@ final class SidebarViewController: NSViewController {
     private let inspectorModel = SelectionInspectorViewModel()
     private let navigationModel: SidebarNavigationModel
     private var representedSelectionID = 0
+    private var liquidGlassStyle: LiquidGlassStyle
 
     init(
         recentLocations: any RecentLocationRecording,
@@ -62,6 +63,7 @@ final class SidebarViewController: NSViewController {
         accessPolicy: SandboxFileAccessPolicy,
         volumeDiscovery: any VolumeDiscovering,
         directorySizing: any DirectorySizing,
+        liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle(liquidGlassEnabled: false),
         metadataReader: @escaping MetadataReader = SidebarViewController.gpsLocation
     ) {
         self.recentLocations = recentLocations
@@ -71,6 +73,7 @@ final class SidebarViewController: NSViewController {
         self.navigationModel = SidebarNavigationModel(volumeDiscovery: volumeDiscovery)
         self.directorySizing = directorySizing
         self.metadataReader = metadataReader
+        self.liquidGlassStyle = liquidGlassStyle
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -78,10 +81,10 @@ final class SidebarViewController: NSViewController {
 
     override func loadView() {
         view = NSVisualEffectView()
-        (view as? NSVisualEffectView)?.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+        (view as? NSVisualEffectView)?.material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         (view as? NSVisualEffectView)?.blendingMode = .withinWindow
         view.setAccessibilityIdentifier(AccessibilityIdentifiers.Sidebar.panel)
-        LiquidGlassStyle.applyPanelChrome(to: view)
+        liquidGlassStyle.applyPanelChrome(to: view)
     }
 
     override func viewDidLoad() {
@@ -94,9 +97,14 @@ final class SidebarViewController: NSViewController {
     }
 
     func refresh() {
-        (view as? NSVisualEffectView)?.material = LiquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
-        LiquidGlassStyle.applyPanelChrome(to: view)
+        (view as? NSVisualEffectView)?.material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
+        liquidGlassStyle.applyPanelChrome(to: view)
         rebuild()
+    }
+
+    func refreshAppearance(style: LiquidGlassStyle) {
+        liquidGlassStyle = style
+        refresh()
     }
 
     func showSelection(_ items: [FileItem]) {
@@ -437,7 +445,7 @@ final class SidebarViewController: NSViewController {
     private func addSection(_ title: String) {
         let label = NSTextField(labelWithString: title.uppercased())
         label.font = .systemFont(ofSize: 10, weight: .bold)
-        label.textColor = LiquidGlassStyle.secondaryLabel
+        label.textColor = liquidGlassStyle.secondaryLabel
         label.alignment = .left
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.required, for: .vertical)
@@ -463,7 +471,7 @@ final class SidebarViewController: NSViewController {
 
         let label = NSTextField(wrappingLabelWithString: "Sandbox mode is on. File access is limited to the test workspace.")
         label.font = .systemFont(ofSize: 11, weight: .medium)
-        label.textColor = LiquidGlassStyle.secondaryLabel
+        label.textColor = liquidGlassStyle.secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
 
         container.addSubview(imageView)
@@ -489,7 +497,7 @@ final class SidebarViewController: NSViewController {
         container.layer?.cornerRadius = LiquidGlassStyle.cornerRadius
         container.layer?.cornerCurve = .continuous
         container.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.035).cgColor
-        container.layer?.borderColor = LiquidGlassStyle.subtleStroke.cgColor
+        container.layer?.borderColor = liquidGlassStyle.subtleStroke.cgColor
         container.layer?.borderWidth = 1
         container.translatesAutoresizingMaskIntoConstraints = false
         container.setContentHuggingPriority(.required, for: .vertical)
@@ -501,12 +509,12 @@ final class SidebarViewController: NSViewController {
 
         let titleLabel = NSTextField(labelWithString: presentation.title)
         titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        titleLabel.textColor = LiquidGlassStyle.label
+        titleLabel.textColor = liquidGlassStyle.label
         titleLabel.lineBreakMode = .byTruncatingTail
 
         let subtitleLabel = NSTextField(labelWithString: presentation.subtitle)
         subtitleLabel.font = .systemFont(ofSize: 11)
-        subtitleLabel.textColor = LiquidGlassStyle.secondaryLabel
+        subtitleLabel.textColor = liquidGlassStyle.secondaryLabel
         subtitleLabel.lineBreakMode = .byTruncatingMiddle
 
         let textStack = NSStackView(views: [titleLabel, subtitleLabel])
@@ -602,7 +610,7 @@ final class SidebarViewController: NSViewController {
     private func addEmptyState(_ message: String) {
         let label = NSTextField(wrappingLabelWithString: message)
         label.font = .systemFont(ofSize: 12, weight: .medium)
-        label.textColor = LiquidGlassStyle.secondaryLabel
+        label.textColor = liquidGlassStyle.secondaryLabel
         label.alignment = .center
         stack.addArrangedSubview(label)
     }
