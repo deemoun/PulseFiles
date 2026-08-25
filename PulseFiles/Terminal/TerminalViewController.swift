@@ -1,5 +1,4 @@
 import AppKit
-import Darwin
 
 /// An opt-in terminal backed by one interactive shell, rather than a new shell
 /// for every Return key press. The PTY is important: programs see a terminal,
@@ -132,31 +131,6 @@ final class TerminalViewController: NSViewController {
         while exceeds(Self.truncationNotice + value), !value.isEmpty { value.removeFirst() }
         return Self.truncationNotice + value
     }
-}
-
-protocol TerminalProcess: AnyObject {
-    var isRunning: Bool { get }; var terminationStatus: Int32 { get }; var outputHandler: ((Data) -> Void)? { get set }; var terminationHandler: ((TerminalProcess) -> Void)? { get set }
-    func configure(executableURL: URL, arguments: [String], environment: [String: String], currentDirectoryURL: URL)
-    func run() throws; func write(_ data: Data); func resize(columns: Int, rows: Int); func terminate()
-}
-
-private final class PTYTerminalProcess: TerminalProcess {
-    private let process = Process(); private var master: FileHandle?; private var masterFD: Int32 = -1
-    var outputHandler: ((Data) -> Void)?; var terminationHandler: ((TerminalProcess) -> Void)?
-    var isRunning: Bool { process.isRunning }; var terminationStatus: Int32 { process.terminationStatus }
-    func configure(executableURL: URL, arguments: [String], environment: [String: String], currentDirectoryURL: URL) { process.executableURL = executableURL; process.arguments = arguments; process.environment = environment; process.currentDirectoryURL = currentDirectoryURL }
-    func run() throws {
-        var masterFD: Int32 = -1, slaveFD: Int32 = -1
-        guard openpty(&masterFD, &slaveFD, nil, nil, nil) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        self.masterFD = masterFD; let master = FileHandle(fileDescriptor: masterFD, closeOnDealloc: true); self.master = master
-        process.standardInput = FileHandle(fileDescriptor: dup(slaveFD), closeOnDealloc: true); process.standardOutput = FileHandle(fileDescriptor: dup(slaveFD), closeOnDealloc: true); process.standardError = FileHandle(fileDescriptor: slaveFD, closeOnDealloc: true)
-        master.readabilityHandler = { [weak self] handle in let data = handle.availableData; if !data.isEmpty { self?.outputHandler?(data) } }
-        process.terminationHandler = { [weak self] _ in guard let self else { return }; self.master?.readabilityHandler = nil; self.master = nil; self.masterFD = -1; self.terminationHandler?(self) }
-        try process.run()
-    }
-    func write(_ data: Data) { try? master?.write(contentsOf: data) }
-    func resize(columns: Int, rows: Int) { guard masterFD >= 0 else { return }; var size = winsize(ws_row: UInt16(clamping: rows), ws_col: UInt16(clamping: columns), ws_xpixel: 0, ws_ypixel: 0); _ = ioctl(masterFD, TIOCSWINSZ, &size) }
-    func terminate() { process.terminate() }
 }
 
 private enum TerminalControlSequenceRenderer {

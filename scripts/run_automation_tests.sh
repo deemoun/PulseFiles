@@ -82,6 +82,9 @@ export PULSEFILES_AUTOMATION_PREFERENCES_HOME="$PREFERENCES_HOME"
 export PULSEFILES_AUTOMATION_SANDBOX_ROOT="$SANDBOX_ROOT"
 export PULSEFILES_AUTOMATION_FIXTURE_ROOT="$FIXTURE_ROOT"
 
+echo "==> Running architecture boundary regression tests"
+scripts/test_validate_architecture.sh
+
 if [[ "$(uname -s)" == Darwin ]]; then
   # Make the DEBUG-only sandbox restriction explicit for both in-process UI
   # tests and the separately launched DEBUG application.
