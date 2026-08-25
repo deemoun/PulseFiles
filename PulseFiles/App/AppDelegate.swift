@@ -7,9 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let launchArguments: [String]
     private let userDefaults: UserDefaults
+    private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
     private let fileManager: FileManager
-    private let mainWindowControllerFactory: () -> MainWindowController
+    private let mainWindowControllerFactory: (SettingsService) -> MainWindowController
 
     private var mainWindowController: MainWindowController?
     private var aboutWindowController: NSWindowController?
@@ -20,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     static func makeProductionMainWindowController(
-        settings: SettingsService = SettingsService(),
+        settings: SettingsService,
         accessPolicy: SandboxFileAccessPolicy = .current,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) -> MainWindowController {
@@ -36,16 +37,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     init(
         launchArguments: [String] = ProcessInfo.processInfo.arguments,
         userDefaults: UserDefaults = .standard,
+        settings: SettingsService? = nil,
         accessPolicy: SandboxFileAccessPolicy = .current,
         fileManager: FileManager = .default,
-        mainWindowControllerFactory: (() -> MainWindowController)? = nil
+        mainWindowControllerFactory: ((SettingsService) -> MainWindowController)? = nil
     ) {
+        let settings = settings ?? SettingsService(defaults: userDefaults, accessPolicy: accessPolicy)
         self.launchArguments = launchArguments
         self.userDefaults = userDefaults
+        self.settings = settings
         self.accessPolicy = accessPolicy
         self.fileManager = fileManager
-        self.mainWindowControllerFactory = mainWindowControllerFactory ?? {
-            Self.makeProductionMainWindowController(accessPolicy: accessPolicy)
+        self.mainWindowControllerFactory = mainWindowControllerFactory ?? { settings in
+            Self.makeProductionMainWindowController(settings: settings, accessPolicy: accessPolicy)
         }
         super.init()
     }
@@ -54,7 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task.detached(priority: .utility) {
             _ = await StagingCleanupService().cleanupOnStartup()
         }
-        let settings = SettingsService()
         LocalizationConfiguration.configure(language: settings.appLanguage)
         FileTypeColorPalette.activeScheme = settings.fileColorScheme
         if let icon = appIcon() {
@@ -95,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let existing = mainWindowController, existing.window != nil {
             controller = existing
         } else {
-            controller = mainWindowControllerFactory()
+            controller = mainWindowControllerFactory(settings)
             mainWindowController = controller
         }
         controller.showWindow(nil)
