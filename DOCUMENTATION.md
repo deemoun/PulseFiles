@@ -128,9 +128,9 @@ performCommand path. Keep cross-pane behavior here, not in a pane controller.
 | PulseFiles/Services | Filesystem, operations, policy, persistence, monitoring and diagnostics. |
 | PulseFiles/Utilities | Foundation-only formatting, validation, flags, localization, and path helpers. |
 | PulseFiles/PresentationSupport | AppKit-only icons, colors, shortcuts, pasteboard/macOS adapters, and presentation models split from lower layers. |
-| PulseFilesCoreTests | Focused utility and model tests. |
-| PulseFilesServicesTests | Filesystem, access-policy, and persistence service tests. |
-| PulseFilesTests | Cross-layer workflow and application behavior tests. |
+| PulseFilesCoreTests | AppKit-free tests for utilities and value models. |
+| PulseFilesServicesTests | Service tests for filesystem behavior, access policy, and persistence. |
+| PulseFilesTests | Application and integration tests for cross-layer workflows and composed behavior. |
 | PulseFilesAppKitUITests | In-process AppKit wiring and accessibility tests. |
 
 ## Pane browsing lifecycle
@@ -329,12 +329,23 @@ Run from the repository root:
     ./scripts/build_app.sh --release
     ./scripts/release_validation.sh
 
-Tests cover sorting, view-model navigation/cancellation, routing, operations and
-partial failure, policy/grants, settings, terminal behavior, volumes, diagnostics
-and utilities. Use existing protocol injection, fixtures and doubles; do not depend
-on a real user disk or defaults store. Build scripts use .build and write bundles
-to artifacts; never commit either. For a perceptible runnable UI change, build and
-capture a screenshot when launch is possible.
+`swift test` runs all four SwiftPM test targets: `PulseFilesCoreTests` provides
+AppKit-free utility and model coverage; `PulseFilesServicesTests` exercises
+filesystem, access-policy, and persistence services; `PulseFilesTests` covers
+application and cross-layer integration behavior; and `PulseFilesAppKitUITests`
+verifies in-process AppKit wiring and accessibility. For a focused development
+iteration, use `swift test --filter PulseFilesCoreTests`, `swift test --filter
+PulseFilesServicesTests`, `swift test --filter PulseFilesTests`, or `swift test
+--filter PulseFilesAppKitUITests` as appropriate. A filtered run does not replace
+the full `swift test` release gate.
+
+Across those scopes, tests cover sorting, view-model navigation/cancellation,
+routing, operations and partial failure, policy/grants, settings, terminal
+behavior, volumes, diagnostics, and utilities. Use existing protocol injection,
+fixtures and doubles; do not depend on a real user disk or defaults store. Build
+scripts use .build and write bundles to artifacts; never commit either. For a
+perceptible runnable UI change, build and capture a screenshot when launch is
+possible.
 
 Before finishing, confirm:
 

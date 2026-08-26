@@ -18,8 +18,11 @@ those directories afterward. For focused local AppKit work, `swift test --filter
 PulseFilesAppKitUITests` remains available on macOS, but does not provide the
 automation command's isolated configuration.
 
-The suite intentionally complements rather than replaces `PulseFilesTests`:
-service-level conflict resolution, destructive-operation safety, drag/drop
-policy, recents persistence, and terminal warning acknowledgement stay in the
-existing deterministic unit tests. The AppKit suite verifies that their
-controller entry points and visible accessibility anchors remain wired.
+The suite intentionally complements rather than replaces the AppKit-free
+`PulseFilesCoreTests`, service-focused `PulseFilesServicesTests`, and
+application/integration `PulseFilesTests` targets. Service-level conflict
+resolution, destructive-operation safety, drag/drop policy, recents persistence,
+and terminal warning acknowledgement stay in the appropriate deterministic test
+target. The AppKit suite verifies that controller entry points and visible
+accessibility anchors remain wired. Its filtered command is a focused development
+tool, not a replacement for the full `swift test` release gate.

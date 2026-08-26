@@ -125,7 +125,7 @@ Run these commands from the repository root:
 # Validate package-layer and filesystem-mutation boundaries
 ./scripts/validate_architecture.sh
 
-# Unit and in-process tests
+# All four SwiftPM test targets
 swift test
 
 # Package a local debug app at artifacts/PulseFiles.app
@@ -142,6 +142,22 @@ PULSEFILES_NOTARY_PROFILE='pulsefiles-release' \
 # Run the disposable automation entry point
 ./scripts/run_automation_tests.sh
 ```
+
+`swift test` runs the complete test suite: AppKit-free core tests
+(`PulseFilesCoreTests`), service tests (`PulseFilesServicesTests`), application and
+integration tests (`PulseFilesTests`), and in-process AppKit UI tests
+(`PulseFilesAppKitUITests`). During a focused development iteration, run the
+appropriate narrow command:
+
+```sh
+swift test --filter PulseFilesCoreTests
+swift test --filter PulseFilesServicesTests
+swift test --filter PulseFilesTests
+swift test --filter PulseFilesAppKitUITests
+```
+
+Filtered commands are development conveniences; they do not replace the full
+`swift test` release gate.
 
 On macOS hosts without Accessibility permission, use `./scripts/run_automation_tests.sh --skip-system-events` to retain Swift and in-process AppKit coverage while skipping the external System Events harness. Generated `.build/` and `artifacts/` content must not be committed. Detailed testing, packaging, and release-validation procedures live in [DOCUMENTATION.md](DOCUMENTATION.md#testing-builds-and-agent-checklist) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 

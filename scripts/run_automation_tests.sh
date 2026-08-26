@@ -91,7 +91,13 @@ if [[ "$(uname -s)" == Darwin ]]; then
   /usr/bin/defaults write com.pulsefiles.app restrictFileAccessToAppSandboxRoot -bool true
 fi
 
-echo "==> Running deterministic PulseFiles service and unit tests with disposable preferences and fixture paths"
+echo "==> Running AppKit-free PulseFiles core tests with disposable preferences and fixture paths"
+swift test -c debug --filter PulseFilesCoreTests
+
+echo "==> Running PulseFiles service tests with disposable preferences and fixture paths"
+swift test -c debug --filter PulseFilesServicesTests
+
+echo "==> Running PulseFiles application and integration tests with disposable preferences and fixture paths"
 swift test -c debug --filter PulseFilesTests
 
 if [[ "$(uname -s)" != Darwin ]]; then
