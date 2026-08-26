@@ -27,6 +27,7 @@ charge, to the Corresponding Source for the exact binary version. A moving
 Run both command-line verification and manual app-bundle verification before release:
 
 - [ ] `./scripts/validate_architecture.sh` passes on the frozen candidate SHA.
+- [ ] `./scripts/validate_release_inventory.py` confirms every SwiftPM dependency and distributable non-source asset has a complete review in `docs/release-provenance.json`; resolve any required attribution or bundled license text before continuing.
 - [ ] `swift test` passes from the repository root.
 - [ ] `./scripts/test_release_packaging.sh` passes its disposable stale-resource regression check.
 - [ ] `./scripts/build_app.sh --release` creates `artifacts/PulseFiles.app` successfully.

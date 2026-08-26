@@ -18,12 +18,13 @@ Usage: scripts/release_validation.sh [--signed-app PATH] [--ui-artifacts-dir PAT
                                      [--skip-ui-harness] [--run-debug-mutation-harness]
 
 Runs PulseFiles release validation checks:
-  1. swift test
-  2. release packaging stale-resource regression check
-  3. optional signed, notarized distributable packaging when --build is passed
-  4. signature, hardened-runtime, notarization, staple, and digest verification
-  5. non-mutating signed-app UI smoke harness (unless skipped)
-  6. optional disposable DEBUG mutation harness only when explicitly requested
+  1. dependency and distributable-asset provenance inventory
+  2. swift test
+  3. release packaging stale-resource regression check
+  4. optional signed, notarized distributable packaging when --build is passed
+  5. signature, hardened-runtime, notarization, staple, and digest verification
+  6. non-mutating signed-app UI smoke harness (unless skipped)
+  7. optional disposable DEBUG mutation harness only when explicitly requested
 
 The non-mutating UI smoke harness requires macOS Accessibility automation permission and a valid signed app.
 EOF_USAGE
@@ -71,6 +72,9 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
+
+echo "==> Validating dependency and asset provenance inventory"
+scripts/validate_release_inventory.py
 
 echo "==> Running Swift tests"
 swift test

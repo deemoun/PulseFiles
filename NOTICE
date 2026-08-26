@@ -9,9 +9,10 @@ the complete license terms.
 
 Third-party notices
 -------------------
-Release review found no third-party Swift package dependencies or vendored
-third-party source or binary components in this repository. PulseFiles uses
-macOS system frameworks supplied by Apple and does not redistribute them.
-Accordingly, no additional third-party notices are required for the current
-source distribution. Reassess this notice and include any required notices
-before adding or redistributing third-party components.
+Provenance and reuse permissions for the application icon and the reviewed
+inventory of distributable non-source assets and Swift package dependencies are
+recorded in docs/asset-provenance.md and docs/release-provenance.json. The
+release inventory gate must pass before distribution. Any third-party component
+added in the future must be reviewed there, and its required attribution and
+license text must be added to this notice and the application bundle when its
+license requires them.
