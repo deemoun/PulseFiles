@@ -193,7 +193,7 @@ directions, and explicitly deferred work.
 
 ## Contributing, testing, and project policies
 
-- **Contributing:** Read [AGENTS.md](AGENTS.md) for repository conventions, safety constraints, and the change checklist, then open a focused pull request.
+- **Contributing:** Read [CONTRIBUTING.md](CONTRIBUTING.md) for issue reporting, development setup, safety constraints, testing, licensing, and pull request guidance. [AGENTS.md](AGENTS.md) remains optional implementation guidance.
 - **Testing:** Follow the [development quick start](#development-quick-start) and the detailed [testing guide](DOCUMENTATION.md#testing-builds-and-agent-checklist).
 - **Privacy:** PulseFiles does not automatically upload diagnostics; read the [privacy policy](PRIVACY.md) for local data and permission details.
 - **Support:** Use [GitHub Issues](https://github.com/deemoun/PulseFiles/issues) for support and [the issue chooser](https://github.com/deemoun/PulseFiles/issues/new/choose) for bug reports and feature requests.
