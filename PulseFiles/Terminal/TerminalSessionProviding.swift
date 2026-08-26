@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import Foundation
 
 /// The terminal feature's narrow input boundary. Warning and visibility policy

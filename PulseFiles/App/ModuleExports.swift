@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Application sources may use the lower layers without repeating imports in every
 // AppKit file; the layers themselves remain explicit SwiftPM dependencies.
 @_exported import PulseFilesModels

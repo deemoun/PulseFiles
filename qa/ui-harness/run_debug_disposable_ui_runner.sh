@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Dmitry Yarygin
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # DEBUG-only disposable automation runner. Every mutation is constrained to ROOT.
 set -euo pipefail
 

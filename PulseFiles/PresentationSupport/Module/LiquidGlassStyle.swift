@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import AppKit
 
 /// Immutable presentation values for the optional liquid-glass appearance.

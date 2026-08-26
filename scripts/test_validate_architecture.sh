@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Dmitry Yarygin
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Disposable regression coverage for presentation dependency detection.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PULSEFILES_LICENSE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/PulseFilesArchitecture.XXXXXX")"
 trap 'rm -rf "$FIXTURE"' EXIT
 mkdir -p "$FIXTURE/PulseFiles/App"

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import AppKit
 
 /// Owns sidebar installation and its persisted split position.

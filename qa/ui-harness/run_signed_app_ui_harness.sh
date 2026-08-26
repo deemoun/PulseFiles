@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Dmitry Yarygin
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Signed release UI smoke harness. It deliberately performs no filesystem mutations.
 set -euo pipefail
 

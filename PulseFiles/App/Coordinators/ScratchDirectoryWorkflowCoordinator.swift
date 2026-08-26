@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import AppKit
 
 /// Owns scratch-folder configuration, access recovery, and persisted selection.

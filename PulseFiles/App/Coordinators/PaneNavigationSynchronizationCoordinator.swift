@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import Foundation
 
 /// Owns cross-pane navigation decisions and invalidates stale asynchronous volume probes.

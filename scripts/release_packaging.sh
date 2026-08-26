@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Dmitry Yarygin
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 
 # Shared release-bundle assembly helpers. Callers are expected to enable their
 # preferred shell safety options before sourcing this file.

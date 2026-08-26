@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import AppKit
 
 /// Defines the safe table-refresh behavior while AppKit owns an inline editor.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import Foundation
 
 /// Converts command-routing rejections into user-facing presentation without coupling the router to AppKit alerts.
