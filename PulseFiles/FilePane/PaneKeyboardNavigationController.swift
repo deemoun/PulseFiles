@@ -6,6 +6,10 @@ import Foundation
 package struct PaneKeyboardModifiers: OptionSet, Equatable {
     package let rawValue: UInt
 
+    package init(rawValue: UInt) {
+        self.rawValue = rawValue
+    }
+
     package static let command = PaneKeyboardModifiers(rawValue: 1 << 0)
     package static let shift = PaneKeyboardModifiers(rawValue: 1 << 1)
     package static let option = PaneKeyboardModifiers(rawValue: 1 << 2)
