@@ -44,7 +44,6 @@ protocol TerminalStateProviding: TerminalSessionProviding {
     func shouldAcknowledgeFirstUseWarning(response: Int, acknowledgementResponse: Int) -> Bool
     func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy) -> URL
 }
-protocol StandardFolderAccessProviding: AnyObject { func requestAccess(for folder: StandardFolder) -> StandardFolderAccessState }
 protocol ThumbnailLoading: AnyObject { func thumbnail(for url: URL, size: CGSize, scale: CGFloat) async -> NSImage? }
 
 @MainActor

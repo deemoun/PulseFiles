@@ -37,7 +37,7 @@ let package = Package(
         ),
         .target(
             name: "PulseFilesSettings",
-            dependencies: ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesModels"],
+            dependencies: ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles/Settings"
         ),
         .executableTarget(

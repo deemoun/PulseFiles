@@ -5,7 +5,7 @@ import AppKit
 
 @MainActor
 package final class SettingsViewController: NSViewController {
-    enum Category: Int, CaseIterable {
+    package enum Category: Int, CaseIterable {
         case general, appearance, navigation, access, experimental
         var title: String {
             switch self { case .general: return "General".localized; case .appearance: return "Appearance".localized; case .navigation: return "Navigation".localized; case .access: return "Access".localized; case .experimental: return "Experimental".localized }
@@ -75,7 +75,7 @@ package final class SettingsViewController: NSViewController {
     @objc private func categoryChanged(_ sender: NSSegmentedControl) { guard let category = Category(rawValue: sender.selectedSegment) else { return }; selectedCategory = category; showSelectedPage() }
     @objc private func done(_ sender: Any?) { closeSettings() }
     package override func keyDown(with event: NSEvent) { if event.keyCode == 53 { closeSettings() } else { super.keyDown(with: event) } }
-    @objc override func cancelOperation(_ sender: Any?) { closeSettings() }
+    @objc package override func cancelOperation(_ sender: Any?) { closeSettings() }
     private func closeSettings() { if let window = view.window { window.close() } else { dismiss(nil) } }
 
     package var appLanguageSelectorForTesting: NSPopUpButton { generalPage.languageSelectorForTesting }

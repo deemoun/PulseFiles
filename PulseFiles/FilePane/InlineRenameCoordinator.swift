@@ -5,7 +5,7 @@ import AppKit
 
 /// Defines the safe table-refresh behavior while AppKit owns an inline editor.
 package enum InlineRenameReloadPolicy {
-    enum Decision: Equatable {
+    package enum Decision: Equatable {
         case reloadNow
         case deferReload
         case cancelRenameAndReload
@@ -19,7 +19,7 @@ package enum InlineRenameReloadPolicy {
 
 /// Tracks one edit independently from the table's lifecycle callbacks.
 package struct InlineRenameCommitSession {
-    enum Result: Equatable { case rename(URL, String), noChange, cancelled, ignored }
+    package enum Result: Equatable { case rename(URL, String), noChange, cancelled, ignored }
     private(set) var itemURL: URL?
     private(set) var normalizedItemPath: String?
     private(set) var generation: UInt = 0
