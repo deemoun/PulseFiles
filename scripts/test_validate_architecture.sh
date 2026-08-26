@@ -16,6 +16,11 @@ mkdir -p "$FIXTURE/PulseFiles/App"
 # the rule named by each assertion instead of failing for an unrelated missing
 # manifest.
 cat > "$FIXTURE/Package.swift" <<'EOF'
+.target(
+  name: "PulseFilesPresentationSupport",
+  dependencies: ["PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+  path: "PulseFiles/PresentationSupport"
+)
 .target(name: "PulseFilesPane", path: "PulseFiles/FilePane")
 .target(name: "PulseFilesSidebar", path: "PulseFiles/Sidebar")
 .target(name: "PulseFilesSettings", path: "PulseFiles/Settings")
@@ -68,6 +73,16 @@ sed 's|path: "PulseFiles/FilePane"|path: "PulseFiles/App"|' \
   "$FIXTURE/Package.swift.valid" > "$FIXTURE/Package.swift"
 if PULSEFILES_ARCHITECTURE_ROOT="$FIXTURE" "$SCRIPT_DIR/validate_architecture.sh" >/dev/null 2>&1; then
   echo 'ERROR: stale feature target mapping was accepted' >&2
+  exit 1
+fi
+mv "$FIXTURE/Package.swift.valid" "$FIXTURE/Package.swift"
+
+# PresentationSupport consumes types from each lower-layer module directly.
+cp "$FIXTURE/Package.swift" "$FIXTURE/Package.swift.valid"
+sed 's/"PulseFilesWorkflows", //' "$FIXTURE/Package.swift" > "$FIXTURE/Package.swift.missing-dependency"
+mv "$FIXTURE/Package.swift.missing-dependency" "$FIXTURE/Package.swift"
+if PULSEFILES_ARCHITECTURE_ROOT="$FIXTURE" "$SCRIPT_DIR/validate_architecture.sh" >/dev/null 2>&1; then
+  echo 'ERROR: missing PresentationSupport dependency was accepted' >&2
   exit 1
 fi
 mv "$FIXTURE/Package.swift.valid" "$FIXTURE/Package.swift"
