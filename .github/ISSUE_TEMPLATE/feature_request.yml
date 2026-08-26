@@ -1,0 +1,62 @@
+name: Feature request
+description: Propose one focused improvement to PulseFiles.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement. Search existing issues first, and keep this request focused on one user need. Discuss changes affecting file safety before investing in an implementation.
+
+        Do not upload sensitive file contents, credentials, raw filesystem paths, or diagnostics without first reviewing [`REDACTION_POLICY.txt`](https://github.com/deemoun/PulseFiles/blob/main/REDACTION_POLICY.txt). Report vulnerabilities through the private channel described in [`SECURITY.md`](https://github.com/deemoun/PulseFiles/blob/main/SECURITY.md), not here.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or user need
+      description: What problem would this solve, and who encounters it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the focused outcome and how it should work in PulseFiles.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: How do you handle this today, and what other solutions did you consider?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - File panes and navigation
+        - File operations
+        - Search and filtering
+        - Sidebar and locations
+        - Settings
+        - Accessibility and keyboard workflow
+        - Experimental terminal
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: File safety, sandbox, and terminal impact
+      description: Note any effects on destructive operations, external locations or providers, permissions, the experimental sandbox, or terminal behavior. Enter “None known” when not applicable.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy-confirmation
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I reviewed this request and its attachments and removed sensitive file contents, credentials, raw paths, and unreviewed diagnostics.
+          required: true
