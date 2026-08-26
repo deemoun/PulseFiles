@@ -1,12 +1,13 @@
 # PulseFiles 1.0.0-beta.1 Testing Notes
 
-<!-- release-version: 1.0.0-beta.1; build-number: 1 -->
+<!-- release-version: 1.0.0-beta.1; build-number: 1; license-identifier: GPL-3.0-or-later -->
 
 PulseFiles **1.0.0-beta.1** (build **1**) is a prerelease for testing, not a
 production-ready 1.0 release. **Use it only with backed-up, non-critical data.**
 Do not rely on this beta as the only way to access or preserve important files.
 The customer-facing marketing version and monotonically increasing build number
-are defined in `release/VERSION`.
+and the **GPL-3.0-or-later** license identifier are defined in
+`release/VERSION`.
 
 ## What to test
 

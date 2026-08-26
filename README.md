@@ -197,4 +197,4 @@ directions, and explicitly deferred work.
 - **Testing:** Follow the [development quick start](#development-quick-start) and the detailed [testing guide](DOCUMENTATION.md#testing-builds-and-agent-checklist).
 - **Privacy:** PulseFiles does not automatically upload diagnostics; read the [privacy policy](PRIVACY.md) for local data and permission details.
 - **Support:** Use [GitHub Issues](https://github.com/deemoun/PulseFiles/issues) for support and [the issue chooser](https://github.com/deemoun/PulseFiles/issues/new/choose) for bug reports and feature requests.
-- **License:** PulseFiles is available under the [GNU General Public License v3.0 or later](LICENSE); third-party attribution is listed in [NOTICE](NOTICE).
+- **License:** PulseFiles is available under **GPL-3.0-or-later** (the [GNU General Public License, version 3 or any later version](LICENSE)); third-party attribution is listed in [NOTICE](NOTICE).

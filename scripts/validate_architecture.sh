@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Dmitry Yarygin
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${PULSEFILES_ARCHITECTURE_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 cd "$REPO_ROOT"
+
+PULSEFILES_LICENSE_ROOT="${PULSEFILES_LICENSE_ROOT:-${REPO_ROOT}}" "${SCRIPT_DIR}/validate_license_headers.sh"
 
 fail=0
 for directory in PulseFiles/Utilities PulseFiles/Models PulseFiles/Services PulseFiles/Commands; do

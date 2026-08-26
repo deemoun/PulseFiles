@@ -1,4 +1,7 @@
 // swift-tools-version: 5.9
+// Copyright (c) 2026 Dmitry Yarygin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import PackageDescription
 
 let package = Package(

@@ -3,6 +3,10 @@ Copyright (c) 2026 Dmitry Yarygin
 
 Dmitry Yarygin is the original author and copyright holder of PulseFiles.
 
+PulseFiles is licensed under the GNU General Public License, version 3 or, at
+the recipient's option, any later version (GPL-3.0-or-later). See LICENSE for
+the complete license terms.
+
 Third-party notices
 -------------------
 Release review found no third-party Swift package dependencies or vendored

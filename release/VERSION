@@ -3,3 +3,4 @@
 # must be a positive integer greater than every previously shipped build.
 MARKETING_VERSION=1.0.0-beta.1
 BUILD_NUMBER=1
+LICENSE_IDENTIFIER=GPL-3.0-or-later
