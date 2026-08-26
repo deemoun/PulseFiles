@@ -97,7 +97,7 @@ package final class NavigationSettingsPageController: SettingsPageControllerBase
     private func choose(_ completion: @escaping (URL) -> Void) {
         let window = rootView.window
         folderSelection.selectFolder(for: .init(prompt: "Choose".localized, acceptsExistingAccessibleURL: true, presentingWindow: window)) { result in
-            switch result { case .success(let url): completion(url); case .failure(let failure): folderSelection.presentFailure(failure, in: window) }
+            switch result { case .success(let url): completion(url); case .failure(let failure): self.folderSelection.presentFailure(failure, in: window) }
         }
     }
 }

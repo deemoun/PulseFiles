@@ -16,17 +16,6 @@ extension DescendantSearching {
     }
 }
 
-protocol RecentLocationRecording: AnyObject {
-    var locations: [URL] { get }
-    var onChange: (([URL]) -> Void)? { get set }
-    func record(_ url: URL)
-}
-
-protocol BookmarkPersisting: AnyObject {
-    func load() -> [Bookmark]
-    func save(_ bookmarks: [Bookmark])
-}
-
 protocol FileClipboardProviding: AnyObject {
     var changeCount: Int { get }
     func write(urls: [URL], operation: FileClipboard.Operation)
@@ -54,8 +43,6 @@ protocol ApplicationOpening: AnyObject {
 }
 
 extension DescendantSearchService: DescendantSearching {}
-extension RecentLocationService: RecentLocationRecording {}
-extension BookmarkService: BookmarkPersisting {}
 extension FileClipboard: FileClipboardProviding {}
 extension SystemFileSizeService: FileSizeResolving {}
 extension ReadOnlyViewerService: ViewerContentLoading {}
