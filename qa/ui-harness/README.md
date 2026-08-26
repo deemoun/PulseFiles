@@ -31,8 +31,9 @@ Run the mutation-capable automation through the safe repository entry point:
 ```
 
 For non-destructive macOS CI that cannot grant Accessibility permission, run
-the same isolated Swift unit tests and `PulseFilesAppKitUITests` while skipping
-only the external System Events mutation harness:
+the same isolated AppKit-free core, service, application/integration, and
+in-process AppKit UI test targets while skipping only the external System Events
+mutation harness:
 
 ```sh
 ./scripts/run_automation_tests.sh --skip-system-events

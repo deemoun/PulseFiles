@@ -18,18 +18,21 @@ architecture and maintenance guide.
 
 ## Repository map
 
-- `Package.swift` declares the `PulseFiles` executable and both SwiftPM test
-  targets: `PulseFilesTests` and `PulseFilesAppKitUITests`.
+- `Package.swift` declares the `PulseFiles` executable and four SwiftPM test
+  targets: `PulseFilesCoreTests`, `PulseFilesServicesTests`, `PulseFilesTests`,
+  and `PulseFilesAppKitUITests`.
 - `PulseFiles/App`, `FilePane`, `Sidebar`, and `Terminal` contain AppKit lifecycle,
   window composition, pane browsing, secondary navigation, and the opt-in terminal.
 - `PulseFiles/Commands`, `Models`, `Services`, and `Utilities` contain command
   routing, value types, filesystem/persistence services, and shared helpers.
 - `PulseFiles/Settings` contains preferences UI; `PulseFiles/Debug` contains
   DEBUG-oriented diagnostics UI; `PulseFiles/Resources` contains packaged assets.
-- `PulseFilesTests` is the service/model test target, and
-  `PulseFilesTests/TestSupport` documents shared test-support conventions.
-- `PulseFilesAppKitUITests` is the in-process AppKit wiring and accessibility test
-  target.
+- `PulseFilesCoreTests` contains AppKit-free utility and model tests;
+  `PulseFilesServicesTests` covers filesystem, access-policy, and persistence
+  services; and `PulseFilesTests` covers application and cross-layer integration
+  behavior. `PulseFilesTests/TestSupport` documents shared test-support conventions.
+- `PulseFilesAppKitUITests` contains in-process AppKit wiring and accessibility
+  tests.
 - `qa` contains the destructive-operation matrix, evidence templates, and the
   [QA harness documentation](qa/ui-harness/README.md); `docs` contains focused
   product and engineering decisions.
@@ -56,7 +59,7 @@ for cross-cutting, runnable-app, or release changes.
 | Command | Use |
 | --- | --- |
 | `./scripts/validate_architecture.sh` | Enforce package-layer dependency and filesystem-mutation boundaries. |
-| `swift test` | Run both SwiftPM test targets. |
+| `swift test` | Run all four SwiftPM test targets. |
 | `./scripts/run_automation_tests.sh` | Run the disposable automated suite, including the macOS System Events mutation harness. |
 | `./scripts/run_automation_tests.sh --skip-system-events` | Run the disposable Swift and in-process AppKit coverage where Accessibility automation is unavailable. |
 | `./scripts/build_app.sh` | Build the local DEBUG app bundle. |
