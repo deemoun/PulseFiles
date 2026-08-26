@@ -25,7 +25,7 @@ extension RecentLocationService: RecentLocationRecording {}
 extension BookmarkService: BookmarkPersisting {}
 
 package final class SidebarViewController: NSViewController {
-    typealias MetadataReader = @Sendable (URL) throws -> String?
+    package typealias MetadataReader = @Sendable (URL) throws -> String?
 
     package var onOpenLocation: ((URL, Bool) -> Void)?
 

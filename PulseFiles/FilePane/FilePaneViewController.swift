@@ -941,7 +941,7 @@ package final class FilePaneViewController: NSViewController {
     }
 }
 
-private extension PanePresentationMode {
+extension PanePresentationMode {
     package var symbolName: String {
         switch self {
         case .list: return "list.bullet"

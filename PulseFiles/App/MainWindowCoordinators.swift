@@ -33,7 +33,6 @@ protocol TerminalStateProviding: TerminalSessionProviding {
     func shouldAcknowledgeFirstUseWarning(response: Int, acknowledgementResponse: Int) -> Bool
     func resolvedWorkingDirectory(activePaneURL: URL?, accessPolicy: SandboxFileAccessPolicy) -> URL
 }
-protocol ThumbnailLoading: AnyObject { func thumbnail(for url: URL, size: CGSize, scale: CGFloat) async -> NSImage? }
 
 @MainActor
 protocol ApplicationOpening: AnyObject {
@@ -57,7 +56,6 @@ extension TerminalService: TerminalStateProviding {
     }
 }
 extension StandardFolderAccessService: StandardFolderAccessProviding {}
-extension ThumbnailLoadingService: ThumbnailLoading {}
 
 @MainActor
 final class WorkspaceApplicationOpener: ApplicationOpening {
