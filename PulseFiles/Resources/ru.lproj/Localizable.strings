@@ -28,6 +28,12 @@
 "- ...and %d more" = "- …и ещё %d";
 "1 item" = "1 объект";
 "About PulseFiles" = "О PulseFiles";
+"PulseFiles is free software licensed under GPL-3.0-or-later." = "PulseFiles — свободное программное обеспечение под лицензией GPL-3.0-or-later.";
+"PulseFiles is provided without warranty." = "PulseFiles предоставляется без каких-либо гарантий.";
+"View License" = "Открыть лицензию";
+"View Source" = "Исходный код";
+"View bundled GPL license" = "Открыть прилагаемую лицензию GPL";
+"Open the PulseFiles source repository" = "Открыть репозиторий исходного кода PulseFiles";
 "Aliases and symlinks when they are the primary file type." = "Псевдонимы и символические ссылки, если они являются основным типом файла.";
 "An item named %@ already exists in this folder." = "Объект с именем %@ уже существует в этой папке.";
 "Any file that does not match another category." = "Все файлы, не относящиеся к другим категориям.";

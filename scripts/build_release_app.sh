@@ -114,7 +114,7 @@ NOTARY_ARCHIVE="${STAGING_ROOT}/${APP_NAME}-notary.zip"
 trap 'rm -rf "${STAGING_ROOT}"' EXIT
 
 assemble_release_bundle "${STAGED_APP_BUNDLE}" "${APP_NAME}" "${EXECUTABLE_PATH}" \
-    "${MATERIALIZED_INFO_PLIST}" "${APP_RESOURCES_DIR}" "${BUILD_PATH}" "${CONFIGURATION}"
+    "${MATERIALIZED_INFO_PLIST}" "${APP_RESOURCES_DIR}" "${BUILD_PATH}" "${CONFIGURATION}" "${REPO_ROOT}"
 
 if [[ "${PACKAGE_MODE}" == "distribute" ]]; then
     CODESIGN_ARGS=(--force --options runtime --timestamp --sign "${SIGN_IDENTITY}")

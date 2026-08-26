@@ -37,6 +37,12 @@
 "- ...and %d more" = "- ...and %d more";
 "1 item" = "1 item";
 "About PulseFiles" = "About PulseFiles";
+"PulseFiles is free software licensed under GPL-3.0-or-later." = "PulseFiles is free software licensed under GPL-3.0-or-later.";
+"PulseFiles is provided without warranty." = "PulseFiles is provided without warranty.";
+"View License" = "View License";
+"View Source" = "View Source";
+"View bundled GPL license" = "View bundled GPL license";
+"Open the PulseFiles source repository" = "Open the PulseFiles source repository";
 "Aliases and symlinks when they are the primary file type." = "Aliases and symlinks when they are the primary file type.";
 "An item named %@ already exists in this folder." = "An item named %@ already exists in this folder.";
 "Any file that does not match another category." = "Any file that does not match another category.";

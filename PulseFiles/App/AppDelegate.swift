@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let supportURL = URL(string: "https://github.com/deemoun/PulseFiles/issues")!
     private static let privacyPolicyURL = URL(string: "https://github.com/deemoun/PulseFiles/blob/main/PRIVACY.md")!
     private static let issueReportingURL = URL(string: "https://github.com/deemoun/PulseFiles/issues/new/choose")!
+    static let sourceRepositoryURL = URL(string: "https://github.com/deemoun/PulseFiles")!
 
     @MainActor
     static func makeProductionMainWindowController(
@@ -191,14 +192,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showAbout(_ sender: Any?) {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-
         if let existingWindow = aboutWindowController?.window {
             existingWindow.makeKeyAndOrderFront(nil)
             return
         }
 
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 460))
+        let window = makeAboutWindow()
+        let windowController = NSWindowController(window: window)
+        aboutWindowController = windowController
+        windowController.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func makeAboutWindow() -> NSWindow {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 590))
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
@@ -230,18 +238,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         attributionLabel.alignment = .center
         attributionLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        let licenseLabel = NSTextField(wrappingLabelWithString: "PulseFiles is free software licensed under GPL-3.0-or-later.".localized)
+        licenseLabel.alignment = .center
+        licenseLabel.translatesAutoresizingMaskIntoConstraints = false
+        licenseLabel.setAccessibilityIdentifier("about.licenseNotice")
+
+        let warrantyLabel = NSTextField(wrappingLabelWithString: "PulseFiles is provided without warranty.".localized)
+        warrantyLabel.textColor = .secondaryLabelColor
+        warrantyLabel.alignment = .center
+        warrantyLabel.translatesAutoresizingMaskIntoConstraints = false
+        warrantyLabel.setAccessibilityIdentifier("about.warrantyNotice")
+
+        let licenseButton = NSButton(title: "View License".localized, target: self, action: #selector(openBundledLicense(_:)))
+        licenseButton.bezelStyle = .rounded
+        licenseButton.keyEquivalent = "l"
+        licenseButton.keyEquivalentModifierMask = [.command]
+        licenseButton.translatesAutoresizingMaskIntoConstraints = false
+        licenseButton.setAccessibilityIdentifier("about.viewLicense")
+        licenseButton.setAccessibilityLabel("View bundled GPL license".localized)
+
+        let sourceButton = NSButton(title: "View Source".localized, target: self, action: #selector(openSourceRepository(_:)))
+        sourceButton.bezelStyle = .rounded
+        sourceButton.keyEquivalent = "s"
+        sourceButton.keyEquivalentModifierMask = [.command]
+        sourceButton.translatesAutoresizingMaskIntoConstraints = false
+        sourceButton.setAccessibilityIdentifier("about.viewSource")
+        sourceButton.setAccessibilityLabel("Open the PulseFiles source repository".localized)
+
+        let linkStack = NSStackView(views: [licenseButton, sourceButton])
+        linkStack.orientation = .horizontal
+        linkStack.spacing = 12
+        linkStack.translatesAutoresizingMaskIntoConstraints = false
+
         let doneButton = NSButton(title: "Done".localized, target: self, action: #selector(closeAbout(_:)))
         doneButton.bezelStyle = .rounded
         doneButton.keyEquivalent = "\r"
         doneButton.translatesAutoresizingMaskIntoConstraints = false
 
-        [iconView, nameLabel, versionLabel, descriptionLabel, attributionLabel, doneButton].forEach(contentView.addSubview)
+        [iconView, nameLabel, versionLabel, descriptionLabel, attributionLabel, licenseLabel, warrantyLabel, linkStack, doneButton].forEach(contentView.addSubview)
 
         NSLayoutConstraint.activate([
             iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 28),
             iconView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 188),
-            iconView.heightAnchor.constraint(equalToConstant: 188),
+            iconView.widthAnchor.constraint(equalToConstant: 160),
+            iconView.heightAnchor.constraint(equalToConstant: 160),
 
             nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
             nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
@@ -259,7 +299,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             attributionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
             attributionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
 
-            doneButton.topAnchor.constraint(greaterThanOrEqualTo: attributionLabel.bottomAnchor, constant: 24),
+            licenseLabel.topAnchor.constraint(equalTo: attributionLabel.bottomAnchor, constant: 20),
+            licenseLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+            licenseLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+
+            warrantyLabel.topAnchor.constraint(equalTo: licenseLabel.bottomAnchor, constant: 8),
+            warrantyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
+            warrantyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+
+            linkStack.topAnchor.constraint(equalTo: warrantyLabel.bottomAnchor, constant: 18),
+            linkStack.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+
+            doneButton.topAnchor.constraint(greaterThanOrEqualTo: linkStack.bottomAnchor, constant: 20),
             doneButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             doneButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24)
         ])
@@ -275,10 +326,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.center()
 
-        let windowController = NSWindowController(window: window)
-        aboutWindowController = windowController
-        windowController.showWindow(nil)
-        window.makeKeyAndOrderFront(nil)
+        return window
+    }
+
+    @objc private func openBundledLicense(_ sender: Any?) {
+        guard let url = Bundle.main.url(forResource: "LICENSE", withExtension: nil) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openSourceRepository(_ sender: Any?) {
+        NSWorkspace.shared.open(Self.sourceRepositoryURL)
     }
 
     @objc private func closeAbout(_ sender: Any?) {

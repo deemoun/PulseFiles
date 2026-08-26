@@ -55,6 +55,23 @@ bundle is a production-ready release. Distributable packaging and the checks
 required for general 1.0 availability are documented in
 `RELEASE_CHECKLIST.md`.
 
+## License and corresponding source
+
+PulseFiles is free software licensed under **GPL-3.0-or-later** and is provided
+without warranty; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). Downloadable
+binary releases use the GPLv3 section 6(d) mechanism: the object code is offered
+from a designated download location with equivalent network access, at no
+additional charge, to the Corresponding Source.
+
+For each downloadable binary, the release page at
+<https://github.com/deemoun/PulseFiles/releases> identifies its permanent,
+signed version tag. Recipients obtain the exact Corresponding Source by
+downloading the source archive for that same tag (or by cloning the repository
+and checking out that tag), rather than using the moving `main` branch. The
+archive includes the build and packaging scripts needed to produce the release.
+The tagged source remains available alongside the binary for as long as the
+binary is offered.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |

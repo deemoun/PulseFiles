@@ -11,6 +11,7 @@ assemble_release_bundle() {
     local app_resources_dir="$5"
     local build_path="$6"
     local configuration="$7"
+    local repository_root="$8"
     local contents_dir="${app_bundle}/Contents"
     local macos_dir="${contents_dir}/MacOS"
     local resources_dir="${contents_dir}/Resources"
@@ -29,6 +30,8 @@ assemble_release_bundle() {
     if [[ -d "${app_resources_dir}" ]]; then
         cp -R "${app_resources_dir}/." "${resources_dir}/"
     fi
+    cp "${repository_root}/LICENSE" "${resources_dir}/LICENSE"
+    cp "${repository_root}/NOTICE" "${resources_dir}/NOTICE"
 
     for resource_bundle_path in \
         "${build_path}/${configuration}/${app_name}_${app_name}.bundle" \

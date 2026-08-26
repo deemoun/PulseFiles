@@ -50,12 +50,15 @@ SOURCE_RESOURCES="${FIXTURE_ROOT}/resources"
 BUILD_PATH="${FIXTURE_ROOT}/build"
 EXECUTABLE="${FIXTURE_ROOT}/PulseFiles"
 INFO_PLIST="${FIXTURE_ROOT}/Info.plist"
+REPOSITORY_ROOT="${FIXTURE_ROOT}/repository"
 SENTINEL="removed-resource.txt"
 
-mkdir -p "${ARTIFACTS_DIR}" "${SOURCE_RESOURCES}" "${BUILD_PATH}/release"
+mkdir -p "${ARTIFACTS_DIR}" "${SOURCE_RESOURCES}" "${BUILD_PATH}/release" "${REPOSITORY_ROOT}"
 printf '#!/usr/bin/env bash\n' > "${EXECUTABLE}"
 chmod +x "${EXECUTABLE}"
 printf '<plist version="1.0"></plist>\n' > "${INFO_PLIST}"
+printf 'fixture license\n' > "${REPOSITORY_ROOT}/LICENSE"
+printf 'fixture notice\n' > "${REPOSITORY_ROOT}/NOTICE"
 printf 'must not survive the next package\n' > "${SOURCE_RESOURCES}/${SENTINEL}"
 
 package_fixture() {
@@ -63,13 +66,15 @@ package_fixture() {
     staging_root="$(mktemp -d "${ARTIFACTS_DIR}/.${APP_NAME}.test.XXXXXX")"
     assemble_release_bundle \
         "${staging_root}/${APP_NAME}.app" "${APP_NAME}" "${EXECUTABLE}" \
-        "${INFO_PLIST}" "${SOURCE_RESOURCES}" "${BUILD_PATH}" release
+        "${INFO_PLIST}" "${SOURCE_RESOURCES}" "${BUILD_PATH}" release "${REPOSITORY_ROOT}"
     publish_release_bundle "${staging_root}/${APP_NAME}.app" "${PUBLISHED_BUNDLE}"
     rmdir "${staging_root}"
 }
 
 package_fixture
 test -f "${PUBLISHED_BUNDLE}/Contents/Resources/${SENTINEL}"
+cmp "${REPOSITORY_ROOT}/LICENSE" "${PUBLISHED_BUNDLE}/Contents/Resources/LICENSE"
+cmp "${REPOSITORY_ROOT}/NOTICE" "${PUBLISHED_BUNDLE}/Contents/Resources/NOTICE"
 
 rm "${SOURCE_RESOURCES}/${SENTINEL}"
 package_fixture
@@ -78,5 +83,8 @@ if [[ -e "${PUBLISHED_BUNDLE}/Contents/Resources/${SENTINEL}" ]]; then
     echo "Stale release resource survived clean packaging: ${SENTINEL}" >&2
     exit 1
 fi
+
+cmp "${REPOSITORY_ROOT}/LICENSE" "${PUBLISHED_BUNDLE}/Contents/Resources/LICENSE"
+cmp "${REPOSITORY_ROOT}/NOTICE" "${PUBLISHED_BUNDLE}/Contents/Resources/NOTICE"
 
 echo "Release packaging regression check passed"
