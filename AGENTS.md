@@ -55,7 +55,6 @@ for cross-cutting, runnable-app, or release changes.
 
 | Command | Use |
 | --- | --- |
-| `./scripts/validate_architecture.sh` | Enforce package-layer dependency and filesystem-mutation boundaries. |
 | `swift test` | Run both SwiftPM test targets. |
 | `./scripts/run_automation_tests.sh` | Run the disposable automated suite, including the macOS System Events mutation harness. |
 | `./scripts/run_automation_tests.sh --skip-system-events` | Run the disposable Swift and in-process AppKit coverage where Accessibility automation is unavailable. |

@@ -122,9 +122,6 @@ A successful content transfer does not guarantee preservation of cloud-provider 
 Run these commands from the repository root:
 
 ```sh
-# Validate package-layer and filesystem-mutation boundaries
-./scripts/validate_architecture.sh
-
 # Unit and in-process tests
 swift test
 

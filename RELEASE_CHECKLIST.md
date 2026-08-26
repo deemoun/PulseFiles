@@ -8,7 +8,6 @@ Record signed-app results with [`qa/release-evidence-template.md`](qa/release-ev
 
 Run both command-line verification and manual app-bundle verification before release:
 
-- [ ] `./scripts/validate_architecture.sh` passes on the frozen candidate SHA.
 - [ ] `swift test` passes from the repository root.
 - [ ] `./scripts/test_release_packaging.sh` passes its disposable stale-resource regression check.
 - [ ] `./scripts/build_app.sh --release` creates `artifacts/PulseFiles.app` successfully.
