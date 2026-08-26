@@ -5,6 +5,11 @@ reports, proposals, documentation, tests, and code changes.
 
 ## Report an issue or propose a change
 
+Security vulnerabilities must be reported privately through the process in
+[SECURITY.md](SECURITY.md), not through a public issue. Never place credentials,
+private files, diagnostics bundles, or exploitable details in public issues,
+discussions, pull requests, screenshots, or logs.
+
 - Search [existing issues](https://github.com/deemoun/PulseFiles/issues) before
   opening a new one.
 - Use the [issue chooser](https://github.com/deemoun/PulseFiles/issues/new/choose)
