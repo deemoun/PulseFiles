@@ -5,7 +5,11 @@ PulseFiles is a native, keyboard-first macOS file manager built with AppKit. It 
 ## Development status
 
 > [!WARNING]
-> PulseFiles is under active development and is **not yet ready for general V1 use**. The current V1 candidate has broad core functionality, but signed-app release validation and the storage-provider compatibility matrix are still incomplete. Use it on backed-up, non-critical data and review the [release checklist](RELEASE_CHECKLIST.md) before treating a build as production-ready.
+> PulseFiles **1.0.0-beta.1** is a testing prerelease, not a production-ready
+> 1.0 release. Signed-app validation and the storage-provider compatibility
+> matrix are incomplete. Use the beta only with backed-up, non-critical data;
+> general 1.0 availability requires the evidence and sign-off in the
+> [release checklist](RELEASE_CHECKLIST.md).
 
 ## Preview
 
@@ -32,7 +36,8 @@ The repository-owned app icon above ships with PulseFiles. Runnable debug and re
 
 ## Install and launch
 
-PulseFiles does not yet provide a generally available signed release. Build it from source:
+PulseFiles does not yet provide a generally available, production-ready 1.0
+release. The 1.0.0-beta.1 source can be built for evaluation:
 
 ```sh
 git clone https://github.com/deemoun/PulseFiles.git
@@ -41,7 +46,14 @@ cd PulseFiles
 open artifacts/PulseFiles.app
 ```
 
-To build and launch in one step, run `./scripts/build_app.sh --run`. The debug bundle is written to `artifacts/PulseFiles.app`. For a local optimized but unsigned build, run `./scripts/build_release_app.sh --local-unsigned`; its development-only bundle is isolated at `artifacts/development/unsigned-release/PulseFiles.app`. Distributable packaging is a separate, credentialed workflow documented in `RELEASE_CHECKLIST.md`.
+To build and launch in one step, run `./scripts/build_app.sh --run`. The debug
+bundle is written to `artifacts/PulseFiles.app`. For a local optimized but
+unsigned beta build, run `./scripts/build_release_app.sh --local-unsigned`; its
+development-only bundle is isolated at
+`artifacts/development/unsigned-release/PulseFiles.app`. Neither locally built
+bundle is a production-ready release. Distributable packaging and the checks
+required for general 1.0 availability are documented in
+`RELEASE_CHECKLIST.md`.
 
 ## Keyboard shortcuts
 
@@ -88,16 +100,20 @@ Implementation details for these boundaries are in the [architecture and mainten
 
 ## Version 1.0 storage compatibility
 
-This table describes intended V1 behavior, not verified provider support. Conditional support must not be claimed until the corresponding signed-app scenarios have evidence in the [release checklist](RELEASE_CHECKLIST.md).
+The 1.0.0-beta.1 release does **not** claim verified support for the storage
+providers and special item classes below. These are implementation expectations
+to test with disposable fixtures, not a compatibility promise. General 1.0
+support claims must be limited to scenarios with signed-app evidence in the
+[release checklist](RELEASE_CHECKLIST.md).
 
-| Item class | V1 status | Behavior and recovery |
+| Item class | Beta status | Behavior to test; not verified support |
 | --- | --- | --- |
-| iCloud Drive and cloud-provider folders | Candidate behavior; signed-app verification pending | Browsing and normal operations use macOS access checks. A cloud-only iCloud item is intended to be rejected before mutation; download it in Finder and retry. Provider sync conflicts, provider-specific metadata, and providers without normal file semantics are not guaranteed. |
-| Network shares and removable media | Candidate behavior; signed-app verification pending | Operations are intended to preflight and re-check availability before mutation. Reconnect or remount an unavailable volume and retry. Read-only media should be rejected with a writable-media recovery message. |
-| Packages | Candidate behavior; signed-app verification pending | PulseFiles is intended to list packages as packages and copy or move their contents as a tree. Test application-specific package integrity before replacing production packages. |
-| Symbolic links | Candidate behavior; signed-app verification pending | Copy is intended to preserve the stored link destination without resolving or traversing the target, preventing a link from reading an unselected external target. |
-| Finder aliases | Not supported for mutation in V1 | PulseFiles detects a Finder alias before mutation and leaves it unchanged. Use Finder to manage the alias or operate on the original item. |
-| Metadata preservation | Candidate best-effort behavior; signed-app verification pending | Copy paths are intended to preserve POSIX permissions, ownership IDs where permitted, timestamps, Finder tags and labels, extended attributes, and ACLs. If a destination rejects metadata, content should remain copied and PulseFiles should report a cleanup warning; verify metadata before removing the source. |
+| iCloud Drive and cloud-provider folders | Unverified in beta | Test whether macOS access checks permit browsing and operations. A cloud-only iCloud item is expected to be rejected before mutation; download it in Finder and retry. Provider sync conflicts, provider-specific metadata, and providers without normal file semantics are not supported claims. |
+| Network shares and removable media | Unverified in beta | Test preflight and availability changes using disposable data. Reconnect or remount an unavailable volume before retrying. Do not infer support for a provider or device from the implementation. |
+| Packages | Unverified in beta | Test copies and moves only with disposable package fixtures. Application-specific package integrity is not guaranteed. |
+| Symbolic links | Unverified in beta | Test whether copy preserves the stored link destination without traversing its target. Do not use links to important external targets while validation is pending. |
+| Finder aliases | Mutation unsupported | Use Finder to manage an alias or operate on its original item; beta testing expects PulseFiles to reject mutation and leave the alias unchanged. |
+| Metadata preservation | Unverified, best-effort beta behavior | Test POSIX permissions, permitted ownership IDs, timestamps, Finder tags and labels, extended attributes, and ACLs. Verify destination metadata before removing any source; provider-specific metadata is not promised. |
 
 A successful content transfer does not guarantee preservation of cloud-provider state, custom metadata, or application-specific package internals.
 
@@ -132,8 +148,10 @@ PulseFiles is a Swift Package Manager executable organized by responsibility: `A
 
 ## Roadmap
 
-The [V1 completion plan](docs/v1-release-plan.md) orders the remaining release
-work and defines its exit criteria. The [orthodox file-manager feature-gap
+The [V1 release-stage plan](docs/v1-release-plan.md) separates the exit criteria
+for beta readiness, a later release candidate, and general 1.0 availability.
+The current 1.0.0-beta.1 identity satisfies versioning intent, not those later
+validation gates. The [orthodox file-manager feature-gap
 audit](docs/orthodox-feature-gap-audit.md) tracks implemented behaviors, future
 directions, and explicitly deferred work.
 

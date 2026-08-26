@@ -1,13 +1,34 @@
-# PulseFiles V1 completion plan
+# PulseFiles V1 release-stage plan
 
-## Objective and definition of done
+## Objective and release stages
 
 V1 is a **release-validation milestone**, not a request to add every feature in
 the orthodox feature audit. The product surface needed for V1 is already broad;
 the remaining work is to turn the current candidate behavior into verified,
 supportable behavior on a signed macOS application.
 
-V1 is ready only when all of the following are true:
+The labels below are separate milestones and must not be used interchangeably:
+
+### Beta ready
+
+A build is **beta ready** when its canonical prerelease version is recorded, the
+repository-safe automated suite and local packaging checks pass on its recorded
+commit, known limitations are prominently documented, and testers are warned to
+use backed-up, non-critical data. Beta readiness permits broader testing; it is
+not evidence of production storage-provider support.
+
+### Release candidate
+
+A build is a **release candidate** only after beta findings that affect data
+integrity or supported workflows are resolved, one immutable commit passes all
+automated and packaging checks, and a signed, hardened, notarized, stapled
+artifact is traceable to that commit. The full signed-app behavioral and storage
+matrix must be scheduled and owned. A release candidate is still not general
+1.0 availability.
+
+### General 1.0 availability
+
+General 1.0 availability requires all of the following:
 
 1. A single release-candidate commit passes the automated suite and packaging
    checks without source changes between validation runs.
@@ -20,6 +41,10 @@ V1 is ready only when all of the following are true:
    customer-facing release-note text.
 5. Release notes, README support claims, rollback ownership, and the final
    release decision match the evidence rather than the intended implementation.
+
+Passing the beta-ready criteria does not satisfy the release-candidate criteria,
+and passing the release-candidate criteria does not authorize general 1.0
+availability without every numbered requirement above.
 
 The plan does not promote the optional competitive follow-ups or explicitly
 post-V1 features in `orthodox-feature-gap-audit.md` into release blockers.
@@ -63,9 +88,10 @@ on.
    invalidates evidence tied to the superseded binary, and restarts the affected
    validation rows.
 
-**Exit criteria:** all local/CI-safe checks pass on the recorded SHA, clean and
-unsigned bundles build, no generated `.build` or `artifacts` content is tracked,
-and a release manager owns the candidate.
+**Exit criteria (beta ready):** the canonical prerelease version and release
+notes agree; all local/CI-safe checks pass on the recorded SHA; clean and
+unsigned bundles build; no generated `.build` or `artifacts` content is tracked;
+known risks and test focus are public; and a release manager owns the beta.
 
 ### P0 — Build and attest the distributable artifact
 
@@ -83,9 +109,10 @@ tested.
 5. Install and launch the archived product outside SwiftPM to catch staging,
    resource, localization, icon, or bundle-only failures.
 
-**Exit criteria:** every security and packaging field in the evidence template
-passes, the ZIP digest verifies, and the signed app is traceable to the frozen
-candidate SHA.
+**Exit criteria (release candidate):** every security and packaging field in the
+evidence template passes, the ZIP digest verifies, the signed app is traceable
+to the frozen candidate SHA, and beta blockers are resolved. This promotes the
+artifact to release-candidate status, not general availability.
 
 ### P0 — Complete the signed-app behavioral matrix
 
@@ -173,9 +200,10 @@ a newly built candidate, and evidence references the replacement SHA/artifact.
    SwiftPM-launched build.
 4. Obtain release-manager sign-off only after every blocker is closed.
 
-**Exit criteria:** the release checklist is complete, limitations are approved
-and customer-visible, rollback responsibility is assigned, and the published
-archive is the signed/notarized artifact whose digest and behavior were recorded.
+**Exit criteria (general 1.0 availability):** the release checklist is complete,
+limitations are approved and customer-visible, rollback responsibility is
+assigned, and the published archive is the signed/notarized artifact whose
+digest and behavior were recorded.
 
 ## Explicitly deferred from V1
 
