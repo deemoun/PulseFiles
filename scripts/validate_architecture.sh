@@ -52,6 +52,7 @@ feature_directories=(
 # Keep package target boundaries explicit. Debug is intentionally absent because it
 # remains an application-only adapter; see DOCUMENTATION.md.
 feature_target_mappings=(
+  "PulseFilesPresentationSupport:PulseFiles/PresentationSupport"
   "PulseFilesPane:PulseFiles/FilePane"
   "PulseFilesSidebar:PulseFiles/Sidebar"
   "PulseFilesSettings:PulseFiles/Settings"
@@ -62,6 +63,25 @@ for mapping in "${feature_target_mappings[@]}"; do
   path="${mapping#*:}"
   if ! rg -q "name: \"${target}\"" Package.swift || ! rg -q "path: \"${path}\"" Package.swift; then
     echo "error: missing or stale SwiftPM feature target mapping: $target -> $path" >&2
+    fail=1
+  fi
+done
+
+# PresentationSupport exposes AppKit adapters for model, service, and workflow
+# types. Keep those direct dependencies declared so isolated target builds do not
+# lose types such as FileIconKey, FileSystemProbeAnswer, or MainCommand.
+presentation_support_dependencies=(
+  PulseFilesWorkflows
+  PulseFilesServices
+  PulseFilesModels
+  PulseFilesUtilities
+)
+presentation_support_target="$({
+  sed -n '/name: "PulseFilesPresentationSupport"/,/path: "PulseFiles\/PresentationSupport"/p' Package.swift
+} || true)"
+for dependency in "${presentation_support_dependencies[@]}"; do
+  if ! printf '%s\n' "$presentation_support_target" | rg -q "dependencies:.*\"${dependency}\""; then
+    echo "error: PulseFilesPresentationSupport is missing direct dependency: $dependency" >&2
     fail=1
   fi
 done
