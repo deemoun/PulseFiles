@@ -69,6 +69,16 @@ for directory in "${feature_directories[@]}"; do
   fi
 done
 
+# Main-window workflow code receives resource-owning services from
+# MainWindowDependencies. Concrete production assembly belongs in the
+# composition root, not in the view controller or its focused coordinators.
+window_workflow_construction='FolderAccessGrantService\.shared|\b(FileSystemService|FileOperationService|StagingCleanupService|ScratchFolderCleanupService)[[:space:]]*\('
+if rg -n -U "$window_workflow_construction" \
+    PulseFiles/App/MainWindowViewController.swift PulseFiles/App/Coordinators --glob '*.swift'; then
+  echo "error: main-window workflow constructs a concrete service instead of using injected capabilities" >&2
+  fail=1
+fi
+
 # SwiftPM feature targets are peers. Their source-directory mapping is kept here
 # in sync with Package.swift so imports cannot create undeclared lateral edges.
 # Feature modules communicate upward using model events or
