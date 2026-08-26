@@ -20,6 +20,10 @@ run`, an unsigned app, or a DEBUG build.
 | Staple verification result (`xcrun stapler validate`) | |
 | Final distributable ZIP path | |
 | Final ZIP SHA-256 digest and verification result | |
+| Permanent signed source tag or exact source-archive URL (and candidate SHA verification) | |
+| Bundled `LICENSE` and `NOTICE` inspection after extracting the final ZIP (paths, match result, and evidence) | |
+| About UI legal/license/source information result | |
+| Third-party inventory result (`docs/release-provenance.json` compared with packaged dependencies/assets and bundled `NOTICE`) | |
 | Tester (name or team alias) | |
 | Test date (UTC) | |
 | macOS version and build number | |
@@ -99,6 +103,10 @@ location below.
 | Apple notarization accepted | | | | |
 | Stapled ticket validated | | | | |
 | Final ZIP SHA-256 digest verified and recorded | | | | |
+| Permanent exact release source is available | | | | |
+| Final archive contains matching `LICENSE` and `NOTICE` | | | | |
+| About UI exposes legal, license, and source information | | | | |
+| Third-party inventory matches packaged contents and bundled `NOTICE` | | | | |
 | macOS versions tested | | | | |
 | Signed-app UI harness | | | | |
 | Storage-provider matrix (cloud, network, removable, package, symlink, alias, metadata) | | | | |
@@ -128,6 +136,9 @@ owner and target release remains a blocker.
 - [ ] Evidence includes a pass/fail result for every signed-app-only scenario.
 - [ ] Security evidence records the signature authority chain, hardened-runtime
   flag, accepted notarization assessment, valid staple, and verified final ZIP digest.
+- [ ] Licensing evidence records the permanent exact-source location, inspection
+  of bundled `LICENSE` and `NOTICE`, About UI legal/source access, and a passing
+  third-party inventory comparison against the packaged contents.
 - [ ] Target matrix includes macOS 13, 14, 15, and the current macOS release.
 - [ ] Coverage includes at least one clean user account, one upgrade from the
   prior release, Apple Silicon, and Intel.

@@ -52,8 +52,10 @@ unsigned beta build, run `./scripts/build_release_app.sh --local-unsigned`; its
 development-only bundle is isolated at
 `artifacts/development/unsigned-release/PulseFiles.app`. Neither locally built
 bundle is a production-ready release. Distributable packaging and the checks
-required for general 1.0 availability are documented in
-`RELEASE_CHECKLIST.md`.
+required for general 1.0 availability are documented in the
+[release checklist](RELEASE_CHECKLIST.md), including its licensing and source
+distribution gate. Signing and notarization are only part of that gate and do
+not by themselves make an archive ready for open-source distribution.
 
 ## License and corresponding source
 
@@ -151,7 +153,7 @@ swift test
 # Package an unsigned local optimized app (development only)
 ./scripts/build_release_app.sh --local-unsigned
 
-# Sign, notarize, staple, verify, and archive a distributable release
+# Build a signed/notarized release candidate; distribution also requires the licensing gate
 PULSEFILES_SIGN_IDENTITY='Developer ID Application: …' \
 PULSEFILES_NOTARY_PROFILE='pulsefiles-release' \
 ./scripts/build_release_app.sh --distribute
@@ -159,6 +161,10 @@ PULSEFILES_NOTARY_PROFILE='pulsefiles-release' \
 # Run the disposable automation entry point
 ./scripts/run_automation_tests.sh
 ```
+
+Release operators must complete the [release checklist's licensing and source
+distribution gate](RELEASE_CHECKLIST.md#licensing-and-source-distribution-gate)
+in addition to signing, notarizing, and validating the candidate archive.
 
 `swift test` runs the complete test suite: AppKit-free core tests
 (`PulseFilesCoreTests`), service tests (`PulseFilesServicesTests`), application and

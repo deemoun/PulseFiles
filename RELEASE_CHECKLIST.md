@@ -4,12 +4,14 @@ Use this checklist before publishing a PulseFiles build. Prefer testing with a c
 
 Record signed-app results with [`qa/release-evidence-template.md`](qa/release-evidence-template.md). That record is required for the macOS/architecture matrix, clean-account and upgrade coverage, and pass/fail evidence for signed-app-only scenarios.
 
-## GPLv3 section 6(d) source distribution
+## Licensing and source distribution gate
 
 Downloadable PulseFiles binaries use GPLv3 section 6(d): the designated GitHub
 release download location provides equivalent network access, without additional
 charge, to the Corresponding Source for the exact binary version. A moving
-`main` branch is not sufficient.
+`main` branch is not sufficient. Passing signing, notarization, and staple checks
+does not make an archive ready for open-source distribution; every item in this
+licensing gate must also pass and be recorded in the release evidence.
 
 - [ ] Create and push a permanent, signed version tag for the frozen candidate SHA.
 - [ ] Publish the binary from the GitHub release for that tag and retain the
@@ -19,8 +21,20 @@ charge, to the Corresponding Source for the exact binary version. A moving
       its source archive, or clone and check out the tag, without special access.
 - [ ] Verify the source archive resolves to the exact candidate SHA and retain it
       beside the downloadable binary for as long as that binary is offered.
-- [ ] Verify `PulseFiles.app/Contents/Resources/LICENSE` and `NOTICE` match the
-      repository files before signing and after extracting the final ZIP.
+- [ ] Extract the final release archive and verify it contains
+      `PulseFiles.app/Contents/Resources/LICENSE` and
+      `PulseFiles.app/Contents/Resources/NOTICE`, and that both files match the
+      repository copies.
+- [ ] Launch the app extracted from the final archive and verify its About UI
+      identifies the license and warranty terms, opens the bundled license, and
+      exposes the project source repository to recipients.
+- [ ] Record the permanent signed source tag or exact source-archive URL, verify
+      that it resolves to the frozen candidate SHA, and retain that source for as
+      long as the corresponding binary is offered.
+- [ ] Inspect the contents extracted from the final release archive and verify
+      that the third-party dependency and asset inventory in
+      `docs/release-provenance.json` matches what is actually packaged, including
+      all required attribution and license text in the bundled `NOTICE`.
 
 ## Required build targets
 
@@ -362,6 +376,8 @@ version alongside each result.
 
 ## Final release sign-off
 
+- [ ] The licensing and source distribution gate passed, and its source,
+      bundled legal-file, About UI, and third-party inventory evidence is recorded.
 - [ ] All command-line tests passed.
 - [ ] All signed-release-app-only scenarios passed on a signed `.app`.
 - [ ] Signed-app evidence records cover macOS 13, macOS 14, macOS 15, and the current macOS release, with at least one Apple Silicon and one Intel run.
