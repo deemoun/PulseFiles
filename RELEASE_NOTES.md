@@ -1,9 +1,22 @@
-# PulseFiles Release Notes Draft
+# PulseFiles 1.0.0-beta.1 Testing Notes
 
-<!-- release-version: 1.0.0; build-number: 1 -->
+<!-- release-version: 1.0.0-beta.1; build-number: 1 -->
 
-Release version **1.0.0** (build **1**). The customer-facing marketing version
-and monotonically increasing build number are defined in `release/VERSION`.
+PulseFiles **1.0.0-beta.1** (build **1**) is a prerelease for testing, not a
+production-ready 1.0 release. **Use it only with backed-up, non-critical data.**
+Do not rely on this beta as the only way to access or preserve important files.
+The customer-facing marketing version and monotonically increasing build number
+are defined in `release/VERSION`.
+
+## What to test
+
+Try dual-pane navigation, keyboard workflows, conflict and cancellation paths,
+and operations on disposable local fixtures. If you can safely exercise a cloud
+provider, network share, removable volume, package, or symbolic link, report the
+exact environment and outcome. Review or file beta findings in the
+[PulseFiles issue tracker](https://github.com/deemoun/PulseFiles/issues); use the
+[issue chooser](https://github.com/deemoun/PulseFiles/issues/new/choose) for a
+new report.
 
 ## Support, privacy, and feedback
 
@@ -109,7 +122,7 @@ PulseFiles is intended to behave like a normal file manager in release builds wh
 
 ## Known Limitations and Distribution Notes
 
-- **Release-verification status:** the current 1.0 candidate has not completed
+- **Release-verification status:** this beta has not completed
   the required signed-app matrix on macOS, Apple Silicon, and Intel. The cloud,
   network-share, removable-media, package, symbolic-link, and metadata behaviors
   below are implementation expectations, not verified support claims, until the
@@ -126,6 +139,6 @@ PulseFiles is intended to behave like a normal file manager in release builds wh
 - The Experimental Terminal is opt-in and must not be presented as a supported shell environment or security boundary.
 - The DEBUG experimental sandbox is a development/testing safeguard, not a substitute for a production App Sandbox entitlement model.
 
-## Suggested Release Body Summary
+## Suggested Beta Release Body Summary
 
-PulseFiles is a native AppKit dual-pane file manager for macOS 13+ focused on keyboard-first navigation, predictable file operations, active-pane search/filtering, configurable hidden-file visibility, and persisted user preferences. The 1.0 candidate includes intended handling for locally available cloud folders, mounted writable network/removable volumes, package directory trees, symbolic links, and best-effort metadata preservation, but these behaviors must not be described as verified support until the signed-app release matrix passes. Finder alias mutation and provider-specific cloud metadata are not supported promises. The Experimental Terminal remains opt-in and clearly labeled while DEBUG sandbox testing stays separate from normal release-build file-manager behavior.
+PulseFiles 1.0.0-beta.1 is a prerelease AppKit dual-pane file manager for macOS 13+ focused on keyboard-first navigation, predictable file operations, active-pane search/filtering, configurable hidden-file visibility, and persisted user preferences. Test only with backed-up, non-critical data. Storage-provider, package, symbolic-link, and metadata behavior remains unverified until the signed-app release matrix passes and must not be presented as supported. Finder alias mutation and provider-specific cloud metadata are not supported promises. The Experimental Terminal remains opt-in and clearly labeled while DEBUG sandbox testing stays separate from normal release-build file-manager behavior.
