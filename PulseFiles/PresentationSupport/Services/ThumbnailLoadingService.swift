@@ -4,8 +4,12 @@
 import AppKit
 import QuickLookThumbnailing
 
+package protocol ThumbnailLoading: AnyObject {
+    func thumbnail(for url: URL, size: CGSize, scale: CGFloat) async -> NSImage?
+}
+
 /// A cancellable, bounded thumbnail pipeline shared by Gallery rows.
-package final class ThumbnailLoadingService {
+package final class ThumbnailLoadingService: ThumbnailLoading {
     private let cache = NSCache<NSURL, NSImage>()
     private let queue: OperationQueue
 

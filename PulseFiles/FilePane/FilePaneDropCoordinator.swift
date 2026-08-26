@@ -4,8 +4,8 @@
 import AppKit
 
 package struct DropTransferPolicy {
-    enum Operation: Equatable { case copy, move }
-    typealias VolumeIdentifierProvider = (URL) -> String?
+    package enum Operation: Equatable { case copy, move }
+    package typealias VolumeIdentifierProvider = (URL) -> String?
     package var volumeIdentifierProvider: VolumeIdentifierProvider = { url in
         let values = try? url.resourceValues(forKeys: [.volumeURLKey])
         return (values?.allValues[.volumeURLKey] as? URL).map { $0.standardizedFileURL.path }

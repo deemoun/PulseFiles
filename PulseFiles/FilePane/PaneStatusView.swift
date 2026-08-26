@@ -4,10 +4,16 @@
 import AppKit
 
 package final class PaneStatusView: NSVisualEffectView {
-    struct Action {
-        let title: String
-        let accessibilityLabel: String
-        let handler: () -> Void
+    package struct Action {
+        package let title: String
+        package let accessibilityLabel: String
+        package let handler: () -> Void
+
+        package init(title: String, accessibilityLabel: String, handler: @escaping () -> Void) {
+            self.title = title
+            self.accessibilityLabel = accessibilityLabel
+            self.handler = handler
+        }
     }
 
     private let label = NSTextField(labelWithString: "")
