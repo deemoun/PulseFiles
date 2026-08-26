@@ -1,0 +1,92 @@
+name: Bug report
+description: Report a reproducible problem with PulseFiles.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve PulseFiles. Search existing issues before reporting a problem.
+
+        **Protect your data:** Do not upload sensitive file contents, credentials, raw filesystem paths, or diagnostics without first reviewing [`REDACTION_POLICY.txt`](https://github.com/deemoun/PulseFiles/blob/main/REDACTION_POLICY.txt). Use backed-up, disposable data when reproducing filesystem problems.
+
+        Security vulnerabilities do not belong in public issues. Follow the private reporting instructions in [`SECURITY.md`](https://github.com/deemoun/PulseFiles/blob/main/SECURITY.md).
+  - type: input
+    id: pulsefiles-version
+    attributes:
+      label: PulseFiles version
+      description: Find this in PulseFiles → About PulseFiles, or provide the commit if built from source.
+      placeholder: 1.0.0-beta.1 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: macOS 15.6.1 (24G90)
+    validations:
+      required: true
+  - type: dropdown
+    id: filesystem-provider
+    attributes:
+      label: Affected filesystem or provider
+      description: Select the environment where the problem occurs.
+      options:
+        - Local APFS or HFS+
+        - iCloud Drive
+        - Third-party cloud provider
+        - Network volume (SMB, NFS, or WebDAV)
+        - Removable or external volume
+        - Disk image or archive
+        - Other or unknown
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest reliable sequence, using redacted names and paths.
+      placeholder: |
+        1. Open a disposable folder…
+        2. Select a test file…
+        3. Run…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should PulseFiles have done?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include exact error text only after removing sensitive information.
+    validations:
+      required: true
+  - type: dropdown
+    id: disposable-data
+    attributes:
+      label: Disposable data
+      description: Did you reproduce this using backed-up, non-critical, disposable data?
+      options:
+        - "Yes, I used disposable data."
+        - "No, I did not use disposable data."
+        - "Not applicable; this report does not involve file operations."
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add redacted screenshots or other relevant context. Review the redaction policy before attaching diagnostics.
+  - type: checkboxes
+    id: privacy-confirmation
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I reviewed this report and its attachments and removed sensitive file contents, credentials, raw paths, and unreviewed diagnostics.
+          required: true
