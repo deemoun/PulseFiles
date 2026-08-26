@@ -41,20 +41,20 @@ package final class TerminalViewController: NSViewController {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     deinit { stopRunningCommand() }
 
-    override func loadView() {
+    package override func loadView() {
         view = NSView(); view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.black.cgColor; view.layer?.cornerRadius = LiquidGlassStyle.cornerRadius
         view.layer?.cornerCurve = .continuous; view.layer?.masksToBounds = true; view.layer?.borderWidth = 1
         view.layer?.borderColor = liquidGlassStyle.panelStroke.cgColor
         view.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.panel)
     }
-    override func viewDidLoad() {
+    package override func viewDidLoad() {
         super.viewDidLoad(); buildLayout()
         terminalView.onInput = { [weak self] data in self?.sendInput(data) }
         appendLine("PulseFiles Beta Terminal".localized)
         appendLine("Warning: shell commands can modify or delete files.")
     }
-    override func viewDidLayout() {
+    package override func viewDidLayout() {
         super.viewDidLayout()
         let size = terminalView.bounds.size
         runningProcess?.resize(columns: max(1, Int(size.width / 7.8)), rows: max(1, Int(size.height / 16)))
@@ -156,7 +156,7 @@ private enum TerminalControlSequenceRenderer {
 
 package final class TerminalTextView: NSTextView {
     package var onInput: ((Data) -> Void)?
-    override func keyDown(with event: NSEvent) {
+    package override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers.contains(.command) {
             switch event.charactersIgnoringModifiers?.lowercased() {
@@ -169,15 +169,15 @@ package final class TerminalTextView: NSTextView {
         guard let data = Self.inputData(keyCode: event.keyCode, characters: event.characters, modifiers: modifiers) else { return }
         onInput?(data)
     }
-    override func insertText(_ string: Any, replacementRange: NSRange) {
+    package override func insertText(_ string: Any, replacementRange: NSRange) {
         if let text = string as? String { onInput?(Data(text.utf8)) }
     }
-    override func paste(_ sender: Any?) {
+    package override func paste(_ sender: Any?) {
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
         onInput?(Data(text.utf8))
     }
-    override func cut(_ sender: Any?) {}
-    override func deleteBackward(_ sender: Any?) { onInput?(Data([0x7f])) }
+    package override func cut(_ sender: Any?) {}
+    package override func deleteBackward(_ sender: Any?) { onInput?(Data([0x7f])) }
 
     package static func inputData(keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags = []) -> Data? {
         let escapeSequences: [UInt16: String] = [
