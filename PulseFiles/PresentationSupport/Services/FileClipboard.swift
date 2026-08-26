@@ -4,14 +4,19 @@
 import AppKit
 
 package final class FileClipboard {
-    enum Operation: String {
+    package enum Operation: String {
         case copy
         case move
     }
 
-    struct Payload: Equatable {
-        let urls: [URL]
-        let operation: Operation
+    package struct Payload: Equatable {
+        package let urls: [URL]
+        package let operation: Operation
+
+        package init(urls: [URL], operation: Operation) {
+            self.urls = urls
+            self.operation = operation
+        }
     }
 
     package static let operationPasteboardType = NSPasteboard.PasteboardType("com.pulsefiles.file-operation")

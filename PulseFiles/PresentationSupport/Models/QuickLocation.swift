@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
+import PulseFilesModels
 
 package enum QuickLocationSection: String, CaseIterable {
     case ancestors, history, favorites, recent, volumes, workspace, oppositePane

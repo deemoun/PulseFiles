@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
 import UniformTypeIdentifiers
 
 /// Resolves generic file icons on the main/AppKit context and retains only a
@@ -65,7 +66,7 @@ package final class FileIconProvider {
 }
 
 private extension FileIconKey {
-    package var cacheKey: NSString {
+    var cacheKey: NSString {
         "\(fileType.rawValue)|\(fileExtension)|\(contentTypeIdentifier ?? "")|\(isAlias)" as NSString
     }
 }

@@ -16,7 +16,7 @@ let package = Package(
         .target(name: "PulseFilesWorkflows", dependencies: ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Commands"),
         .target(
             name: "PulseFilesPresentationSupport",
-            dependencies: ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles/PresentationSupport",
             exclude: ["Commands"]
         ),
