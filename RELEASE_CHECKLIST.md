@@ -13,6 +13,13 @@ charge, to the Corresponding Source for the exact binary version. A moving
 does not make an archive ready for open-source distribution; every item in this
 licensing gate must also pass and be recorded in the release evidence.
 
+- [ ] Confirm and retain explicit consent for publishing the Dmitry Yarygin /
+      `deemoun` name-account association, as described in
+      [`docs/identity-publication-review.md`](docs/identity-publication-review.md).
+      Repository metadata and prior publication do not by themselves establish
+      that consent; if it cannot be confirmed, stop publication and follow the
+      coordinated anonymity and licensing review in that document.
+
 - [ ] Create and push a permanent, signed version tag for the frozen candidate SHA.
 - [ ] Publish the binary from the GitHub release for that tag and retain the
       source archive generated or attached for the same tag, including the build
