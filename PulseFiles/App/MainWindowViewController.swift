@@ -72,7 +72,7 @@ struct RenamePaneRefreshPlan {
     }
 }
 
-final class MainWindowViewController: NSViewController, WorkflowWindowProviding, WorkflowAlertPresenting, WorkflowOperationExecuting, WorkflowConflictResolving, MainCommandHandling, FileOperationPresenting {
+final class MainWindowViewController: NSViewController, WorkflowWindowProviding, WorkflowAlertPresenting, WorkflowOperationExecuting, WorkflowConflictResolving, ScratchDirectoryWorkflowPresenting, MainCommandHandling, FileOperationPresenting {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220
         static let maxWidth: CGFloat = 340
@@ -98,6 +98,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private let directorySizing: any DirectorySizing
     private let thumbnailLoader: any ThumbnailLoading
     private let standardFolderAccess: any StandardFolderAccessProviding
+    private let folderAccessGrants: any FolderAccessGrantProviding
     private var recentOperationSummaries: [DiagnosticOperationSummary] = []
 
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
@@ -181,6 +182,16 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private let diagnosticsExporter: any DiagnosticsExporting
     private let stagingCleanupFactory: (@escaping () -> [URL]) -> StagingCleanupService
     private let scratchCleanupFactory: (@escaping () -> [URL]) -> ScratchFolderCleanupService
+    private lazy var scratchDirectoryCoordinator = ScratchDirectoryWorkflowCoordinator(
+        settings: settings,
+        accessPolicy: accessPolicy,
+        folderSelection: authorizedFolderSelection,
+        cleanupFactory: scratchCleanupFactory,
+        activeRoots: { [weak self] in
+            guard let self else { return [] }
+            return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
+        }
+    )
     /// The sole authority for command availability and target resolution.
     private let commandRouter = MainCommandRouter()
     private lazy var commandDispatchCoordinator = MainCommandDispatchCoordinator(router: commandRouter, handler: self)
@@ -269,6 +280,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         self.directorySizing = dependencies.directorySizing
         self.thumbnailLoader = dependencies.thumbnailLoader
         self.standardFolderAccess = dependencies.standardFolderAccess
+        self.folderAccessGrants = dependencies.folderAccessGrants
         self.applicationOpener = dependencies.applicationOpener
         self.fileSizeService = dependencies.fileSize
         self.readOnlyViewerService = dependencies.readOnlyViewer
@@ -794,79 +806,18 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     }
 
     private func performScratchDirectoryCommand(useInactive: Bool) {
-        let router = ScratchDirectoryCommandRouter()
-        switch router.route(configuredDirectory: settings.scratchDirectory, canAccess: { accessPolicy.canAccess($0) }) {
-        case .promptForConfiguration:
-            let alert = NSAlert()
-            alert.messageText = "No Scratch Folder Configured".localized
-            alert.informativeText = "Choose a folder to use as your scratch workspace.".localized
-            alert.addButton(withTitle: "Choose Folder…".localized)
-            alert.addButton(withTitle: "Cancel".localized)
-            let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-                guard response == .alertFirstButtonReturn else { return }
-                self?.chooseScratchDirectory(useInactive: useInactive)
-            }
-            if let window = view.window { alert.beginSheetModal(for: window, completionHandler: completion) }
-            else { completion(alert.runModal()) }
-        case .requestAccess(let directory):
-            let request = AuthorizedFolderSelectionCoordinator.Request(
-                prompt: "Grant Access".localized,
-                message: "Choose a folder containing the configured scratch folder.".localized,
-                initialDirectory: directory,
-                acceptsExistingAccessibleURL: true,
-                presentingWindow: view.window
-            )
-            authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
-                guard let self else { return }
-                let granted: Bool
-                if case .success = result { granted = self.accessPolicy.canAccess(directory) } else { granted = false }
-                if case .navigate(let recovered) = router.routeAfterAccessRecovery(to: directory, wasGranted: granted) {
-                    self.navigateToScratchDirectory(recovered, useInactive: useInactive)
-                }
-                if case .failure(let failure) = result {
-                    FolderAccessFailurePresenter.present(failure, in: self.view.window)
-                }
-            }
-        case .navigate(let directory):
-            navigateToScratchDirectory(directory, useInactive: useInactive)
-        case .cancelled:
-            break
-        }
+        scratchDirectoryCoordinator.perform(useInactive: useInactive, presenter: self)
     }
 
-    private func chooseScratchDirectory(useInactive: Bool) {
-        let window = view.window
-        let request = AuthorizedFolderSelectionCoordinator.Request(prompt: "Choose".localized, presentingWindow: window)
-        authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
-            guard let self else { return }
-            guard case .success(let directory) = result else {
-                if case .failure(let failure) = result { FolderAccessFailurePresenter.present(failure, in: window) }
-                return
-            }
-            let selection: ScratchFolderSelection
-            do {
-                selection = try self.scratchCleanupFactory { [weak self] in
-                        guard let self else { return [] }
-                        return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
-                    }.captureSelection(for: directory)
-            } catch {
-                self.showError(message: "Could Not Configure Scratch Folder".localized, detail: error.localizedDescription)
-                return
-            }
-            self.settings.scratchDirectory = selection.directory
-            self.settings.scratchFolderSelection = selection
-            self.navigateToScratchDirectory(selection.directory, useInactive: useInactive)
-            self.sidebar.refresh()
-        }
-    }
-
-    private func navigateToScratchDirectory(_ directory: URL, useInactive: Bool) {
+    func navigateToScratchDirectory(_ directory: URL, useInactive: Bool) {
         toolbarSearchField?.stringValue = ""
         let pane = targetPane(useInactive: useInactive)
         pane.setSearchQuery("")
         pane.navigate(to: directory)
         view.window?.makeFirstResponder(pane.tableView)
     }
+
+    func scratchDirectoryConfigurationDidChange() { sidebar.refresh() }
 
     override func keyDown(with event: NSEvent) {
         if !handleGlobalKeyDown(event) {
@@ -1075,7 +1026,7 @@ extension MainWindowViewController {
                 guard let self else { return [] }
                 return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
             }
-        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService, accessPolicy: accessPolicy, accessGrantService: .shared, standardFolderAccess: standardFolderAccess, folderSelection: AuthorizedFolderSelectionCoordinator(accessPolicy: accessPolicy, grantService: FolderAccessGrantService.shared))
+        let controller = SettingsViewController(settings: settings, stagingCleanupService: cleanupService, scratchCleanupService: scratchCleanupService, accessPolicy: accessPolicy, accessGrantService: folderAccessGrants, standardFolderAccess: standardFolderAccess, folderSelection: authorizedFolderSelection)
         controller.onOpenScratchDirectory = { [weak self] url in
             self?.targetPane().navigate(to: url)
         }
