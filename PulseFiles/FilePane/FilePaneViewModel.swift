@@ -40,7 +40,7 @@ package final class FilePaneViewModel {
     /// could not be read. The visible items are not a confirmed-current snapshot.
     private(set) var partialRefreshFailure: DirectoryContentsReadError?
     private(set) var isPartialRefreshRetryScheduled = false
-    private(set) var searchQuery = ""
+    package private(set) var searchQuery = ""
     private(set) var quickSearchMatchMode: QuickSearchMatchMode
     private(set) var quickSearchPresentation: QuickSearchPresentation
 

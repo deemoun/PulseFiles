@@ -27,7 +27,7 @@ package final class SettingsViewController: NSViewController {
     private let navigationPage: NavigationSettingsPageController
     private let pages: [Category: SettingsPageController]
 
-    package init(settings: SettingsService, stagingCleanupService: StagingCleanupService, scratchCleanupService: ScratchFolderCleanupService, accessPolicy: SandboxFileAccessPolicy, accessGrantService: FolderAccessGrantService, standardFolderAccess: any StandardFolderAccessProviding, folderSelection: any AuthorizedFolderSelecting) {
+    package init(settings: SettingsService, stagingCleanupService: StagingCleanupService, scratchCleanupService: ScratchFolderCleanupService, accessPolicy: SandboxFileAccessPolicy, accessGrantService: any FolderAccessGrantProviding, standardFolderAccess: any StandardFolderAccessProviding, folderSelection: any AuthorizedFolderSelecting) {
         let general = GeneralSettingsPageController(settings: settings, stagingCleanupService: stagingCleanupService)
         let appearance = AppearanceSettingsPageController(settings: settings)
         let navigation = NavigationSettingsPageController(settings: settings, accessPolicy: accessPolicy, scratchCleanupService: scratchCleanupService, folderSelection: folderSelection)

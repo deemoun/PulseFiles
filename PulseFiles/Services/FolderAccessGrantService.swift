@@ -45,7 +45,23 @@ package struct SystemFolderAccessBookmarkResolver: FolderAccessBookmarkResolving
     }
 }
 
-package final class FolderAccessGrantService {
+package protocol FolderAccessGrantProviding: AnyObject {
+    var grants: [FolderAccessGrant] { get set }
+    func grantAccess(to directory: URL) throws -> FolderAccessGrant
+    func refreshResolvedGrants()
+    @discardableResult func removeGrant(for directory: URL) -> Bool
+}
+
+package extension FolderAccessGrantProviding {
+    var grants: [FolderAccessGrant] {
+        get { [] }
+        set {}
+    }
+    func refreshResolvedGrants() {}
+    @discardableResult func removeGrant(for directory: URL) -> Bool { false }
+}
+
+package final class FolderAccessGrantService: FolderAccessGrantProviding {
     package static let shared = FolderAccessGrantService()
 
     package static let defaultsKey = "folderAccessGrants"

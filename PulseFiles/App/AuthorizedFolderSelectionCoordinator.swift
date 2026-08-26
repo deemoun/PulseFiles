@@ -3,12 +3,6 @@
 
 import AppKit
 
-protocol FolderAccessGrantProviding: AnyObject {
-    func grantAccess(to directory: URL) throws -> FolderAccessGrant
-}
-
-extension FolderAccessGrantService: FolderAccessGrantProviding {}
-
 @MainActor
 final class AuthorizedFolderSelectionCoordinator: AuthorizedFolderSelecting {
     typealias Request = FolderSelectionRequest
