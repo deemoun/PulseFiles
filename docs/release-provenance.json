@@ -1,0 +1,21 @@
+{
+  "swiftPackageDependencies": [],
+  "assets": [
+    {
+      "path": "PulseFiles/Resources/AppIcon.icns",
+      "creatorRightsholder": "Dmitry Yarygin",
+      "versionSource": "Generated from PulseFiles/Resources/PulseFilesAppIconSource.png",
+      "license": "GPL-3.0-or-later",
+      "attributionRequirements": "Covered by the PulseFiles copyright notice",
+      "bundleLicenseText": false
+    },
+    {
+      "path": "PulseFiles/Resources/PulseFilesAppIconSource.png",
+      "creatorRightsholder": "Dmitry Yarygin",
+      "versionSource": "Original digital artwork created for PulseFiles",
+      "license": "GPL-3.0-or-later",
+      "attributionRequirements": "Covered by the PulseFiles copyright notice",
+      "bundleLicenseText": false
+    }
+  ]
+}
