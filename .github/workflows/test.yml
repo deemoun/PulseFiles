@@ -1,6 +1,7 @@
 name: Test
 
 on:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,9 @@ jobs:
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "5.9"
+
+      - name: Validate architecture boundaries
+        run: ./scripts/validate_architecture.sh
 
       - name: Run CI-safe automation tests
         env:

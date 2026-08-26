@@ -62,7 +62,7 @@ post-V1 features in `orthodox-feature-gap-audit.md` into release blockers.
 - Cloud-provider, network-share, removable-media, package, symbolic-link,
   Finder-alias, and metadata behavior remains candidate behavior until the
   signed-app matrix passes.
-- The CI workflow is currently manual (`workflow_dispatch`) and covers only a
+- The CI workflow runs for pull requests and manual dispatch and covers only a
   macOS 14 / Swift 5.9 automation run. This is useful presubmit evidence, but it
   is not the release OS/architecture matrix.
 
@@ -74,14 +74,14 @@ post-V1 features in `orthodox-feature-gap-audit.md` into release blockers.
 on.
 
 1. Run from a clean checkout:
+   - `./scripts/validate_architecture.sh`
    - `swift test`
    - `./scripts/run_automation_tests.sh --skip-system-events`
    - `./scripts/test_release_packaging.sh`
    - `./scripts/build_app.sh`
    - `./scripts/build_release_app.sh --local-unsigned`
-2. Enable branch/pull-request execution for the CI-safe automation workflow, or
-   add an equivalent required presubmit workflow. Keep release credential use
-   out of untrusted pull-request jobs.
+2. Make the CI-safe pull-request workflow a required presubmit check. Keep
+   release credential use out of untrusted pull-request jobs.
 3. Record the chosen full SHA and verify `release/VERSION`, release-note version,
    build number, bundle metadata, and generated app metadata agree.
 4. Freeze feature work on the candidate. Any fix found later creates a new SHA,
