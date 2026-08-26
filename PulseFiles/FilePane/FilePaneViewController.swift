@@ -909,7 +909,7 @@ package final class FilePaneViewController: NSViewController {
 
     package func chooseRecoveryDirectory() {
         let window = view.window
-        let request = AuthorizedFolderSelecting.Request(
+        let request = FolderSelectionRequest(
             prompt: "Choose".localized,
             initialDirectory: viewModel.currentDirectory,
             acceptsExistingAccessibleURL: true,
@@ -918,7 +918,7 @@ package final class FilePaneViewController: NSViewController {
         authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
             switch result {
             case .success(let url): self?.openGrantedRecoveryDirectory(url)
-            case .failure(let failure): FolderAccessFailurePresenter.present(failure, in: window)
+            case .failure(let failure): self?.authorizedFolderSelection.presentFailure(failure, in: window)
             }
         }
     }
