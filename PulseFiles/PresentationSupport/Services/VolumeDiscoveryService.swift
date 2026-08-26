@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import PulseFilesServices
 
 /// A mounted filesystem that can be presented in the sidebar without granting access to it.
 package struct Volume: Equatable, Sendable {
@@ -39,7 +40,7 @@ package struct Volume: Equatable, Sendable {
 package protocol VolumeDiscovering {
   /// Returns the currently mounted volumes without requiring callers to block
   /// the main actor while the filesystem is queried.
-  package func mountedVolumes() async -> [Volume]
+  func mountedVolumes() async -> [Volume]
 }
 
 /// The before-and-after state reported for a filesystem mount notification.
@@ -173,11 +174,11 @@ package final class VolumeChangeMonitor {
 }
 
 private extension URL {
-  package var normalizedVolumeRoot: URL {
+  var normalizedVolumeRoot: URL {
     standardizedFileURL.resolvingSymlinksInPath()
   }
 
-  package func isDescendant(of root: URL) -> Bool {
+  func isDescendant(of root: URL) -> Bool {
     let directoryComponents = standardizedFileURL.resolvingSymlinksInPath().pathComponents
     let rootComponents = root.standardizedFileURL.resolvingSymlinksInPath().pathComponents
     return directoryComponents.starts(with: rootComponents)

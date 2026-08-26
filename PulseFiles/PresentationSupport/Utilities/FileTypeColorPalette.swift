@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
 
 package enum FileVisualCategory: String, CaseIterable, Hashable {
     case folder
@@ -341,7 +342,7 @@ package enum FileTypeColorPalette {
 
 
 private extension NSColor {
-    package func resolvedColorIfNeeded(with appearance: NSAppearance?) -> NSColor {
+    func resolvedColorIfNeeded(with appearance: NSAppearance?) -> NSColor {
         guard let appearance else { return self }
 
         var resolvedColor = self
