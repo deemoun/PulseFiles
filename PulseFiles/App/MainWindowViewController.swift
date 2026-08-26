@@ -2249,7 +2249,7 @@ private final class MinimalDividerSplitView: NSSplitView {
             width: lineWidth,
             height: max(0, rect.height - 16)
         )
-        liquidGlassStyle.subtleStroke.setFill()
+        NSColor.separatorColor.setFill()
         lineRect.fill()
     }
 }

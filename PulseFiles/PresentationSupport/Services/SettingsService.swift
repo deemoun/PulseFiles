@@ -148,5 +148,5 @@ package final class SettingsService: SettingsPreferences, AppearanceSettingsProv
     package var sidebarWidth: Double { get { preferredSidebarWidth } set { preferredSidebarWidth = newValue } }
     package var isTerminalVisible: Bool { get { experimentalTerminalEnabled && (sessionState.runtimeTerminalVisible ?? defaultTerminalVisible) } set { sessionState.runtimeTerminalVisible = experimentalTerminalEnabled && newValue } }
     package func importJSONIfChanged() { repository.importJSONIfChanged() }
-    @discardableResult func writeSettingsJSON() throws -> URL { try repository.writeSettingsJSON() }
+    @discardableResult package func writeSettingsJSON() throws -> URL { try repository.writeSettingsJSON() }
 }

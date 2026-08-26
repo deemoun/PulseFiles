@@ -207,7 +207,7 @@ package final class FilePaneViewController: NSViewController {
     }
 
     package func newTab() { viewModel.newTab() }
-    @discardableResult func closeTab() -> Bool { viewModel.closeTab() }
+    @discardableResult package func closeTab() -> Bool { viewModel.closeTab() }
     package func nextTab() { viewModel.selectNextTab() }
     package func previousTab() { viewModel.selectPreviousTab() }
     package func selectTab(id: UUID) { viewModel.selectTab(id: id) }
