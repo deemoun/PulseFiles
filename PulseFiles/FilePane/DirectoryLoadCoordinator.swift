@@ -39,7 +39,7 @@ package final class DirectoryLoadCoordinator {
     package var onMonitorChange: (() -> Void)?
 
     private let fileSystem: FileSystemServicing
-    private let accessPolicy: SandboxFileAccessPolicy
+    private let accessPolicy: any BrowseAccessPolicy
     private let snapshotCache: DirectorySnapshotCache
     private let monitor: any DirectoryMonitoring
     private let timeout: TimeInterval
@@ -48,7 +48,7 @@ package final class DirectoryLoadCoordinator {
     private var watchdog: Task<Void, Never>?
     private var retry: Task<Void, Never>?
 
-    package init(fileSystem: FileSystemServicing, accessPolicy: SandboxFileAccessPolicy,
+    package init(fileSystem: FileSystemServicing, accessPolicy: any BrowseAccessPolicy,
                  snapshotCache: DirectorySnapshotCache = DirectorySnapshotCache(),
                  monitor: any DirectoryMonitoring = DirectoryMonitor(), timeout: TimeInterval = 15) {
         precondition(timeout > 0 && timeout.isFinite)

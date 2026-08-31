@@ -94,6 +94,16 @@ for directory in "${feature_directories[@]}"; do
   fi
 done
 
+# Feature modules must depend on authorization capabilities, never retain or accept
+# the concrete production policy. Construction is checked separately above.
+concrete_policy_dependency='(private|package|internal|public)?[[:space:]]*(let|var)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*SandboxFileAccessPolicy|init[[:space:]]*\([^)]*SandboxFileAccessPolicy'
+for directory in "${feature_directories[@]}"; do
+  if rg -n -U "$concrete_policy_dependency" "$directory" --glob '*.swift'; then
+    echo "error: feature stores or accepts concrete SandboxFileAccessPolicy: $directory" >&2
+    fail=1
+  fi
+done
+
 # Main-window workflow code receives resource-owning services from
 # MainWindowDependencies. Concrete production assembly belongs in the
 # composition root, not in the view controller or its focused coordinators.

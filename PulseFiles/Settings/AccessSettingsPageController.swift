@@ -5,13 +5,13 @@ import AppKit
 
 @MainActor
 package final class AccessSettingsPageController: SettingsPageControllerBase {
-    private let accessPolicy: SandboxFileAccessPolicy
+    private let accessPolicy: any AccessPolicyStatusProviding
     private let grantService: any FolderAccessGrantProviding
     private let standardAccess: any StandardFolderAccessProviding
     private let folderSelection: any AuthorizedFolderSelecting
     private var states: [StandardFolder: StandardFolderAccessState] = [:]
 
-    package init(accessPolicy: SandboxFileAccessPolicy, accessGrantService: any FolderAccessGrantProviding, standardAccess: any StandardFolderAccessProviding, folderSelection: any AuthorizedFolderSelecting) {
+    package init(accessPolicy: any AccessPolicyStatusProviding, accessGrantService: any FolderAccessGrantProviding, standardAccess: any StandardFolderAccessProviding, folderSelection: any AuthorizedFolderSelecting) {
         self.accessPolicy = accessPolicy; self.grantService = accessGrantService
         self.standardAccess = standardAccess
         self.folderSelection = folderSelection

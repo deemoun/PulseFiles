@@ -31,11 +31,11 @@ final class CompositionRootUITests: XCTestCase {
         let composition = controller.compositionForTesting
 
         XCTAssertTrue(composition.paneFileSystems.allSatisfy { $0 === fileSystem })
-        XCTAssertTrue(composition.panePolicies.allSatisfy { $0 === policy })
-        XCTAssertTrue(composition.sidebarPolicy === policy)
+        XCTAssertTrue(composition.panePolicyIdentities.allSatisfy { $0 == ObjectIdentifier(policy) })
+        XCTAssertTrue(composition.sidebarPolicyIdentity == ObjectIdentifier(policy))
         XCTAssertTrue(composition.sidebarDirectorySizing === directorySizing)
         XCTAssertTrue(directorySizing.accessPolicy === policy)
-        XCTAssertTrue(composition.terminalPolicy === policy)
+        XCTAssertTrue(composition.terminalPolicyIdentity == ObjectIdentifier(policy))
         XCTAssertTrue(composition.folderAccessGrants === grants)
     }
 

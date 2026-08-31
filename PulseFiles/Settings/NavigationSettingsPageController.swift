@@ -6,7 +6,7 @@ import AppKit
 @MainActor
 package final class NavigationSettingsPageController: SettingsPageControllerBase {
     private let settings: NavigationSettingsProviding
-    private let accessPolicy: SandboxFileAccessPolicy
+    private let accessPolicy: any FileAccessValidating
     private let folderSelection: any AuthorizedFolderSelecting
     private let scratchCleanupService: ScratchFolderCleanupService
     private let leftField = NSTextField(), rightField = NSTextField(), scratchField = NSTextField()
@@ -15,7 +15,7 @@ package final class NavigationSettingsPageController: SettingsPageControllerBase
     package var onOpenScratchDirectory: ((URL) -> Void)?
     package var onScratchCleanupResult: ((FileOperationResult, String) -> Void)?
 
-    package init(settings: NavigationSettingsProviding, accessPolicy: SandboxFileAccessPolicy, scratchCleanupService: ScratchFolderCleanupService, folderSelection: any AuthorizedFolderSelecting) {
+    package init(settings: NavigationSettingsProviding, accessPolicy: any FileAccessValidating, scratchCleanupService: ScratchFolderCleanupService, folderSelection: any AuthorizedFolderSelecting) {
         self.settings = settings; self.accessPolicy = accessPolicy; self.scratchCleanupService = scratchCleanupService
         self.folderSelection = folderSelection
         super.init()
