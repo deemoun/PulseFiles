@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import XCTest
-@testable import PulseFiles
+@testable import PulseFilesAppCoordination
 
 final class RenamePaneRefreshPlanTests: XCTestCase {
     func testRenameRefreshesOnlyPaneViewingSourceDirectory() {

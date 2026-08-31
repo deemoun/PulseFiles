@@ -9,6 +9,7 @@
 @_exported import PulseFilesWorkflows
 
 @_exported import PulseFilesPresentationSupport
+@_exported import PulseFilesAppCoordination
 @_exported import PulseFilesTerminal
 @_exported import PulseFilesPane
 @_exported import PulseFilesSidebar

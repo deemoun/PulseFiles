@@ -39,6 +39,7 @@ features are independently testable AppKit modules and are peers, never a stack:
 
 ```text
 PulseFilesApp (composition root)
+  ├── PulseFilesAppCoordination ───→ PulseFilesWorkflows / Models / Utilities
   ├── PulseFilesPane ───────────────┐
   ├── PulseFilesSidebar ────────────┤
   ├── PulseFilesSettings ───────────┼──→ PulseFilesPresentationSupport
@@ -51,9 +52,12 @@ PulseFilesServices ──────────→ PulseFilesModels → PulseF
 ```
 
 An arrow means “may depend on.” There are no arrows between pane, sidebar,
-settings, and terminal. A feature reports intent through a model value, closure,
-delegate, or small capability protocol; `PulseFilesApp` coordinates the receiving
-feature and injects implementations. In particular, features do not construct
+settings, and terminal, nor from application coordination to those feature
+targets. A feature reports intent through a model value, closure, delegate, or
+small capability protocol. `PulseFilesAppCoordination` owns reusable main-window
+command dispatch, transient routing snapshots, pane synchronization, and other
+value-only cross-feature decisions. `PulseFilesApp` connects those decisions to
+concrete feature controllers and injects implementations. In particular, features do not construct
 `FileSystemService`, `FileOperationService`, `SandboxFileAccessPolicy`, concrete
 persistence services, or `PTYTerminalProcess`.
 
@@ -85,7 +89,17 @@ wildcards and directory exceptions are not permitted.
 
 Declarations crossing targets use `package`, not `public`. Target manifests must
 list only directly imported lower layers. Production factories, singleton
-selection, and adapters that join multiple features remain under `PulseFiles/App`.
+selection, resource lookup, lifecycle, and adapters that join concrete features
+remain under `PulseFiles/App`.
+
+The `PulseFiles/App` audit boundary is intentional: `Main.swift`, `AppDelegate`,
+`MainWindowController`, and production dependency factories are launch and
+composition; the main-window, search-results, viewer, progress, quick-locations,
+and pattern-selection controllers are application-only view presentation; and
+AppKit-bound workflow/panel coordinators stay beside those controllers. Only
+coordination types with stable injected or value-only boundaries belong in
+`PulseFiles/AppCoordination`; moving a concrete controller monolith unchanged is
+not a module boundary.
 
 Filesystem mutation lives in `PulseFilesServices`. Its concrete validators,
 planners, executors, schedulers, metadata preservation, staging, and copy
@@ -132,7 +146,8 @@ performCommand path. Keep cross-pane behavior here, not in a pane controller.
 
 | Directory | Content |
 | --- | --- |
-| PulseFiles/App | Lifecycle, menus, window and high-level UI coordination. |
+| PulseFiles/App | Launch/composition, lifecycle, production factories, resource lookup, and application-only AppKit presentation. |
+| PulseFiles/AppCoordination | Reusable main-window event routing, pane synchronization, command dispatch, and value-only coordination. |
 | PulseFiles/FilePane | Pane view model/controller, file table, breadcrumbs, rows and status views. |
 | PulseFiles/Sidebar | Locations, mounted devices/recent folders and selection inspector. |
 | PulseFiles/Terminal | Experimental Terminal interface and process adapter; opt-in and disabled by default. |

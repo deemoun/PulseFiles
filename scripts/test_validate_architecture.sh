@@ -12,7 +12,7 @@ trap 'rm -rf "$FIXTURE"' EXIT
 mkdir -p "$FIXTURE/license-root"
 export PULSEFILES_LICENSE_ROOT="$FIXTURE/license-root"
 BASE="$FIXTURE/base"
-mkdir -p "$BASE/PulseFiles"/{App,Utilities,Models,Services,Commands,PresentationSupport,Terminal,FilePane,Sidebar,Settings}
+mkdir -p "$BASE/PulseFiles"/{App,AppCoordination,Utilities,Models,Services,Commands,PresentationSupport,Terminal,FilePane,Sidebar,Settings}
 mkdir -p "$BASE"/{PulseFilesCoreTests,PulseFilesServicesTests,PulseFilesTests,PulseFilesAppKitUITests}
 cp "$REPO_ROOT/Package.swift" "$BASE/Package.swift"
 
@@ -56,8 +56,10 @@ accept_source directory-read PulseFiles/App/Fixture.swift 'let children = try fm
 
 # Imports are checked from policy for every target, including composition.
 reject_source lateral-feature-import PulseFiles/FilePane/Fixture.swift 'import PulseFilesSidebar'
+reject_source coordination-lateral-import PulseFiles/AppCoordination/Fixture.swift 'import PulseFilesPane'
 reject_source reverse-lower-layer-import PulseFiles/Services/Fixture.swift 'import PulseFilesTerminal'
 accept_source composition-import PulseFiles/App/Fixture.swift 'import PulseFilesTerminal'
+accept_source coordination-workflow-import PulseFiles/AppCoordination/Fixture.swift 'import PulseFilesWorkflows'
 
 # A newly declared resource owner is automatically protected without editing a
 # constructor-name regex.
