@@ -136,16 +136,23 @@ performCommand path. Keep cross-pane behavior here, not in a pane controller.
 
 ## Pane browsing lifecycle
 
-Each pane owns PaneState: directory, selection, focus row, NavigationHistory,
-sort descriptor and hidden-file preference. FilePaneViewModel is a main-actor
-state machine that asks FileSystemService for contents, filters loaded items by
-search text, persists display preferences through a callback, and monitors a
-successfully loaded directory using DirectoryMonitor.
+Each pane composes two focused state owners. The AppKit-free
+`PaneNavigationStateMachine` owns `PaneState` (tabs, current directory, marks,
+focus, history, sorting, and hidden-file preference) and performs tab activation,
+history commit/rollback, and restoration. The main-actor
+`DirectoryLoadCoordinator` owns the snapshot cache and directory monitor plus the
+complete asynchronous load lifetime. `FilePaneViewModel` remains the package-facing
+main-actor facade: it composes those owners, applies search filtering, persists
+display preferences, and publishes the existing pane callbacks.
 
-Loads are asynchronous. The view model cancels an older load before beginning a
-new one and tags them with incrementing IDs, so a stale result cannot replace a
-newer navigation result. On failure it retains prior directory/items and exposes
-DirectoryLoadFailure to the UI. On a mount change it refreshes the pane or falls
+Loads move through one explicit coordinator state (`idle`, `loading`, `loaded`,
+`failed`, or `retryScheduled`). Each request advances a generation; watchdogs,
+partial-refresh retries, monitor notifications, and filesystem completions are
+accepted only for the current generation, so cancellation-resistant stale work
+cannot replace newer navigation or tab state. Cache and monitor dependencies are
+injected, making teardown deterministic. Access policy validation still wraps
+every enumeration and metadata read, while failures retain prior directory/items
+and history transitions roll back. On a mount change the pane refreshes or falls
 back to a policy-valid directory if its current path vanished.
 
 FilePaneViewController owns exactly one pane and its FilePaneViewModel. It retains
