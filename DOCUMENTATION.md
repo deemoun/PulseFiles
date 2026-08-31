@@ -65,10 +65,23 @@ application-only DEBUG adapter rather than a target: its single log controller i
 created only by the composition root, has no reusable feature boundary, and a
 standalone module would add an artificial peer without an independently testable
 API. If Debug grows reusable state or capability contracts, extract those lower
-first and reassess the target boundary. `scripts/validate_architecture.sh` enforces
-the graph with exact construction and import rules. New exceptions must be exact
-file/import allowlist entries with an adjacent rationale; wildcard feature-to-feature
-exceptions are not permitted.
+first and reassess the target boundary. `scripts/validate_architecture.sh` enforces the graph from the machine-readable
+`scripts/architecture_policy.json`. To add or move a production module, register
+its exact SwiftPM target name, source path, and complete list of direct internal
+dependencies in `productionTargets`, then make the matching `Package.swift`
+declaration. The validator assigns every Swift source to the most-specific
+registered path and checks all `PulseFiles*` imports, including imports owned by
+the executable composition target. Test targets are registered the same way in
+`testTargets`, so every declared target path and direct internal dependency is
+checked rather than only the production feature modules.
+
+Peer presentation targets may construct types declared in their own source tree,
+but service-layer resource owners are discovered from declarations and are denied
+by default. An unavoidable construction exception must be added to
+`serviceConstructorExceptions` as an exact `relative/path/File.swift:TypeName`
+entry, with a rationale beside the owning code and in review. Direct filesystem
+mutation exceptions likewise use exact paths in `presentationMutationExceptions`;
+wildcards and directory exceptions are not permitted.
 
 Declarations crossing targets use `package`, not `public`. Target manifests must
 list only directly imported lower layers. Production factories, singleton
