@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
+import PulseFilesWorkflows
 
 /// Converts command-routing rejections into user-facing presentation without coupling the router to AppKit alerts.
-struct CommandPresentationCoordinator {
-    struct Feedback: Equatable { let message: String; let detail: String }
+package struct CommandPresentationCoordinator {
+    package struct Feedback: Equatable { package let message: String; package let detail: String }
 
-    func feedback(for reason: MainCommandRoutingDisabledReason, parentRowFocused: Bool) -> Feedback {
+    package init() {}
+
+    package func feedback(for reason: MainCommandRoutingDisabledReason, parentRowFocused: Bool) -> Feedback {
         switch reason {
         case .fileOperationInProgress: return .init(message: "Operation in Progress", detail: "Wait for the current file operation to finish before starting another file-changing action.")
         case .noOppositePane: return .init(message: "Opposite Pane Unavailable", detail: "Use dual-pane mode before using this command.")

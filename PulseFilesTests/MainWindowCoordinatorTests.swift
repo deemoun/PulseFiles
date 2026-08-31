@@ -3,6 +3,7 @@
 
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesAppCoordination
 
 final class MainWindowCoordinatorTests: XCTestCase {
     @MainActor

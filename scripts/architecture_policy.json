@@ -9,15 +9,16 @@
     "PulseFilesPane": { "path": "PulseFiles/FilePane", "dependencies": ["PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesSidebar": { "path": "PulseFiles/Sidebar", "dependencies": ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesSettings": { "path": "PulseFiles/Settings", "dependencies": ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
-    "PulseFiles": { "path": "PulseFiles", "dependencies": ["PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] }
+    "PulseFilesAppCoordination": { "path": "PulseFiles/AppCoordination", "dependencies": ["PulseFilesWorkflows", "PulseFilesModels", "PulseFilesUtilities"] },
+    "PulseFiles": { "path": "PulseFiles", "dependencies": ["PulseFilesAppCoordination", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] }
   },
   "testTargets": {
     "PulseFilesCoreTests": { "path": "PulseFilesCoreTests", "dependencies": ["PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesServicesTests": { "path": "PulseFilesServicesTests", "dependencies": ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
-    "PulseFilesTests": { "path": "PulseFilesTests", "dependencies": ["PulseFiles", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
+    "PulseFilesTests": { "path": "PulseFilesTests", "dependencies": ["PulseFiles", "PulseFilesAppCoordination", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesAppKitUITests": { "path": "PulseFilesAppKitUITests", "dependencies": ["PulseFiles", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] }
   },
-  "peerPresentationTargets": ["PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal"],
+  "peerPresentationTargets": ["PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesAppCoordination"],
   "serviceConstructorExceptions": [],
   "presentationMutationExceptions": []
 }

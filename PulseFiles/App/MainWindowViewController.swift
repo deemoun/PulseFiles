@@ -55,26 +55,6 @@ struct MainCommandDestinationResolver {
     }
 }
 
-/// Separates the panes that need a targeted rename refresh from panes that can
-/// use the normal operation refresh. Keeping this decision value-based makes
-/// the two-pane case explicit and prevents a second reload from racing the
-/// selection restore for a renamed item.
-struct RenamePaneRefreshPlan {
-    let renamedPaneIndexes: [Int]
-    let genericRefreshPaneIndexes: [Int]
-
-    init(currentDirectories: [URL], sourceURL: URL) {
-        let sourceDirectory = sourceURL.deletingLastPathComponent()
-        let renamedIndexes = currentDirectories.indices.filter {
-            FilePathComparison.isSamePath(currentDirectories[$0], sourceDirectory)
-        }
-        renamedPaneIndexes = renamedIndexes
-        genericRefreshPaneIndexes = currentDirectories.indices.filter {
-            !renamedIndexes.contains($0)
-        }
-    }
-}
-
 final class MainWindowViewController: NSViewController, WorkflowWindowProviding, WorkflowAlertPresenting, WorkflowOperationExecuting, WorkflowConflictResolving, ScratchDirectoryWorkflowPresenting, MainCommandHandling, FileOperationPresenting {
     private enum SidebarMetrics {
         static let minWidth: CGFloat = 220

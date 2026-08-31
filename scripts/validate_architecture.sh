@@ -30,6 +30,7 @@ mutation='\.(createDirectory[[:space:]]*\([[:space:]]*(at|atPath):|createFile[[:
 
 presentation_directories=(
   PulseFiles/App
+  PulseFiles/AppCoordination
   PulseFiles/FilePane
   PulseFiles/Sidebar
   PulseFiles/Settings
@@ -39,6 +40,7 @@ presentation_directories=(
 )
 
 feature_directories=(
+  PulseFiles/AppCoordination
   PulseFiles/FilePane
   PulseFiles/Sidebar
   PulseFiles/Settings
