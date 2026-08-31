@@ -183,6 +183,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private let fileSizeService: any FileSizeResolving
     private let readOnlyViewerService: any ViewerContentLoading
     private let diagnosticsExporter: any DiagnosticsExporting
+    private let fileOperationPresentationCoordinator = FileOperationPresentationCoordinator()
     private let stagingCleanupFactory: (@escaping () -> [URL]) -> StagingCleanupService
     private let scratchCleanupFactory: (@escaping () -> [URL]) -> ScratchFolderCleanupService
     private lazy var scratchDirectoryCoordinator = ScratchDirectoryWorkflowCoordinator(
@@ -197,7 +198,18 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     )
     /// The sole authority for command availability and target resolution.
     private let commandRouter = MainCommandRouter()
-    private lazy var commandDispatchCoordinator = MainCommandDispatchCoordinator(router: commandRouter, handler: self)
+    private lazy var commandCoordinator = MainWindowCommandCoordinator(
+        router: commandRouter,
+        inputs: .init(
+            activePaneID: { [weak self] in self?.activePaneID ?? .left },
+            pane: { [weak self] paneID in self?.commandSnapshot(for: paneID) ?? Self.emptyCommandSnapshot(for: paneID) },
+            isSinglePaneMode: { [weak self] in self?.isSinglePaneMode == true },
+            isFileOperationActive: { [weak self] in self?.isFileOperationActive == true },
+            hasUndoRecovery: { [weak self] in self?.undoRecovery?.eligibility() == .eligible },
+            canAccess: { [accessPolicy] in accessPolicy.canAccess($0) }
+        ),
+        output: { [weak self] in self?.handle($0) }
+    )
     private lazy var previewCoordinator = PreviewCoordinator(accessPolicy: accessPolicy, probe: fileSystemProbe)
     private lazy var navigationCoordinator = NavigationCoordinator(probe: fileSystemProbe)
 
@@ -514,12 +526,12 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private func performCommand(_ command: MainCommand, from pane: PaneID? = nil, entrySurface: MainCommandEntrySurface = .menu) {
         if let pane { activePaneID = pane }
         DiagnosticLogger.log(.info, category: "MainWindow", "Command execution requested: command=\(command); activePane=\(String(describing: activePaneID))")
-        commandDispatchCoordinator.dispatch(command, from: entrySurface, state: currentRoutingState())
+        commandCoordinator.perform(command, from: entrySurface)
     }
 
     private func performRoutedPaneCallback(_ command: MainCommand, from pane: PaneID, action: () -> Void) {
         activePaneID = pane
-        let route = commandRouter.route(command, from: .paneCallback, in: currentRoutingState())
+        let route = commandCoordinator.route(command, from: .paneCallback)
         if case let .disabled(disabledCommand, reason) = route {
             presentDisabledCommandFeedback(command: disabledCommand, reason: reason)
         } else {
@@ -1633,17 +1645,10 @@ extension MainWindowViewController {
         confirmButtonTitle: String,
         completion: @escaping () -> Void
     ) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        let itemLabel = urls.count == 1 ? "Item".localized : "%d Items".localized(with: urls.count)
-        alert.messageText = "%@ %@?".localized(with: operationName, itemLabel)
-        alert.informativeText = confirmationSummary(
-            operationName: operationName,
-            urls: urls,
-            destinationDirectory: destinationDirectory
-        )
-        alert.addButton(withTitle: confirmButtonTitle)
-        alert.addButton(withTitle: "Cancel — Do Not Start".localized)
+        let alert = fileOperationPresentationCoordinator.confirmation(
+            operationName: operationName, urls: urls, destinationDirectory: destinationDirectory,
+            confirmButtonTitle: confirmButtonTitle
+        ).makeAlert()
 
         let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .alertFirstButtonReturn else {
@@ -1685,30 +1690,6 @@ extension MainWindowViewController {
         return lines.joined(separator: "\n")
     }
 
-    private func confirmationSummary(operationName: String, urls: [URL], destinationDirectory: URL?) -> String {
-        let itemLabel = urls.count == 1 ? "1 item".localized : "%d items".localized(with: urls.count)
-        var lines = [
-            "Operation: %@".localized(with: operationName),
-            "%@ %@:".localized(with: operationName, itemLabel)
-        ]
-        let visibleNames = urls.prefix(8).map { "- \($0.lastPathComponent)" }
-        lines.append(contentsOf: visibleNames)
-        if urls.count > visibleNames.count {
-            lines.append("- ...and %d more".localized(with: urls.count - visibleNames.count))
-        }
-        let sourceVolumes = Dictionary(grouping: urls, by: { VolumeStatusPresentation.resolveSynchronously(for: $0).locationDescription }).keys.sorted()
-        if !sourceVolumes.isEmpty {
-            lines.append("")
-            lines.append("Source volume%@: %@".localized(with: sourceVolumes.count == 1 ? "" : "s", sourceVolumes.joined(separator: ", ")))
-        }
-        if let destinationDirectory {
-            lines.append("")
-            lines.append("Destination: %@".localized(with: destinationDirectory.path))
-            lines.append("Destination volume: %@".localized(with: VolumeStatusPresentation.resolveSynchronously(for: destinationDirectory).locationDescription))
-        }
-        return lines.joined(separator: "\n")
-    }
-
     private func undoLastOperation() { operationCoordinator.undo() }
 
     private func cancelActiveFileOperation() { operationCoordinator.cancel() }
@@ -1735,12 +1716,12 @@ extension MainWindowViewController {
                 return
             }
             do {
-                let bundle = try diagnosticsExporter.export(
-                    to: destination,
+                try fileOperationPresentationCoordinator.exportDiagnostics(
+                    to: destination, exporter: diagnosticsExporter,
                     entries: DiagnosticLogService.shared.entries,
-                    operationSummaries: recentOperationSummaries
+                    operationSummaries: recentOperationSummaries,
+                    reveal: NSWorkspace.shared.activateFileViewerSelecting
                 )
-                NSWorkspace.shared.activateFileViewerSelecting([bundle])
             } catch {
                 showError(message: "Could Not Export Diagnostics".localized, detail: error.localizedDescription)
             }
@@ -1790,12 +1771,12 @@ extension MainWindowViewController {
     }
 
     func presentFileOperationResult(_ result: FileOperationResult, operationName: String) {
-        guard let presentation = Self.operationResultPresentation(result, operationName: operationName) else { return }
+        guard let presentation = fileOperationPresentationCoordinator.result(result, operationName: operationName) else { return }
         showAlert(message: presentation.message, detail: presentation.detail, style: presentation.style)
     }
 
     private func refreshCommandAvailability() {
-        let state = currentRoutingState()
+        let state = commandCoordinator.state()
         commandBar.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSControl }.forEach { control in
             guard let rawValue = control.identifier?.rawValue, let action = CommandBarAction(rawValue: rawValue) else { return }
             if case .disabled = commandRouter.route(MainCommand(commandBarAction: action), in: state) {
@@ -1809,23 +1790,11 @@ extension MainWindowViewController {
 
     @MainActor
     func resolveFileOperationConflict(destination: URL, operationName: String) async -> FileConflictResolution {
-        let keepBothDestination = FileOperationService.keepBothDestination(
-            for: destination,
+        let conflict = fileOperationPresentationCoordinator.conflict(
+            destination: destination, operationName: operationName,
             fileExists: { FileManager.default.fileExists(atPath: $0.path) }
         )
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "An Item With This Name Already Exists".localized
-        alert.informativeText = "%@ already exists in %@. Keep Both will save the incoming item as %@ during this %@ operation.".localized(
-            with: destination.lastPathComponent,
-            destination.deletingLastPathComponent().path,
-            keepBothDestination.lastPathComponent,
-            operationName
-        )
-        alert.addButton(withTitle: "Keep Both — Use New Name".localized)
-        alert.addButton(withTitle: "Replace Existing Item".localized)
-        alert.addButton(withTitle: "Skip This Item".localized)
-        alert.addButton(withTitle: "Cancel Whole Operation".localized)
+        let alert = conflict.0.makeAlert()
 
         let applyToRemaining = NSButton(checkboxWithTitle: "Apply this choice to remaining conflicts".localized, target: nil, action: nil)
         applyToRemaining.setAccessibilityLabel("Apply this conflict choice to remaining conflicts".localized)
@@ -2053,7 +2022,7 @@ extension MainWindowViewController {
         let routedCommand = MainCommand(menuAction: menuItem.action)
         let routeAllowsCommand: Bool = {
             guard let routedCommand else { return true }
-            if case .disabled = commandRouter.route(routedCommand, from: .menu, in: currentRoutingState()) { return false }
+            if case .disabled = commandCoordinator.route(routedCommand, from: .menu) { return false }
             return true
         }()
         if menuItem.action == #selector(menuUndo(_:)) {
@@ -2115,45 +2084,24 @@ extension MainWindowViewController {
         return routeAllowsCommand
     }
 
-    private func currentRoutingState() -> MainCommandRoutingState {
-        let leftSelectedURLs = leftPane.selectedItems.map(\.url)
-        let rightSelectedURLs = rightPane.selectedItems.map(\.url)
-        let leftFocusedURL = leftPane.focusedItem?.url
-        let rightFocusedURL = rightPane.focusedItem?.url
-        let activeSelectedURLs = activePaneID == .left ? leftSelectedURLs : rightSelectedURLs
-        let activeFocusedURL = activePaneID == .left ? leftFocusedURL : rightFocusedURL
-        let activeURLs = activeSelectedURLs + [activeFocusedURL].compactMap { $0 }
-        let sandboxAllowsSelectedURLs = activeURLs.allSatisfy { accessPolicy.canAccess($0) }
-
-        return MainCommandRoutingState(
-            activePaneID: activePaneID,
-            leftPane: MainCommandRoutingPane(
-                id: .left,
-                currentDirectory: leftPane.currentDirectory,
-                selectedURLs: leftSelectedURLs,
-                focusedURL: leftFocusedURL,
-                focusedItemIsSymbolicLink: leftPane.focusedItem?.isSymbolicLink == true,
-                tabCount: leftPane.viewModel.tabs.count
-            ),
-            rightPane: MainCommandRoutingPane(
-                id: .right,
-                currentDirectory: rightPane.currentDirectory,
-                selectedURLs: rightSelectedURLs,
-                focusedURL: rightFocusedURL,
-                focusedItemIsSymbolicLink: rightPane.focusedItem?.isSymbolicLink == true,
-                tabCount: rightPane.viewModel.tabs.count
-            ),
-            isSinglePaneMode: isSinglePaneMode,
-            isFileOperationActive: isFileOperationActive,
-            sandboxAllowsSelectedURLs: sandboxAllowsSelectedURLs,
-            hasUndoRecovery: undoRecovery?.eligibility() == .eligible
+    private func commandSnapshot(for paneID: PaneID) -> MainWindowCommandCoordinator.PaneSnapshot {
+        let pane = pane(for: paneID)
+        return .init(
+            id: paneID, currentDirectory: pane.currentDirectory,
+            selectedURLs: pane.selectedItems.map(\.url), focusedURL: pane.focusedItem?.url,
+            focusedItemIsSymbolicLink: pane.focusedItem?.isSymbolicLink == true,
+            tabCount: pane.viewModel.tabs.count
         )
+    }
+
+    private static func emptyCommandSnapshot(for paneID: PaneID) -> MainWindowCommandCoordinator.PaneSnapshot {
+        .init(id: paneID, currentDirectory: URL(fileURLWithPath: "/", isDirectory: true), selectedURLs: [], focusedURL: nil, focusedItemIsSymbolicLink: false, tabCount: 1)
     }
 
     /// Exposes the exact route used by UI validation to the in-process AppKit
     /// harness without exposing mutable pane state.
     func commandRouteForValidation(_ command: MainCommand) -> MainCommandRoute {
-        commandRouter.route(command, from: .menu, in: currentRoutingState())
+        commandCoordinator.route(command, from: .menu)
     }
 }
 

@@ -106,9 +106,10 @@ creates MainWindowController, and terminates the app after the final window clos
 MainWindowController owns one MainWindowViewController.
 
 AppDelegate is the sole production composition root for injectable filesystem and
-macOS integration dependencies. MainWindowViewController creates the left and
+macOS integration dependencies. `AppDelegate.makeProductionMainWindowController`
+is the only production object-graph assembly point. MainWindowViewController creates the left and
 right FilePaneViewControllers, owns toolbar search and active-pane state, and keeps
-the cross-pane ownership boundary. Focused workflow coordinators under `App/Coordinators` own file transfer and
+the cross-pane composition boundary. Focused workflow coordinators under `App/Coordinators` own file transfer and
 clipboard flow, creation naming, descendant search, auxiliary windows, and the
 mechanics of installing sidebar/terminal child views. Preview availability,
 volume-loss navigation decisions, operation result/undo state, and value-only
@@ -267,14 +268,16 @@ Limits that must remain visible in code and UI:
 
 | Type | Responsibility |
 | --- | --- |
-| MainWindowViewController | Single `performCommand` dispatch point, active-pane ownership, cross-pane coordination, and composition of pane state with shared `WindowLayoutController` state. |
+| MainWindowViewController | Child-controller ownership, active-pane state, split composition, and routing typed coordinator outputs to pane and feature events. |
+| MainWindowCommandCoordinator / MainCommandRouter | The coordinator assembles transient pane/operation/access validation state and emits typed routes; the AppKit-independent router remains the sole decision engine. |
+| FileOperationPresentationCoordinator | Builds confirmations, conflict choices, operation-result alerts, and diagnostics-export presentation without acquiring a filesystem mutation capability. |
 | MainWindowDependencies | Injectable filesystem operations/probing/search, recents, bookmarks, volumes, clipboard, and application opening boundaries. |
 | MainWindowWorkflowDependencies | Injected archive/rename, file-transfer, creation, descendant-search, Open With, Go to Folder, and auxiliary-panel workflow collaborators. |
 | FileTransferWorkflowCoordinator | Owns clipboard sessions plus paste/drop validation and copy/move orchestration; the controller supplies only source and destination pane context. |
 | FileCreationWorkflowCoordinator / ArchiveAndRenameWorkflowCoordinator | Own creation/archive/batch-rename prompting, request submission, unique-name suggestions, and result callbacks. |
 | SearchWorkflowCoordinator / OpenWithWorkflowCoordinator / GoToFolderWorkflowCoordinator | Protocol-backed AppKit prompting, cancellable descendant search and result routing, application selection, and safe asynchronous path resolution. |
 | AuxiliaryPanelCoordinator | Settings/debug-log window lifetime and sizing. |
-| SidebarLayoutCoordinator / TerminalLayoutCoordinator | Child-view installation/removal; shared visibility and pane-layout state stays in the composition layer. |
+| SidebarLayoutCoordinator / TerminalLayoutCoordinator | Authoritative child-view installation/removal and persisted split sizing/session lifecycle; the window composes their typed visibility outputs. |
 | FileOperationCoordinator / MainCommandRouter | Operation generation, detached-task/cancellation state, progress/result presentation state and undo recovery; authoritative command availability and typed cross-pane targets. |
 | PreviewCoordinator / NavigationCoordinator / WindowLayoutController | Preview probing, standard/volume-loss navigation decisions, and value-only split/sidebar/terminal state. |
 | FilePaneViewModel | Per-pane async loading, history, filtering, sorting, hidden files and safe navigation. |
@@ -288,6 +291,35 @@ Limits that must remain visible in code and UI:
 | SettingsViewController / SettingsPageController | Category host and stable page registry. Focused General, Appearance, Navigation, Access, and Experimental page controllers own their controls, reload through typed `SettingsService` properties, and report changes to the host; folder selection, access grants, and cleanup services are injected only into pages that use them. |
 | DebugLogViewController | Filterable diagnostic-log view. |
 | CommandBarView | Bottom action bar, modifier-aware labels and operation progress/status. |
+
+### Main-window incremental responsibility inventory
+
+The large window controller is being reduced section by section rather than
+rewritten. The distinctive method groups now have these ownership boundaries:
+
+* `performCommand`: `MainWindowCommandCoordinator` captures the validation
+  snapshot and emits a `MainCommandRoute`; `MainCommandRouter` alone decides
+  availability and targets. The controller only updates active-pane ownership
+  and translates the typed route into a feature event.
+* `promptForNewFolder`: creation, archive/rename, search, Open With, scratch, and
+  auxiliary-window coordinators own prompt/workflow rules. The controller supplies
+  the current pane/directory and handles typed success or cancellation outputs.
+* `performFileTransfer` and `startFileOperation`: workflow coordinators validate
+  requests and `MainWindowFileOperationCoordinator` owns operation lifecycle.
+  Mutations continue exclusively through injected `FileOperationCoordinating`.
+* Operation alerts, conflict prompts, result models, and diagnostics export
+  presentation belong to `FileOperationPresentationCoordinator`; it receives no
+  pane, sidebar, settings, or terminal module dependency.
+* `toggleTerminal` and `setSidebarVisible`: `TerminalLayoutCoordinator` and
+  `SidebarLayoutCoordinator` are the installation/session/split-size authorities.
+  The controller composes their views and routes focus or persisted-setting events.
+* `applySettingsChanges`: the controller broadcasts typed setting changes to the
+  owned children and layout coordinators; it does not recreate production services.
+
+Coordinator inputs and outputs are deliberately small closures over values or
+typed routes. Cross-feature adapters stay in the application composition target,
+and production construction remains confined to
+`AppDelegate.makeProductionMainWindowController`.
 
 Key utilities: ExperimentalFlags (sandbox switches), FileNameValidator (create/rename
 input), FilePathComparison and PathUtilities (path safety), FileSizeFormatter and
