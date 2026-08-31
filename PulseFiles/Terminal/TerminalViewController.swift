@@ -19,9 +19,9 @@ package final class TerminalViewController: NSViewController {
     private let terminalView = TerminalTextView()
     private let scrollView = NSScrollView()
     private let processFactory: () -> TerminalProcess
-    private let accessPolicy: SandboxFileAccessPolicy
+    private let accessPolicy: any OperationScopeAccessPolicy
     private var liquidGlassStyle: LiquidGlassStyle
-    package var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
+    package var accessPolicyIdentityForCompositionTesting: ObjectIdentifier { ObjectIdentifier(accessPolicy) }
     private var runningProcess: TerminalProcess?
     private var runningAccessScope: FolderAccessScope?
     private let outputLock = NSLock()
@@ -31,7 +31,7 @@ package final class TerminalViewController: NSViewController {
     package var isShellInteractionAllowedProvider: (() -> Bool)?
     package var suggestedWorkingDirectory = ExperimentalFlags.appSandboxRoot
 
-    package init(terminalService: any TerminalSessionProviding, processFactory: @escaping () -> TerminalProcess, accessPolicy: SandboxFileAccessPolicy, liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle(liquidGlassEnabled: false)) {
+    package init(terminalService: any TerminalSessionProviding, processFactory: @escaping () -> TerminalProcess, accessPolicy: any OperationScopeAccessPolicy, liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle(liquidGlassEnabled: false)) {
         self.terminalService = terminalService
         self.processFactory = processFactory
         self.accessPolicy = accessPolicy

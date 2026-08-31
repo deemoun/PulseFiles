@@ -56,8 +56,8 @@ package final class SidebarViewController: NSViewController {
     private let recentLocations: any RecentLocationRecording
     private let bookmarkService: any BookmarkPersisting
     private let settings: SettingsService
-    private let accessPolicy: SandboxFileAccessPolicy
-    package var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
+    private let accessPolicy: any FileAccessValidating
+    package var accessPolicyIdentityForCompositionTesting: ObjectIdentifier { ObjectIdentifier(accessPolicy) }
     private let metadataReader: MetadataReader
     private let directorySizing: any DirectorySizing
     package var directorySizingForCompositionTesting: any DirectorySizing { directorySizing }
@@ -77,7 +77,7 @@ package final class SidebarViewController: NSViewController {
         recentLocations: any RecentLocationRecording,
         bookmarkService: any BookmarkPersisting,
         settings: SettingsService,
-        accessPolicy: SandboxFileAccessPolicy,
+        accessPolicy: any FileAccessValidating,
         volumeDiscovery: any VolumeDiscovering,
         directorySizing: any DirectorySizing,
         liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle(liquidGlassEnabled: false),
@@ -250,7 +250,7 @@ package final class SidebarViewController: NSViewController {
         Self.scratchItems(directory: settings.scratchDirectory, accessPolicy: accessPolicy)
     }
 
-    package static func scratchItems(directory: URL?, accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
+    package static func scratchItems(directory: URL?, accessPolicy: any FileAccessValidating) -> [SidebarItem] {
         guard let directory, accessPolicy.canAccess(directory) else { return [] }
         return [SidebarItem(
             title: "Scratch Folder".localized,
@@ -303,7 +303,7 @@ package final class SidebarViewController: NSViewController {
         }
     }
 
-    package static func deviceItems(volumes: [Volume], accessPolicy: SandboxFileAccessPolicy) -> [SidebarItem] {
+    package static func deviceItems(volumes: [Volume], accessPolicy: any FileAccessValidating) -> [SidebarItem] {
         VolumeDiscoveryService.sortedVolumes(volumes)
             .filter { !$0.displayName.isEmpty }
             .map { volume in

@@ -31,7 +31,40 @@ package enum SandboxAccessError: LocalizedError, Equatable {
     }
 }
 
-package struct SandboxFileAccessPolicy {
+/// Read-only authorization capabilities exposed to presentation features.  The
+/// protocols deliberately omit grant creation, bookmark persistence, and policy
+/// configuration; those remain composition-root responsibilities.
+package protocol FileAccessValidating: AnyObject {
+    func canAccess(_ url: URL, logDecision shouldLogDecision: Bool) -> Bool
+    func validateAccess(to url: URL) throws
+}
+
+package extension FileAccessValidating {
+    func canAccess(_ url: URL) -> Bool { canAccess(url, logDecision: true) }
+}
+
+package protocol BrowseAccessPolicy: FileAccessValidating {
+    var rootURL: URL { get }
+    var isEnabled: Bool { get }
+    func validatedDirectory(_ url: URL, fallback: URL?) -> URL
+    func withValidatedAccess<T>(to url: URL, _ body: () async throws -> T) async throws -> T
+}
+
+package extension BrowseAccessPolicy {
+    func validatedDirectory(_ url: URL) -> URL { validatedDirectory(url, fallback: nil) }
+}
+
+package protocol OperationScopeAccessPolicy: FileAccessValidating {
+    func beginAccess(to urls: [URL]) -> FolderAccessScope
+    func endAccess(_ scope: FolderAccessScope)
+}
+
+package protocol AccessPolicyStatusProviding: AnyObject {
+    var rootURL: URL { get }
+    var isEnabled: Bool { get }
+}
+
+package final class SandboxFileAccessPolicy: BrowseAccessPolicy, OperationScopeAccessPolicy, AccessPolicyStatusProviding {
     package struct AccessProbe {
         let fileExists: (String) -> Bool
         let isReadableFile: (String) -> Bool

@@ -7,9 +7,9 @@ import Foundation
 package final class FilePaneViewModel {
     private typealias PendingHistoryTransition = PaneNavigationStateMachine.HistoryTransition
     private let fileSystem: FileSystemServicing
-    private let accessPolicy: SandboxFileAccessPolicy
+    private let accessPolicy: any BrowseAccessPolicy
     package var fileSystemForCompositionTesting: any FileSystemServicing { fileSystem }
-    package var accessPolicyForCompositionTesting: SandboxFileAccessPolicy { accessPolicy }
+    package var accessPolicyIdentityForCompositionTesting: ObjectIdentifier { ObjectIdentifier(accessPolicy) }
     private let loadCoordinator: DirectoryLoadCoordinator
     private let memoryPressureSource: DispatchSourceMemoryPressure
     private var partialRefreshRetryCount = 0
@@ -74,7 +74,7 @@ package final class FilePaneViewModel {
         sort: FileSortDescriptor = FileSortDescriptor(),
         restoration: PaneRestorationState? = nil,
         fileSystem: FileSystemServicing,
-        accessPolicy: SandboxFileAccessPolicy,
+        accessPolicy: any BrowseAccessPolicy,
         directoryLoadTimeout: TimeInterval = 15,
         directoryMonitor: DirectoryMonitor = DirectoryMonitor(),
         snapshotCache: DirectorySnapshotCache = DirectorySnapshotCache(),

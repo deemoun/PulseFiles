@@ -251,18 +251,18 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
 
     var compositionForTesting: (
         paneFileSystems: [any FileSystemServicing],
-        panePolicies: [SandboxFileAccessPolicy],
-        sidebarPolicy: SandboxFileAccessPolicy,
+        panePolicyIdentities: [ObjectIdentifier],
+        sidebarPolicyIdentity: ObjectIdentifier,
         sidebarDirectorySizing: any DirectorySizing,
-        terminalPolicy: SandboxFileAccessPolicy,
+        terminalPolicyIdentity: ObjectIdentifier,
         folderAccessGrants: any FolderAccessGrantProviding
     ) {
         (
             [leftPane.viewModel.fileSystemForCompositionTesting, rightPane.viewModel.fileSystemForCompositionTesting],
-            [leftPane.viewModel.accessPolicyForCompositionTesting, rightPane.viewModel.accessPolicyForCompositionTesting],
-            sidebar.accessPolicyForCompositionTesting,
+            [leftPane.viewModel.accessPolicyIdentityForCompositionTesting, rightPane.viewModel.accessPolicyIdentityForCompositionTesting],
+            sidebar.accessPolicyIdentityForCompositionTesting,
             sidebar.directorySizingForCompositionTesting,
-            terminal.accessPolicyForCompositionTesting,
+            terminal.accessPolicyIdentityForCompositionTesting,
             authorizedFolderSelection.grantServiceForCompositionTesting
         )
     }
