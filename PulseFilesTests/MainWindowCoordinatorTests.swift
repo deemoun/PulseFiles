@@ -144,6 +144,48 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertTrue(layout.isSinglePane)
     }
 
+    @MainActor
+    func testMainWindowCommandCoordinatorAssemblesValidationStateAndEmitsTypedRoute() {
+        let selected = URL(fileURLWithPath: "/sandbox/left/report.txt")
+        var emitted: MainCommandRoute?
+        let coordinator = MainWindowCommandCoordinator(
+            inputs: .init(
+                activePaneID: { .left },
+                pane: { paneID in
+                    .init(
+                        id: paneID,
+                        currentDirectory: URL(fileURLWithPath: "/sandbox/\(paneID == .left ? "left" : "right")", isDirectory: true),
+                        selectedURLs: paneID == .left ? [selected] : [], focusedURL: paneID == .left ? selected : nil,
+                        focusedItemIsSymbolicLink: false, tabCount: 1
+                    )
+                },
+                isSinglePaneMode: { false }, isFileOperationActive: { false },
+                hasUndoRecovery: { false }, canAccess: { $0.path.hasPrefix("/sandbox/") }
+            ),
+            output: { emitted = $0 }
+        )
+
+        let route = coordinator.perform(.copy, from: .menu)
+        XCTAssertEqual(route, .crossPane(
+            command: .copy, sourcePane: .left, destinationPane: .right,
+            sourceURLs: [selected], destinationDirectory: URL(fileURLWithPath: "/sandbox/right", isDirectory: true)
+        ))
+        XCTAssertEqual(emitted, route)
+        XCTAssertTrue(coordinator.state().sandboxAllowsSelectedURLs)
+    }
+
+    @MainActor
+    func testFileOperationPresentationCoordinatorBuildsConflictAndPartialResultModels() {
+        let coordinator = FileOperationPresentationCoordinator()
+        let destination = URL(fileURLWithPath: "/tmp/report.txt")
+        let conflict = coordinator.conflict(destination: destination, operationName: "Copy", fileExists: { $0 == destination })
+        XCTAssertEqual(conflict.0.buttons.count, 4)
+        XCTAssertEqual(conflict.1.lastPathComponent, "report 2.txt")
+
+        let result = FileOperationResult(completedItems: [], skippedItems: [destination], failedItems: [], wasCancelled: false)
+        XCTAssertNotNil(coordinator.result(result, operationName: "Copy"))
+    }
+
     func testTransferWorkflowRejectsDestinationInsideSource() {
         let source = URL(fileURLWithPath: "/tmp/source", isDirectory: true)
         XCTAssertThrowsError(try FileTransferWorkflowCoordinator.validatedRequest(
