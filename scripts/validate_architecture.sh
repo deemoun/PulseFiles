@@ -10,6 +10,8 @@ cd "$REPO_ROOT"
 
 PULSEFILES_LICENSE_ROOT="${PULSEFILES_LICENSE_ROOT:-${REPO_ROOT}}" "${SCRIPT_DIR}/validate_license_headers.sh"
 
+python3 "${SCRIPT_DIR}/validate_target_policy.py" "$REPO_ROOT" "${SCRIPT_DIR}/architecture_policy.json"
+
 fail=0
 for directory in PulseFiles/Utilities PulseFiles/Models PulseFiles/Services PulseFiles/Commands; do
   [[ -d "$directory" ]] || continue
@@ -36,11 +38,6 @@ presentation_directories=(
   PulseFiles/PresentationSupport
 )
 
-# Presentation features may consume lower-layer protocols and values, but only
-# PulseFiles/App is allowed to choose concrete resource-owning implementations.
-# Keep this list to concrete production types (not capability protocols or value
-# helpers) so adding a service requires an explicit architecture decision.
-concrete_dependency='\b(FileSystemService|FileOperationService|SandboxFileAccessPolicy|SettingsRepository|BookmarkService|RecentLocationService|FolderAccessGrantService|PTYTerminalProcess|StagingCleanupService|ScratchFolderCleanupService)[[:space:]]*\('
 feature_directories=(
   PulseFiles/FilePane
   PulseFiles/Sidebar
@@ -48,51 +45,6 @@ feature_directories=(
   PulseFiles/Terminal
   PulseFiles/Debug
 )
-
-# Keep package target boundaries explicit. Debug is intentionally absent because it
-# remains an application-only adapter; see DOCUMENTATION.md.
-feature_target_mappings=(
-  "PulseFilesPresentationSupport:PulseFiles/PresentationSupport"
-  "PulseFilesPane:PulseFiles/FilePane"
-  "PulseFilesSidebar:PulseFiles/Sidebar"
-  "PulseFilesSettings:PulseFiles/Settings"
-  "PulseFilesTerminal:PulseFiles/Terminal"
-)
-for mapping in "${feature_target_mappings[@]}"; do
-  target="${mapping%%:*}"
-  path="${mapping#*:}"
-  if ! rg -q "name: \"${target}\"" Package.swift || ! rg -q "path: \"${path}\"" Package.swift; then
-    echo "error: missing or stale SwiftPM feature target mapping: $target -> $path" >&2
-    fail=1
-  fi
-done
-
-# PresentationSupport exposes AppKit adapters for model, service, and workflow
-# types. Keep those direct dependencies declared so isolated target builds do not
-# lose types such as FileIconKey, FileSystemProbeAnswer, or MainCommand.
-presentation_support_dependencies=(
-  PulseFilesWorkflows
-  PulseFilesServices
-  PulseFilesModels
-  PulseFilesUtilities
-)
-presentation_support_target="$({
-  sed -n '/name: "PulseFilesPresentationSupport"/,/path: "PulseFiles\/PresentationSupport"/p' Package.swift
-} || true)"
-for dependency in "${presentation_support_dependencies[@]}"; do
-  if ! printf '%s\n' "$presentation_support_target" | rg -q "dependencies:.*\"${dependency}\""; then
-    echo "error: PulseFilesPresentationSupport is missing direct dependency: $dependency" >&2
-    fail=1
-  fi
-done
-
-for directory in "${feature_directories[@]}"; do
-  [[ -d "$directory" ]] || continue
-  if rg -n -U "$concrete_dependency" "$directory" --glob '*.swift'; then
-    echo "error: feature constructs a concrete service instead of receiving a capability: $directory" >&2
-    fail=1
-  fi
-done
 
 # Feature modules must depend on authorization capabilities, never retain or accept
 # the concrete production policy. Construction is checked separately above.
@@ -114,45 +66,13 @@ if rg -n -U "$window_workflow_construction" \
   fail=1
 fi
 
-# SwiftPM feature targets are peers. Their source-directory mapping is kept here
-# in sync with Package.swift so imports cannot create undeclared lateral edges.
-# Feature modules communicate upward using model events or
-# small protocols; they must never import one another. The allowlist is an
-# exact path/import pair and is intentionally empty today. Additions require an
-# audited explanation beside the entry rather than a directory wildcard.
-lateral_feature_modules='PulseFiles(Pane|Sidebar|Settings|Terminal|Debug)'
-lateral_import_allowlist=()
-for directory in "${feature_directories[@]}"; do
-  [[ -d "$directory" ]] || continue
-  while IFS= read -r finding; do
-    [[ -z "$finding" ]] && continue
-    relative_path="${finding%%:*}"
-    imported_module="$(printf '%s' "$finding" | sed -E 's/^[^:]+:[0-9]+:import //')"
-    allowed=0
-    for entry in "${lateral_import_allowlist[@]}"; do
-      [[ "$entry" == "$relative_path:$imported_module" ]] && allowed=1
-    done
-    if (( ! allowed )); then
-      echo "error: unaudited lateral presentation dependency: $relative_path imports $imported_module" >&2
-      fail=1
-    fi
-  done < <(rg -n "^import ${lateral_feature_modules}$" "$directory" --glob '*.swift' || true)
-done
-
-# Lower layers cannot point back at presentation, even if somebody edits the
-# manifest to make such a reverse edge compile.
-for directory in PulseFiles/Utilities PulseFiles/Models PulseFiles/Services PulseFiles/Commands; do
-  [[ -d "$directory" ]] || continue
-  if rg -n '^import PulseFiles(PresentationSupport|Pane|Sidebar|Settings|Terminal|Debug|App)$' "$directory" --glob '*.swift'; then
-    echo "error: reverse dependency from lower layer to presentation: $directory" >&2
-    fail=1
-  fi
-done
-
 # Keep exceptions exact and auditable. Never add directory or basename globs.
 # Persistence and the PTY descriptor adapter live in Services, so presentation
 # currently needs no mutation exception.
-presentation_mutation_allowlist=()
+mapfile -t presentation_mutation_allowlist < <(
+  python3 -c 'import json,sys; [print(item) for item in json.load(open(sys.argv[1]))["presentationMutationExceptions"]]' \
+    "${SCRIPT_DIR}/architecture_policy.json"
+)
 
 for directory in "${presentation_directories[@]}"; do
   [[ -d "$directory" ]] || continue
