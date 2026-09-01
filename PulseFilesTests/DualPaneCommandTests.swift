@@ -3,6 +3,7 @@
 
 import AppKit
 import XCTest
+import PulseFilesPresentationCommands
 @testable import PulseFiles
 
 final class DualPaneCommandTests: XCTestCase {

@@ -63,8 +63,10 @@ persistence services, or `PTYTerminalProcess`.
 
 `PulseFilesPane`, `PulseFilesSidebar`, `PulseFilesSettings`, and
 `PulseFilesTerminal` are separate peer targets. Shared AppKit-facing values and
-capability protocols live in `PulseFilesPresentationSupport`; AppKit-free values
-live in `PulseFilesModels`. `PulseFiles/Debug` deliberately remains an
+capability protocols live in `PulseFilesPresentationSupport`; the reusable
+shortcut registry, AppKit command routing, and command bar live in
+`PulseFilesPresentationCommands`; AppKit-free values live in `PulseFilesModels`.
+`PulseFiles/Debug` deliberately remains an
 application-only DEBUG adapter rather than a target: its single log controller is
 created only by the composition root, has no reusable feature boundary, and a
 standalone module would add an artificial peer without an independently testable
@@ -73,9 +75,10 @@ first and reassess the target boundary. `scripts/validate_architecture.sh` enfor
 `scripts/architecture_policy.json`. To add or move a production module, register
 its exact SwiftPM target name, source path, and complete list of direct internal
 dependencies in `productionTargets`, then make the matching `Package.swift`
-declaration. The validator assigns every Swift source to the most-specific
-registered path and checks all `PulseFiles*` imports, including imports owned by
-the executable composition target. Test targets are registered the same way in
+declaration. The validator assigns every Swift source using each manifest
+target's `path`, `exclude`, and `sources` declarations and checks all
+`PulseFiles*` imports, including imports owned by the executable composition
+target. Test targets are registered the same way in
 `testTargets`, so every declared target path and direct internal dependency is
 checked rather than only the production feature modules.
 

@@ -47,15 +47,28 @@ def target_blocks(source: str):
                     break
 
 
+def string_array(block: str, label: str):
+    match = re.search(rf"\b{label}\s*:\s*\[(.*?)\]", block, re.S)
+    return re.findall(r'"([^\"]+)"', match.group(1)) if match else []
+
+
+def has_array(block: str, label: str) -> bool:
+    return re.search(rf"\b{label}\s*:\s*\[", block) is not None
+
+
 actual = {}
 for block in target_blocks(manifest):
     name_match = re.search(r"\bname\s*:\s*\"([^\"]+)\"", block)
     path_match = re.search(r"\bpath\s*:\s*\"([^\"]+)\"", block)
     if not name_match or not path_match:
         continue
-    dependencies_match = re.search(r"\bdependencies\s*:\s*\[(.*?)\]", block, re.S)
-    dependencies = re.findall(r'"(PulseFiles[^\"]*)"', dependencies_match.group(1)) if dependencies_match else []
-    actual[name_match.group(1)] = {"path": path_match.group(1), "dependencies": dependencies}
+    dependencies = [value for value in string_array(block, "dependencies") if value.startswith("PulseFiles")]
+    actual[name_match.group(1)] = {
+        "path": path_match.group(1),
+        "dependencies": dependencies,
+        "exclude": string_array(block, "exclude"),
+        "sources": string_array(block, "sources") if has_array(block, "sources") else None,
+    }
 
 for name, declaration in expected.items():
     if name not in actual:
@@ -72,17 +85,34 @@ for name, declaration in expected.items():
     for dependency in sorted(wanted - got):
         error(f"target {name} is missing direct internal dependency {dependency}")
 
-# Assign overlapping source paths to the most-specific target. Files left under
-# the executable's broad path (App, Debug, Resources) belong to composition.
-paths = sorted(((pathlib.PurePosixPath(value["path"]), name) for name, value in production.items()),
-               key=lambda item: len(item[0].parts), reverse=True)
+def target_contains(relative: pathlib.PurePosixPath, declaration) -> bool:
+    """Mirror SwiftPM path, sources, and exclude ownership for a source file."""
+    target_path = pathlib.PurePosixPath(declaration["path"])
+    if relative != target_path and target_path not in relative.parents:
+        return False
+    within_target = relative.relative_to(target_path)
+    for excluded in declaration["exclude"]:
+        excluded_path = pathlib.PurePosixPath(excluded)
+        if within_target == excluded_path or excluded_path in within_target.parents:
+            return False
+    sources = declaration["sources"]
+    if sources is None:
+        return True
+    return any(within_target == pathlib.PurePosixPath(source) or
+               pathlib.PurePosixPath(source) in within_target.parents for source in sources)
+
+
 imports = re.compile(r"^\s*(?:@testable\s+)?import\s+(PulseFiles[A-Za-z0-9_]*)\b", re.M)
 for swift_file in (root / "PulseFiles").rglob("*.swift"):
     relative = pathlib.PurePosixPath(swift_file.relative_to(root).as_posix())
-    owner = next((name for path, name in paths if relative == path or path in relative.parents), None)
-    if owner is None:
+    owners = [name for name in production if name in actual and target_contains(relative, actual[name])]
+    if not owners:
         error(f"no production target policy owns {relative}")
         continue
+    if len(owners) > 1:
+        error(f"multiple production targets own {relative}: {', '.join(sorted(owners))}")
+        continue
+    owner = owners[0]
     allowed = set(production[owner]["dependencies"])
     for imported in imports.findall(swift_file.read_text()):
         if imported != owner and imported not in allowed:

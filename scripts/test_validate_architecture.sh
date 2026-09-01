@@ -13,6 +13,7 @@ mkdir -p "$FIXTURE/license-root"
 export PULSEFILES_LICENSE_ROOT="$FIXTURE/license-root"
 BASE="$FIXTURE/base"
 mkdir -p "$BASE/PulseFiles"/{App,AppCoordination,Utilities,Models,Services,Commands,PresentationSupport,Terminal,FilePane,Sidebar,Settings}
+mkdir -p "$BASE/PulseFiles/PresentationSupport/Commands"
 mkdir -p "$BASE"/{PulseFilesCoreTests,PulseFilesServicesTests,PulseFilesTests,PulseFilesAppKitUITests}
 cp "$REPO_ROOT/Package.swift" "$BASE/Package.swift"
 
@@ -51,7 +52,7 @@ accept_source() {
 
 # Mutation matching is receiver-independent and multiline-safe.
 reject_source multiline-mutation PulseFiles/App/Fixture.swift $'try alias.moveItem(\n    at: source,\n    to: destination\n)'
-accept_source file-exists PulseFiles/App/Fixture.swift 'let exists = fm.fileExists(atPath: path)'
+reject_source file-exists PulseFiles/App/Fixture.swift 'let exists = fm.fileExists(atPath: path)'
 accept_source directory-read PulseFiles/App/Fixture.swift 'let children = try fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)'
 
 # Imports are checked from policy for every target, including composition.
@@ -60,6 +61,11 @@ reject_source coordination-lateral-import PulseFiles/AppCoordination/Fixture.swi
 reject_source reverse-lower-layer-import PulseFiles/Services/Fixture.swift 'import PulseFilesTerminal'
 accept_source composition-import PulseFiles/App/Fixture.swift 'import PulseFilesTerminal'
 accept_source coordination-workflow-import PulseFiles/AppCoordination/Fixture.swift 'import PulseFilesWorkflows'
+
+# The parent presentation target and executable both exclude this subtree. Its
+# files must be assigned to the focused target that actually compiles them.
+accept_source excluded-source-owner PulseFiles/PresentationSupport/Commands/Fixture.swift 'import PulseFilesPresentationSupport'
+reject_source excluded-source-illegal-import PulseFiles/PresentationSupport/Commands/Fixture.swift 'import PulseFilesServices'
 
 # A newly declared resource owner is automatically protected without editing a
 # constructor-name regex.
