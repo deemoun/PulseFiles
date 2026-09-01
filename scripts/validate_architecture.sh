@@ -39,6 +39,32 @@ presentation_directories=(
   PulseFiles/PresentationSupport
 )
 
+# Read-only existence/resource probes can block on network and removable volumes.
+# Presentation must use FileSystemProbing; composition-root folder location calls
+# (`homeDirectoryForCurrentUser` and `urls(for:in:)`) are deliberately not matched.
+presentation_probe='\.fileExists[[:space:]]*\(|\.resourceValues[[:space:]]*\(|\.getResourceValue[[:space:]]*\(|\.checkResourceIsReachable[[:space:]]*\('
+presentation_probe_legacy_exceptions=(
+  PulseFiles/App/Coordinators/FileCreationWorkflowCoordinator.swift
+  PulseFiles/App/Coordinators/SearchWorkflowCoordinator.swift
+  PulseFiles/App/Coordinators/NavigationPresentationCoordinators.swift
+  PulseFiles/App/OpenFileCoordinator.swift
+  PulseFiles/App/OpenEventRouter.swift
+  PulseFiles/FilePane/FilePaneViewModel.swift
+  PulseFiles/FilePane/FilePaneDropCoordinator.swift
+  PulseFiles/PresentationSupport/Services/VolumeDiscoveryService.swift
+)
+for directory in "${presentation_directories[@]}"; do
+  [[ -d "$directory" ]] || continue
+  probe_arguments=(-n -U "$presentation_probe" "$directory" --glob '*.swift')
+  for path in "${presentation_probe_legacy_exceptions[@]}"; do
+    probe_arguments+=(--glob "!/$path")
+  done
+  if rg "${probe_arguments[@]}"; then
+    echo "error: direct filesystem existence/resource probe in presentation directory: $directory" >&2
+    fail=1
+  fi
+done
+
 feature_directories=(
   PulseFiles/AppCoordination
   PulseFiles/FilePane

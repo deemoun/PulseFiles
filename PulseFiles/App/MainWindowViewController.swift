@@ -101,6 +101,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         ),
         presentationMode: settings.presentationMode(for: .left),
         thumbnailLoader: thumbnailLoader,
+        fileSystemProbe: fileSystemProbe,
         authorizedFolderSelection: authorizedFolderSelection,
         liquidGlassStyle: liquidGlassStyle
     )
@@ -118,6 +119,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         ),
         presentationMode: settings.presentationMode(for: .right),
         thumbnailLoader: thumbnailLoader,
+        fileSystemProbe: fileSystemProbe,
         authorizedFolderSelection: authorizedFolderSelection,
         liquidGlassStyle: liquidGlassStyle
     )
@@ -702,7 +704,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         Task { [weak self] in
             guard let self else { return }
             let volumes = await volumeDiscovery.mountedVolumes()
-            let entries = QuickLocationAssembler.assemble(
+            let candidates = QuickLocationAssembler.assemble(
                 activeDirectory: active.currentDirectory,
                 history: active.viewModel.navigationHistory,
                 bookmarks: bookmarkService.load(),
@@ -711,8 +713,19 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
                 scratchDirectory: settings.scratchDirectory,
                 oppositeDirectory: opposite,
                 canAccess: { self.accessPolicy.canAccess($0) },
-                exists: { FileManager.default.fileExists(atPath: $0.path) }
+                exists: { _ in true }
             )
+            var entries: [QuickLocationEntry] = []
+            for entry in candidates {
+                let answer = await fileSystemProbe.exists(entry.url, deadline: .milliseconds(150))
+                let availability: QuickLocationAvailability
+                if answer != .value(true) {
+                    availability = .unavailable
+                } else {
+                    availability = accessPolicy.canAccess(entry.url) ? .available : .accessDenied
+                }
+                entries.append(.init(id: entry.id, section: entry.section, title: entry.title, url: entry.url, availability: availability))
+            }
             guard active === self.targetPane() else { return }
             let controller = QuickLocationsViewController(entries: entries, allowsInactivePane: !isSinglePaneMode)
             let popover = workflows.auxiliaryPanels.showQuickLocations(controller, relativeTo: active.view)
@@ -787,13 +800,17 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         do {
             let target = try symbolicLinkResolver.resolveOneHop(item.url)
             try accessPolicy.validateAccess(to: target)
-            var isDirectory: ObjCBool = false
-            FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory)
-            if isDirectory.boolValue {
-                targetPane().navigate(to: target)
-            } else {
-                targetPane().preparePendingSelection(target)
-                targetPane().navigate(to: target.deletingLastPathComponent())
+            Task { [weak self] in
+                guard let self else { return }
+                let answer = await fileSystemProbe.isDirectory(target, deadline: .milliseconds(250))
+                switch FileSystemProbeDecisionCoordinator.symbolicLinkDestination(target: target, directoryAnswer: answer) {
+                case .directory(let directory): targetPane().navigate(to: directory)
+                case .file(let file):
+                    targetPane().preparePendingSelection(file)
+                    targetPane().navigate(to: file.deletingLastPathComponent())
+                case .unavailable:
+                    showError(message: "Could Not Follow Symbolic Link".localized, detail: "The link target could not be verified in time.".localized)
+                }
             }
         } catch {
             showError(message: "Could Not Follow Symbolic Link".localized, detail: error.localizedDescription)
@@ -1407,9 +1424,8 @@ extension MainWindowViewController {
             do {
                 let details = try await Task.detached(priority: .userInitiated) {
                     try accessPolicy.withValidatedAccess(to: item.url) {
-                        let values = try item.url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
                         let size = try fileSizeService.size(of: item.url)
-                        return (isDirectory: values.isDirectory == true, modificationDate: values.contentModificationDate, size: size)
+                        return (isDirectory: item.isDirectory, modificationDate: item.modificationDate, size: size)
                     }
                 }.value
                 guard let self else { return }
@@ -1770,9 +1786,14 @@ extension MainWindowViewController {
 
     @MainActor
     func resolveFileOperationConflict(destination: URL, operationName: String) async -> FileConflictResolution {
+        guard let keepBoth = await FileSystemProbeDecisionCoordinator(probe: fileSystemProbe)
+            .keepBothDestination(for: destination) else {
+            showError(message: "Could Not Verify Conflict".localized, detail: "The destination could not be checked in time. The operation was cancelled without replacing anything.".localized)
+            return .cancel
+        }
         let conflict = fileOperationPresentationCoordinator.conflict(
             destination: destination, operationName: operationName,
-            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+            keepBothDestination: keepBoth
         )
         let alert = conflict.0.makeAlert()
 
@@ -1797,7 +1818,6 @@ extension MainWindowViewController {
             }
         }
     }
-
     private func refreshBothPanes() {
         refreshPanes([leftPane, rightPane])
     }

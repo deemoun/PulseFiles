@@ -222,13 +222,33 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
               inlineRenameSession.matches(itemURL: itemURL, generation: sessionGeneration) else { return }
 
         let item = inlineRenameItem
-        guard isCancelled || (item.map { FileManager.default.fileExists(atPath: $0.url.path) } ?? false) else {
+        if isCancelled {
+            finishInlineRename(itemURL: itemURL, sessionGeneration: sessionGeneration, proposedName: proposedName, item: item, isCancelled: true)
+            return
+        }
+        guard let item else {
             inlineRenameSession.cancel()
             clearInlineRenameState()
             showInlineRenameItemRemovedAlert()
             flushDeferredTableReloadIfNeeded()
             return
         }
+        Task { [weak self] in
+            guard let self else { return }
+            let answer = await self.fileSystemProbe.exists(item.url, deadline: .milliseconds(250))
+            guard self.inlineRenameSession.matches(itemURL: itemURL, generation: sessionGeneration) else { return }
+            guard FileSystemProbeDecisionCoordinator.inlineRenameItemExists(answer) else {
+                self.inlineRenameSession.cancel()
+                self.clearInlineRenameState()
+                self.showInlineRenameItemRemovedAlert()
+                self.flushDeferredTableReloadIfNeeded()
+                return
+            }
+            self.finishInlineRename(itemURL: itemURL, sessionGeneration: sessionGeneration, proposedName: proposedName, item: item, isCancelled: false)
+        }
+    }
+
+    private func finishInlineRename(itemURL: URL, sessionGeneration: UInt, proposedName: String, item: FileItem?, isCancelled: Bool) {
         let result = inlineRenameSession.commit(
             itemURL: itemURL,
             generation: sessionGeneration,

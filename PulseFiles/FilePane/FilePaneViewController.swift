@@ -45,13 +45,15 @@ package final class FilePaneViewController: NSViewController {
     /// Single-pane tables have room to breathe, so keep metadata away from column dividers.
     /// Compact dual-pane tables retain their tighter spacing to preserve useful width.
     package var metadataColumnContentInset: CGFloat { hasOppositePane ? 6 : 14 }
-    package lazy var dropProbeCache = FileSystemProbeCache()
+    package lazy var dropProbeCache = FileSystemProbeCache(probe: fileSystemProbe)
+    package lazy var existenceProbeCache = FileSystemProbeCache(probe: fileSystemProbe)
     package lazy var dropCoordinator = FilePaneDropCoordinator(transferPolicy: DropTransferPolicy(volumeIdentifierProvider: { [weak self] url in
         guard let self else { return nil }
         self.dropProbeCache.requestVolumeIdentifier(url)
         return self.dropProbeCache.volumeIdentifier(for: url)
     }))
     private let authorizedFolderSelection: AuthorizedFolderSelecting
+    package let fileSystemProbe: any FileSystemProbing
     package lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
     package let thumbnailLoader: any ThumbnailLoading
     package let thumbnailRequests = ThumbnailRequestCoordinator()
@@ -63,6 +65,7 @@ package final class FilePaneViewController: NSViewController {
         viewModel: FilePaneViewModel,
         presentationMode: PanePresentationMode = .list,
         thumbnailLoader: any ThumbnailLoading,
+        fileSystemProbe: any FileSystemProbing,
         openWithApplicationResolver: OpenWithMenuApplicationResolver? = nil,
         authorizedFolderSelection: AuthorizedFolderSelecting,
         liquidGlassStyle: LiquidGlassStyle
@@ -71,6 +74,7 @@ package final class FilePaneViewController: NSViewController {
         self.viewModel = viewModel
         self.presentationMode = presentationMode
         self.thumbnailLoader = thumbnailLoader
+        self.fileSystemProbe = fileSystemProbe
         self.contextMenuProvider = FilePaneContextMenuProvider(openWithApplicationResolver: openWithApplicationResolver ?? OpenWithMenuApplicationResolver())
         self.authorizedFolderSelection = authorizedFolderSelection
         self.liquidGlassStyle = liquidGlassStyle
@@ -685,9 +689,25 @@ package final class FilePaneViewController: NSViewController {
 
         // A filtered-out item is still a valid rename target. Only cancel when
         // the file itself has disappeared, so we never submit a stale path.
+        guard let answer = existenceProbeCache.existenceAnswer(for: editedItem.url) else {
+            hasDeferredTableReload = true
+            existenceProbeCache.requestExistence(editedItem.url) { [weak self] answer in
+                self?.completeDeferredReloadProbe(for: editedItem.url, answer: answer)
+            }
+            return
+        }
+        applyReloadDecision(itemURL: editedItem.url, answer: answer)
+    }
+
+    private func completeDeferredReloadProbe(for itemURL: URL, answer: FileSystemProbeAnswer<Bool>) {
+        guard inlineRenameItem?.url == itemURL, inlineRenameSession.isEditing else { return }
+        applyReloadDecision(itemURL: itemURL, answer: answer)
+    }
+
+    private func applyReloadDecision(itemURL: URL, answer: FileSystemProbeAnswer<Bool>) {
         switch InlineRenameReloadPolicy.decision(
             isEditing: inlineRenameSession.isEditing,
-            itemExists: FileManager.default.fileExists(atPath: editedItem.url.path)
+            itemExists: FileSystemProbeDecisionCoordinator.inlineRenameItemExists(answer)
         ) {
         case .deferReload:
             hasDeferredTableReload = true
