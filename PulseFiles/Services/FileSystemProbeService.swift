@@ -173,6 +173,7 @@ package final class FileSystemProbeCache {
     }
 
     package func directoryValue(for url: URL) -> Bool? { value(directories[url]) }
+    package func existenceAnswer(for url: URL) -> FileSystemProbeAnswer<Bool>? { existence[url] }
     package func volumeIdentifier(for url: URL) -> String? { value(volumes[url]) ?? nil }
     package func hasVolumeIdentifierAnswer(for url: URL) -> Bool { volumes[url] != nil }
 
@@ -183,6 +184,23 @@ package final class FileSystemProbeCache {
             let result = await self.probe.isDirectory(url, deadline: self.deadline)
             guard !Task.isCancelled else { return }
             self.directories[url] = result
+        }
+    }
+
+    package func requestExistence(
+        _ url: URL,
+        completion: ((FileSystemProbeAnswer<Bool>) -> Void)? = nil
+    ) {
+        if let answer = existence[url] {
+            completion?(answer)
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await self.probe.exists(url, deadline: self.deadline)
+            guard !Task.isCancelled else { return }
+            self.existence[url] = result
+            completion?(result)
         }
     }
 

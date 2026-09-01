@@ -179,7 +179,11 @@ final class MainWindowCoordinatorTests: XCTestCase {
     func testFileOperationPresentationCoordinatorBuildsConflictAndPartialResultModels() {
         let coordinator = FileOperationPresentationCoordinator()
         let destination = URL(fileURLWithPath: "/tmp/report.txt")
-        let conflict = coordinator.conflict(destination: destination, operationName: "Copy", fileExists: { $0 == destination })
+        let conflict = coordinator.conflict(
+            destination: destination,
+            operationName: "Copy",
+            keepBothDestination: URL(fileURLWithPath: "/tmp/report 2.txt")
+        )
         XCTAssertEqual(conflict.0.buttons.count, 4)
         XCTAssertEqual(conflict.1.lastPathComponent, "report 2.txt")
 
@@ -192,6 +196,34 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(try FileTransferWorkflowCoordinator.validatedRequest(
             sources: [source], destination: source.appendingPathComponent("child", isDirectory: true)
         ))
+    }
+
+    func testProbeDecisionsCoverTrueFalseAndUnavailable() {
+        let target = URL(fileURLWithPath: "/tmp/target")
+        XCTAssertTrue(FileSystemProbeDecisionCoordinator.inlineRenameItemExists(.value(true)))
+        XCTAssertFalse(FileSystemProbeDecisionCoordinator.inlineRenameItemExists(.value(false)))
+        XCTAssertFalse(FileSystemProbeDecisionCoordinator.inlineRenameItemExists(.unavailable))
+        XCTAssertEqual(
+            FileSystemProbeDecisionCoordinator.symbolicLinkDestination(target: target, directoryAnswer: .value(true)),
+            .directory(target)
+        )
+        XCTAssertEqual(
+            FileSystemProbeDecisionCoordinator.symbolicLinkDestination(target: target, directoryAnswer: .value(false)),
+            .file(target)
+        )
+        XCTAssertEqual(
+            FileSystemProbeDecisionCoordinator.symbolicLinkDestination(target: target, directoryAnswer: .unavailable),
+            .unavailable
+        )
+    }
+
+    func testKeepBothProbeReturnsFirstMissingCandidateAndStopsWhenUnavailable() async {
+        let destination = URL(fileURLWithPath: "/tmp/report.txt")
+        let available = FileSystemProbeDecisionCoordinator(probe: SequenceFileSystemProbe(existence: [.value(true), .value(false)]))
+        XCTAssertEqual(await available.keepBothDestination(for: destination)?.lastPathComponent, "report copy 2.txt")
+
+        let unavailable = FileSystemProbeDecisionCoordinator(probe: SequenceFileSystemProbe(existence: [.unavailable]))
+        XCTAssertNil(await unavailable.keepBothDestination(for: destination))
     }
 
     func testTransferWorkflowBuildsTypedRequest() throws {
@@ -309,4 +341,17 @@ private struct NeverCalledFileSystemProbe: FileSystemProbing {
     func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { XCTFail("Unexpected probe"); return .value(false) }
     func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { XCTFail("Unexpected probe"); return .value(false) }
     func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?> { XCTFail("Unexpected probe"); return .unavailable }
+}
+
+private actor SequenceFileSystemProbe: FileSystemProbing {
+    private var existence: [FileSystemProbeAnswer<Bool>]
+
+    init(existence: [FileSystemProbeAnswer<Bool>]) { self.existence = existence }
+
+    func exists(_ url: URL, deadline: Duration) -> FileSystemProbeAnswer<Bool> {
+        existence.isEmpty ? .unavailable : existence.removeFirst()
+    }
+
+    func isDirectory(_ url: URL, deadline: Duration) -> FileSystemProbeAnswer<Bool> { .unavailable }
+    func volumeIdentifier(_ url: URL, deadline: Duration) -> FileSystemProbeAnswer<String?> { .unavailable }
 }

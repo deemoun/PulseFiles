@@ -34,8 +34,7 @@ final class FileOperationPresentationCoordinator {
         )
     }
 
-    func conflict(destination: URL, operationName: String, fileExists: (URL) -> Bool) -> (AlertDescriptor, URL) {
-        let keepBoth = FileOperationService.keepBothDestination(for: destination, fileExists: fileExists)
+    func conflict(destination: URL, operationName: String, keepBothDestination keepBoth: URL) -> (AlertDescriptor, URL) {
         return (
             .init(
                 style: .warning,
