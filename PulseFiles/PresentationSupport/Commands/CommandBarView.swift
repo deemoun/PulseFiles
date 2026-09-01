@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesPresentationSupport
+import PulseFilesWorkflows
 
-final class CommandBarView: NSVisualEffectView {
-    var onAction: ((CommandBarAction) -> Void)?
+package final class CommandBarView: NSVisualEffectView {
+    package var onAction: ((CommandBarAction) -> Void)?
 
     private let stack = NSStackView()
     private let transientStatusLabel = NSTextField(labelWithString: "")
     private var isShowingShiftActions = false
     private var liquidGlassStyle: LiquidGlassStyle
 
-    init(style: LiquidGlassStyle) {
+    package init(style: LiquidGlassStyle) {
         liquidGlassStyle = style
         super.init(frame: .zero)
         material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
@@ -61,19 +63,19 @@ final class CommandBarView: NSVisualEffectView {
         reloadButtons()
     }
 
-    func refreshAppearance(style: LiquidGlassStyle) {
+    package func refreshAppearance(style: LiquidGlassStyle) {
         liquidGlassStyle = style
         material = liquidGlassStyle.isEnabled ? .hudWindow : .contentBackground
         reloadButtons()
     }
 
-    func setShiftPressed(_ isShiftPressed: Bool) {
+    package func setShiftPressed(_ isShiftPressed: Bool) {
         guard isShowingShiftActions != isShiftPressed else { return }
         isShowingShiftActions = isShiftPressed
         reloadButtons()
     }
 
-    func setTransientStatus(_ status: String) {
+    package func setTransientStatus(_ status: String) {
         transientStatusLabel.stringValue = status
         transientStatusLabel.toolTip = status
         transientStatusLabel.isHidden = status.isEmpty

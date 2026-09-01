@@ -2,39 +2,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesWorkflows
 
 /// The authoritative keyboard and menu presentation metadata for one command.
-struct MainCommandShortcutDescriptor: Equatable {
-    struct MenuKeyEquivalent: Equatable {
-        let key: String
-        let modifierFlags: NSEvent.ModifierFlags
+package struct MainCommandShortcutDescriptor: Equatable {
+    package struct MenuKeyEquivalent: Equatable {
+        package let key: String
+        package let modifierFlags: NSEvent.ModifierFlags
     }
 
-    struct PhysicalBinding: Equatable {
-        enum Scope: Equatable {
+    package struct PhysicalBinding: Equatable {
+        package enum Scope: Equatable {
             /// The binding may be used while a text field is the first responder.
             case textInputSafe
             /// The binding is reserved for file-manager interaction, not text editing.
             case outsideTextInput
         }
 
-        let keyCode: UInt16
-        let modifierFlags: NSEvent.ModifierFlags
-        let scope: Scope
+        package let keyCode: UInt16
+        package let modifierFlags: NSEvent.ModifierFlags
+        package let scope: Scope
     }
 
-    let command: MainCommand
-    let menuKeyEquivalent: MenuKeyEquivalent?
-    let primaryLabel: String
-    let bindings: [PhysicalBinding]
+    package let command: MainCommand
+    package let menuKeyEquivalent: MenuKeyEquivalent?
+    package let primaryLabel: String
+    package let bindings: [PhysicalBinding]
 }
 
-enum MainCommandShortcutRegistry {
-    typealias Descriptor = MainCommandShortcutDescriptor
-    typealias Binding = Descriptor.PhysicalBinding
-    typealias Scope = Binding.Scope
+package enum MainCommandShortcutRegistry {
+    package typealias Descriptor = MainCommandShortcutDescriptor
+    package typealias Binding = Descriptor.PhysicalBinding
+    package typealias Scope = Binding.Scope
 
-    static let descriptors: [Descriptor] = [
+    package static let descriptors: [Descriptor] = [
         descriptor(.open, label: "Return / F4", bindings: [binding(36), binding(118)]),
         descriptor(.viewer, label: "F3", bindings: [binding(99)]),
         descriptor(.openWith),
@@ -92,14 +93,14 @@ enum MainCommandShortcutRegistry {
         descriptor(.debugLogs), descriptor(.exportDiagnostics)
     ]
 
-    static func descriptor(for command: MainCommand) -> Descriptor {
+    package static func descriptor(for command: MainCommand) -> Descriptor {
         guard let descriptor = descriptors.first(where: { $0.command == command }) else {
             preconditionFailure("Every MainCommand must have shortcut metadata.")
         }
         return descriptor
     }
 
-    static func command(forKeyCode keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, isTextInputFocused: Bool) -> MainCommand? {
+    package static func command(forKeyCode keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, isTextInputFocused: Bool) -> MainCommand? {
         let relevantFlags = modifierFlags.intersection([.command, .shift, .option, .control])
         return descriptors.first(where: { descriptor in
             descriptor.bindings.contains {
@@ -109,7 +110,7 @@ enum MainCommandShortcutRegistry {
         })?.command
     }
 
-    static func shouldConsumeUnmappedKey(keyCode: UInt16, isTextInputFocused: Bool) -> Bool {
+    package static func shouldConsumeUnmappedKey(keyCode: UInt16, isTextInputFocused: Bool) -> Bool {
         !isTextInputFocused && (keyCode == 51 || keyCode == 117)
     }
 
@@ -131,7 +132,7 @@ enum MainCommandShortcutRegistry {
 }
 
 extension CommandBarAction {
-    var shortcut: String {
+    package var shortcut: String {
         MainCommandShortcutRegistry.descriptor(for: MainCommand(commandBarAction: self)).primaryLabel
     }
 }

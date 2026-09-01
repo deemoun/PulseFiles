@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesPresentationCommands
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import XCTest
+import PulseFilesPresentationCommands
 @testable import PulseFiles
 @testable import PulseFilesPane
 

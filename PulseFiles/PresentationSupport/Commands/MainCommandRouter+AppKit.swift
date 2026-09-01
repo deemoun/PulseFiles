@@ -5,7 +5,7 @@ import AppKit
 import PulseFilesWorkflows
 
 extension MainCommandRouter {
-    func commandForKeyDown(
+    package func commandForKeyDown(
         keyCode: UInt16,
         command: Bool = false,
         shift: Bool = false,
@@ -21,11 +21,11 @@ extension MainCommandRouter {
         return MainCommandShortcutRegistry.command(forKeyCode: keyCode, modifierFlags: flags, isTextInputFocused: isTextInputFocused)
     }
 
-    func commandForKeyDown(_ event: NSEvent, isTextInputFocused: Bool) -> MainCommand? {
+    package func commandForKeyDown(_ event: NSEvent, isTextInputFocused: Bool) -> MainCommand? {
         MainCommandShortcutRegistry.command(forKeyCode: event.keyCode, modifierFlags: event.modifierFlags, isTextInputFocused: isTextInputFocused)
     }
 
-    func shouldConsumeUnmappedKeyDown(keyCode: UInt16, isTextInputFocused: Bool = false) -> Bool {
+    package func shouldConsumeUnmappedKeyDown(keyCode: UInt16, isTextInputFocused: Bool = false) -> Bool {
         MainCommandShortcutRegistry.shouldConsumeUnmappedKey(keyCode: keyCode, isTextInputFocused: isTextInputFocused)
     }
 }
