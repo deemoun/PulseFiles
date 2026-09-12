@@ -5,24 +5,24 @@ import XCTest
 @testable import PulseFiles
 
 final class OpenFileCoordinatorTests: XCTestCase {
-    func testAllowedApplicationIsValidatedAndHandedOff() throws {
+    func testAllowedApplicationIsValidatedAndHandedOff() async throws {
         let temporary = try TemporaryDirectoryFixture(named: "OpenFileAllowed", testCase: self)
         let file = try temporary.file("Root/Document.txt", contents: "document")
         let application = try temporary.folder("Root/Editor.app")
         var request: (URL, URL?)?
         let coordinator = OpenFileCoordinator(
             accessPolicy: .init(isEnabled: true, rootURL: temporary.root.appendingPathComponent("Root")),
-            isApplicationBundle: { $0 == application },
+            probe: OpenFileProbe(applicationBundle: { $0 == application }),
             handoff: { request = ($0, $1) }
         )
 
-        try coordinator.open(file, with: application)
+        try await coordinator.open(file, with: application)
 
         XCTAssertEqual(request?.0, file)
         XCTAssertEqual(request?.1, application)
     }
 
-    func testMissingApplicationIsRejectedBeforeHandoff() throws {
+    func testMissingApplicationIsRejectedBeforeHandoff() async throws {
         let temporary = try TemporaryDirectoryFixture(named: "OpenFileMissingApplication", testCase: self)
         let root = try temporary.folder("Root")
         let file = try temporary.file("Root/Document.txt", contents: "document")
@@ -30,17 +30,15 @@ final class OpenFileCoordinatorTests: XCTestCase {
         var didHandoff = false
         let coordinator = OpenFileCoordinator(
             accessPolicy: .init(isEnabled: true, rootURL: root),
-            isApplicationBundle: { _ in true },
+            probe: OpenFileProbe(applicationBundle: { _ in true }),
             handoff: { _, _ in didHandoff = true }
         )
 
-        XCTAssertThrowsError(try coordinator.open(file, with: application)) { error in
-            XCTAssertEqual(error as? FileOperationError, .sourceMissing(application))
-        }
+        do { try await coordinator.open(file, with: application); XCTFail("Expected missing application") } catch { XCTAssertEqual(error as? FileOperationError, .sourceMissing(application)) }
         XCTAssertFalse(didHandoff)
     }
 
-    func testExistingNonApplicationIsRejectedBeforeHandoff() throws {
+    func testExistingNonApplicationIsRejectedBeforeHandoff() async throws {
         let temporary = try TemporaryDirectoryFixture(named: "OpenFileInvalidApplication", testCase: self)
         let root = try temporary.folder("Root")
         let file = try temporary.file("Root/Document.txt", contents: "document")
@@ -48,17 +46,15 @@ final class OpenFileCoordinatorTests: XCTestCase {
         var didHandoff = false
         let coordinator = OpenFileCoordinator(
             accessPolicy: .init(isEnabled: true, rootURL: root),
-            isApplicationBundle: { _ in false },
+            probe: OpenFileProbe(applicationBundle: { _ in false }),
             handoff: { _, _ in didHandoff = true }
         )
 
-        XCTAssertThrowsError(try coordinator.open(file, with: application)) { error in
-            XCTAssertEqual(error as? OpenFileValidationError, .notApplicationBundle(application))
-        }
+        do { try await coordinator.open(file, with: application); XCTFail("Expected invalid application") } catch { XCTAssertEqual(error as? OpenFileValidationError, .notApplicationBundle(application)) }
         XCTAssertFalse(didHandoff)
     }
 
-    func testDeniedApplicationURLSurfacesPolicyErrorBeforeHandoff() throws {
+    func testDeniedApplicationURLSurfacesPolicyErrorBeforeHandoff() async throws {
         let temporary = try TemporaryDirectoryFixture(named: "OpenFileDeniedApplication", testCase: self)
         let root = try temporary.folder("Root")
         let file = try temporary.file("Root/Document.txt", contents: "document")
@@ -66,17 +62,15 @@ final class OpenFileCoordinatorTests: XCTestCase {
         var didHandoff = false
         let coordinator = OpenFileCoordinator(
             accessPolicy: .init(isEnabled: true, rootURL: root),
-            isApplicationBundle: { _ in true },
+            probe: OpenFileProbe(applicationBundle: { _ in true }),
             handoff: { _, _ in didHandoff = true }
         )
 
-        XCTAssertThrowsError(try coordinator.open(file, with: application)) { error in
-            XCTAssertEqual(error as? SandboxAccessError, .outsideExperimentalSandbox(application))
-        }
+        do { try await coordinator.open(file, with: application); XCTFail("Expected denied application") } catch { XCTAssertEqual(error as? SandboxAccessError, .outsideExperimentalSandbox(application)) }
         XCTAssertFalse(didHandoff)
     }
 
-    func testBothExplicitlyGrantedURLsRemainScopedThroughHandoff() throws {
+    func testBothExplicitlyGrantedURLsRemainScopedThroughHandoff() async throws {
         let temporary = try TemporaryDirectoryFixture(named: "OpenFileGrantedURLs", testCase: self)
         let defaults = try IsolatedDefaultsFixture(prefix: "OpenFileGrantedURLs", testCase: self)
         defer { defaults.cleanup() }
@@ -98,11 +92,11 @@ final class OpenFileCoordinatorTests: XCTestCase {
         var scopesDuringHandoff = 0
         let coordinator = OpenFileCoordinator(
             accessPolicy: policy,
-            isApplicationBundle: { $0 == application },
+            probe: OpenFileProbe(applicationBundle: { $0 == application }),
             handoff: { _, _ in scopesDuringHandoff = activeScopes }
         )
 
-        try coordinator.open(file, with: application)
+        try await coordinator.open(file, with: application)
 
         XCTAssertEqual(scopesDuringHandoff, 2)
         XCTAssertEqual(activeScopes, 0)
@@ -120,4 +114,12 @@ private struct OpenFileBookmarkResolver: FolderAccessBookmarkResolving {
         }
         return (URL(fileURLWithPath: path, isDirectory: true), false)
     }
+}
+
+private struct OpenFileProbe: FileSystemProbing {
+    let applicationBundle: @Sendable (URL) -> Bool
+    func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { .value(FileManager.default.fileExists(atPath: url.path)) }
+    func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { .unavailable }
+    func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?> { .unavailable }
+    func isApplicationBundle(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { .value(applicationBundle(url)) }
 }

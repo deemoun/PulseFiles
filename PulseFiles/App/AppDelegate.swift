@@ -80,12 +80,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// registers only for folders, but handles file URLs defensively because an
     /// event can still be forwarded by another app or automation tool.
     func application(_ application: NSApplication, open urls: [URL]) {
-        let result = OpenEventRouter.route(urls, accessPolicy: accessPolicy, fileManager: fileManager)
-        guard let directory = result.firstAcceptedFolder else { return }
-
-        let controller = showMainWindow()
-        controller.contentViewController?.view.layoutSubtreeIfNeeded()
-        (controller.contentViewController as? MainWindowViewController)?.openAcceptedFolderFromExternalEvent(directory)
+        Task { @MainActor in
+            let result = await OpenEventRouter.route(urls, accessPolicy: accessPolicy, probe: fileSystemProbe)
+            guard let directory = result.firstAcceptedFolder else { return }
+            let controller = showMainWindow()
+            controller.contentViewController?.view.layoutSubtreeIfNeeded()
+            (controller.contentViewController as? MainWindowViewController)?.openAcceptedFolderFromExternalEvent(directory)
+        }
     }
 
     /// Reopen recreates or brings forward the main file-manager window. This is

@@ -18,11 +18,11 @@ struct MainWindowWorkflowDependencies {
     static func production(from dependencies: MainWindowDependencies, accessPolicy: SandboxFileAccessPolicy) -> Self {
         Self(
             fileTransfer: .init(fileOperations: dependencies.fileOperations, clipboard: dependencies.clipboard, accessPolicy: accessPolicy),
-            fileCreation: .init(fileOperations: dependencies.fileOperations, accessPolicy: accessPolicy),
-            search: .init(service: dependencies.descendantSearch, accessPolicy: accessPolicy),
+            fileCreation: .init(fileOperations: dependencies.fileOperations, accessPolicy: accessPolicy, probe: dependencies.fileSystemProbe),
+            search: .init(service: dependencies.descendantSearch, accessPolicy: accessPolicy, probe: dependencies.fileSystemProbe),
             auxiliaryPanels: .init(),
             archiveAndRename: .init(fileOperations: dependencies.fileOperations),
-            openWith: .init(accessPolicy: accessPolicy),
+            openWith: .init(accessPolicy: accessPolicy, probe: dependencies.fileSystemProbe),
             goToFolder: .init(probe: dependencies.fileSystemProbe, accessPolicy: accessPolicy),
             commandPresentation: .init(),
             paneSynchronization: .init()

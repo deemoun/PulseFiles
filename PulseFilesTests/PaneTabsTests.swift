@@ -55,7 +55,7 @@ final class PaneTabsTests: XCTestCase {
         XCTAssertEqual(MainCommandRouter().commandForKeyDown(keyCode: 42, command: true, option: true), .togglePaneLayout)
     }
 
-    func testRestoredTabsAreFilteredAtSandboxBoundaryAndFallBackSafely() throws {
+    func testRestoredTabsAreFilteredAtSandboxBoundaryAndFallBackSafely() async throws {
         let sandbox = try SandboxFixture(testCase: self)
         let allowedID = UUID()
         let rejectedID = UUID()
@@ -67,10 +67,20 @@ final class PaneTabsTests: XCTestCase {
             activeTabID: rejectedID
         )
 
-        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, restoration: restoration, fileSystem: TestFileSystem(), accessPolicy: sandbox.policy)
+        let viewModel = FilePaneViewModel(initialDirectory: sandbox.allowedDirectory, restoration: restoration,
+            fileSystem: TestFileSystem(), accessPolicy: sandbox.policy,
+            probe: PaneRestorationProbe(directoryAnswer: .value(true)))
+        for _ in 0..<20 where viewModel.tabs.map(\.id) != [allowedID] { await Task.yield() }
 
         XCTAssertEqual(viewModel.tabs.map(\.id), [allowedID])
         XCTAssertEqual(viewModel.activeTabID, allowedID)
         XCTAssertTrue(sandbox.policy.canAccess(viewModel.currentDirectory))
     }
+}
+
+private struct PaneRestorationProbe: FileSystemProbing {
+    let directoryAnswer: FileSystemProbeAnswer<Bool>
+    func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { .unavailable }
+    func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> { directoryAnswer }
+    func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?> { .unavailable }
 }

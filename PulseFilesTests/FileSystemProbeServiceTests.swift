@@ -5,7 +5,7 @@ import XCTest
 @testable import PulseFiles
 
 final class FileSystemProbeServiceTests: XCTestCase {
-    func testDeadlineReturnsUnavailableWithoutWaitingForSlowFilesystem() async {
+    func testDeadlineReturnsTimedOutWithoutWaitingForSlowFilesystem() async {
         let probe = FileSystemProbeService(
             existsOperation: { _ in Thread.sleep(forTimeInterval: 0.2); return true },
             directoryOperation: { _ in false },
@@ -13,7 +13,7 @@ final class FileSystemProbeServiceTests: XCTestCase {
         )
 
         let answer = await probe.exists(URL(fileURLWithPath: "/slow"), deadline: .milliseconds(10))
-        XCTAssertEqual(answer, .unavailable)
+        XCTAssertEqual(answer, .timedOut)
     }
 
     func testVolumeIdentifierReportsDisappearedVolumeAsUnavailableIdentity() async {
@@ -32,7 +32,19 @@ final class FileSystemProbeServiceTests: XCTestCase {
         let change = VolumeChange(previous: [Volume(url: URL(fileURLWithPath: "/Volumes/Ejected", isDirectory: true), displayName: "Ejected", isRemovable: true, isLocal: true, isNetwork: false, isReadOnly: false)], current: [])
 
         let actions = await VolumeChangePaneRefreshRouter.actions(for: [directory], change: change) { _ in .unavailable }
-        XCTAssertEqual(actions, [.fallBack])
+        XCTAssertEqual(actions, [.revalidate])
+    }
+
+    func testNetworkVolumeTimeoutIsUncertainRatherThanMissing() async {
+        let directory = URL(fileURLWithPath: "/Volumes/Network/Work", isDirectory: true)
+        let root = URL(fileURLWithPath: "/Volumes/Network", isDirectory: true)
+        let network = Volume(url: root, displayName: "Network", isRemovable: false, isLocal: false,
+            isNetwork: true, isReadOnly: false)
+        let change = VolumeChange(previous: [network], current: [network])
+
+        let actions = await VolumeChangePaneRefreshRouter.actions(for: [directory], change: change) { _ in .timedOut }
+
+        XCTAssertEqual(actions, [.revalidate])
     }
 
     @MainActor
@@ -110,8 +122,8 @@ final class FileSystemOperationSchedulerTests: XCTestCase {
         async let second = probe.exists(URL(fileURLWithPath: "/slow-2"), deadline: .milliseconds(5))
         let firstAnswer = await first
         let secondAnswer = await second
-        XCTAssertEqual(firstAnswer, .unavailable)
-        XCTAssertEqual(secondAnswer, .unavailable)
+        XCTAssertEqual(firstAnswer, .timedOut)
+        XCTAssertEqual(secondAnswer, .timedOut)
         try? await Task.sleep(for: .milliseconds(10))
 
         let thirdAnswer = await probe.exists(URL(fileURLWithPath: "/slow-3"), deadline: .milliseconds(50))

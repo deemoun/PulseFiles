@@ -29,15 +29,23 @@ protocol WorkflowConflictResolving: AnyObject {
 @MainActor
 final class OpenWithWorkflowCoordinator {
     private let accessPolicy: SandboxFileAccessPolicy
-    init(accessPolicy: SandboxFileAccessPolicy) { self.accessPolicy = accessPolicy }
+    private let probe: any FileSystemProbing
+    init(accessPolicy: SandboxFileAccessPolicy, probe: any FileSystemProbing) { self.accessPolicy = accessPolicy; self.probe = probe }
 
     func present(files: [URL], presenter: any WorkflowWindowProviding & WorkflowAlertPresenting, open: @escaping (URL, URL) -> Void) {
         guard !files.isEmpty else { presenter.workflowFailed(message: "Nothing Selected".localized, detail: "Select one or more files to open with another application.".localized); return }
-        do {
-            for file in files where try !accessPolicy.withValidatedAccess(to: file, { FileManager.default.fileExists(atPath: file.path) }) {
-                throw FileOperationError.sourceMissing(file)
-            }
-        } catch { presenter.workflowFailed(message: "Could Not Open File".localized, detail: error.localizedDescription); return }
+        Task { [accessPolicy, probe] in
+            do {
+                for file in files {
+                    let answer = try await accessPolicy.withValidatedAccess(to: file) { await probe.exists(file, deadline: .milliseconds(250)) }
+                    guard case .value(true) = answer else { throw FileOperationError.sourceMissing(file) }
+                }
+                self.presentApplicationPanel(files: files, presenter: presenter, open: open)
+            } catch { presenter.workflowFailed(message: "Could Not Open File".localized, detail: error.localizedDescription) }
+        }
+    }
+
+    private func presentApplicationPanel(files: [URL], presenter: any WorkflowWindowProviding & WorkflowAlertPresenting, open: @escaping (URL, URL) -> Void) {
         let panel = NSOpenPanel(); panel.title = "Open With…".localized; panel.prompt = "Open".localized
         panel.message = files.count == 1 ? "Choose an application to open %@.".localized(with: files[0].lastPathComponent) : "Choose an application to open the selected files.".localized
         panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true); panel.canChooseFiles = true

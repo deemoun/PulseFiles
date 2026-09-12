@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
-import UniformTypeIdentifiers
 
 enum OpenFileValidationError: LocalizedError, Equatable {
     case notApplicationBundle(URL)
+    case probeUnavailable(URL)
 
     var errorDescription: String? {
         switch self {
         case .notApplicationBundle(let url):
             return "%@ is not an application.".localized(with: url.lastPathComponent)
+        case .probeUnavailable(let url):
+            return "%@ could not be checked in time. Try again.".localized(with: url.lastPathComponent)
         }
     }
 }
@@ -23,35 +25,39 @@ struct OpenFileCoordinator {
     typealias Handoff = (_ fileURL: URL, _ applicationURL: URL?) -> Void
 
     private let accessPolicy: SandboxFileAccessPolicy
-    private let fileExists: (URL) -> Bool
-    private let isApplicationBundle: (URL) -> Bool
+    private let probe: any FileSystemProbing
+    private let deadline: Duration
     private let handoff: Handoff
 
     init(
         accessPolicy: SandboxFileAccessPolicy,
-        fileExists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
-        isApplicationBundle: @escaping (URL) -> Bool = { url in
-            (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?.conforms(to: .applicationBundle) == true
-        },
+        probe: any FileSystemProbing = FileSystemProbeService(),
+        deadline: Duration = .milliseconds(250),
         handoff: @escaping Handoff
     ) {
         self.accessPolicy = accessPolicy
-        self.fileExists = fileExists
-        self.isApplicationBundle = isApplicationBundle
+        self.probe = probe
+        self.deadline = deadline
         self.handoff = handoff
     }
 
-    func open(_ fileURL: URL, with applicationURL: URL?) throws {
+    func open(_ fileURL: URL, with applicationURL: URL?) async throws {
         let urls = [fileURL] + (applicationURL.map { [$0] } ?? [])
-        try accessPolicy.withValidatedAccess(to: urls) {
-            guard fileExists(fileURL) else {
+        try await accessPolicy.withValidatedAccess(to: urls) {
+            let fileAnswer = await probe.exists(fileURL, deadline: deadline)
+            guard case .value(let fileExists) = fileAnswer else { throw OpenFileValidationError.probeUnavailable(fileURL) }
+            guard fileExists else {
                 throw FileOperationError.sourceMissing(fileURL)
             }
             if let applicationURL {
-                guard fileExists(applicationURL) else {
+                let applicationAnswer = await probe.exists(applicationURL, deadline: deadline)
+                guard case .value(let applicationExists) = applicationAnswer else { throw OpenFileValidationError.probeUnavailable(applicationURL) }
+                guard applicationExists else {
                     throw FileOperationError.sourceMissing(applicationURL)
                 }
-                guard isApplicationBundle(applicationURL) else {
+                let bundleAnswer = await probe.isApplicationBundle(applicationURL, deadline: deadline)
+                guard case .value(let isBundle) = bundleAnswer else { throw OpenFileValidationError.probeUnavailable(applicationURL) }
+                guard isBundle else {
                     throw OpenFileValidationError.notApplicationBundle(applicationURL)
                 }
             }

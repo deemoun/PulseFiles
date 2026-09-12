@@ -8,10 +8,12 @@ import Foundation
 final class FileCreationWorkflowCoordinator {
     private let fileOperations: any FileOperationCoordinating
     private let accessPolicy: SandboxFileAccessPolicy
+    private let probe: any FileSystemProbing
 
-    init(fileOperations: any FileOperationCoordinating, accessPolicy: SandboxFileAccessPolicy) {
+    init(fileOperations: any FileOperationCoordinating, accessPolicy: SandboxFileAccessPolicy, probe: any FileSystemProbing) {
         self.fileOperations = fileOperations
         self.accessPolicy = accessPolicy
+        self.probe = probe
     }
 
     func createFolder(named name: String, in directory: URL) async throws -> FileOperationResult {
@@ -46,24 +48,26 @@ final class FileCreationWorkflowCoordinator {
     }
 
     func suggestedName(in directory: URL, base: String, isDirectory: Bool) async -> String {
-        await Self.uniqueName(in: directory, base: base, isDirectory: isDirectory, accessPolicy: accessPolicy)
+        await Self.uniqueName(in: directory, base: base, isDirectory: isDirectory, accessPolicy: accessPolicy, probe: probe)
     }
 
     /// Advisory naming only. FileOperationService remains the authority for collisions.
-    nonisolated static func uniqueName(in directory: URL, base: String, isDirectory: Bool, accessPolicy: SandboxFileAccessPolicy) async -> String {
-        await Task.detached(priority: .utility) {
-            (try? accessPolicy.withValidatedAccess(to: directory) {
+    nonisolated static func uniqueName(in directory: URL, base: String, isDirectory: Bool, accessPolicy: SandboxFileAccessPolicy, probe: any FileSystemProbing) async -> String {
+            return (try? await accessPolicy.withValidatedAccess(to: directory) {
                 let suffix = isDirectory ? "" : ".txt"
                 let stem = isDirectory ? base : "Untitled"
                 for index in 1...10_000 {
                     if Task.isCancelled { return base }
                     let candidate = index == 1 ? base : "\(stem) \(index)\(suffix)"
-                    if !FileManager.default.fileExists(atPath: directory.appendingPathComponent(candidate, isDirectory: isDirectory).path) {
+                    let answer = await probe.exists(directory.appendingPathComponent(candidate, isDirectory: isDirectory), deadline: .milliseconds(250))
+                    if case .value(false) = answer {
                         return candidate
                     }
+                    // Uncertainty must never select a possibly occupied name.
+                    if case .value(true) = answer { continue }
+                    return base
                 }
                 return "\(stem) \(UUID().uuidString)\(suffix)"
             }) ?? base
-        }.value
     }
 }
