@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesServices
+import PulseFilesUtilities
+import PulseFilesPresentationSupport
 
 @MainActor
 package final class GeneralSettingsPageController: SettingsPageControllerBase {

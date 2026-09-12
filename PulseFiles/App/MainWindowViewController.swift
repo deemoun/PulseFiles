@@ -6,6 +6,15 @@ import PulseFilesAppCoordination
 import PulseFilesPresentationCommands
 import Quartz
 import UniformTypeIdentifiers
+import PulseFilesModels
+import PulseFilesServices
+import PulseFilesUtilities
+import PulseFilesWorkflows
+import PulseFilesPresentationSupport
+import PulseFilesTerminal
+import PulseFilesPane
+import PulseFilesSidebar
+import PulseFilesSettings
 
 struct MainCommandDestinationResolver {
     static func destination(for command: MainCommand) -> URL {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
+import PulseFilesPresentationSupport
 
 struct FileOperationProgressPresentation: Equatable {
     let title: String

@@ -27,8 +27,12 @@ layer. Reverse dependencies are forbidden and checked by
 `scripts/validate_architecture.sh`.
 
 Cross-target declarations use Swift's `package` access level so they remain
-implementation details rather than public library API. The executable re-exports
-its package-internal layers only to keep presentation files concise; each lower target declares its own imports and dependencies.
+implementation details rather than public library API. Every production source
+imports the internal modules whose symbols it uses, and every target declares
+only those direct dependencies. The architecture validator rejects internal
+module re-exports and dependencies that have no corresponding direct import. A
+rare implementation-only dependency may be retained only when its requirement
+and rationale are explicitly recorded in `architecture_policy.json`.
 
 ### Presentation dependency graph
 

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
+import PulseFilesPresentationSupport
 
 final class PatternSelectionPanelController: NSWindowController, NSTextFieldDelegate {
     private let items: [FileItem]

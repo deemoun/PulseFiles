@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
+import PulseFilesWorkflows
+import PulseFilesPresentationSupport
 
 /// Builds pane context menus while leaving selection/focus ownership in `FilePaneViewController`.
 @MainActor

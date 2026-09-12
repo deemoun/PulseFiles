@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
+import PulseFilesUtilities
+import PulseFilesPresentationSupport
 
 package struct SidebarItem {
     package let title: String

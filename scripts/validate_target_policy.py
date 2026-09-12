@@ -85,6 +85,16 @@ for name, declaration in expected.items():
     for dependency in sorted(wanted - got):
         error(f"target {name} is missing direct internal dependency {dependency}")
 
+    implementation_only = declaration.get("implementationOnlyDependencies", {})
+    if not isinstance(implementation_only, dict):
+        error(f"target {name} implementationOnlyDependencies must map dependencies to reasons")
+        implementation_only = {}
+    for dependency, reason in implementation_only.items():
+        if dependency not in wanted:
+            error(f"target {name} documents non-dependency {dependency} as implementation-only")
+        if not isinstance(reason, str) or not reason.strip():
+            error(f"target {name} implementation-only dependency {dependency} requires a reason")
+
 def target_contains(relative: pathlib.PurePosixPath, declaration) -> bool:
     """Mirror SwiftPM path, sources, and exclude ownership for a source file."""
     target_path = pathlib.PurePosixPath(declaration["path"])
@@ -103,6 +113,8 @@ def target_contains(relative: pathlib.PurePosixPath, declaration) -> bool:
 
 
 imports = re.compile(r"^\s*(?:@testable\s+)?import\s+(PulseFiles[A-Za-z0-9_]*)\b", re.M)
+reexports = re.compile(r"^\s*@_exported\s+import\s+(PulseFiles[A-Za-z0-9_]*)\b", re.M)
+direct_imports = {name: set() for name in production}
 for swift_file in (root / "PulseFiles").rglob("*.swift"):
     relative = pathlib.PurePosixPath(swift_file.relative_to(root).as_posix())
     owners = [name for name in production if name in actual and target_contains(relative, actual[name])]
@@ -114,9 +126,18 @@ for swift_file in (root / "PulseFiles").rglob("*.swift"):
         continue
     owner = owners[0]
     allowed = set(production[owner]["dependencies"])
-    for imported in imports.findall(swift_file.read_text()):
+    source_text = swift_file.read_text()
+    for reexported in reexports.findall(source_text):
+        error(f"{relative}: {owner} may not re-export internal module {reexported}")
+    for imported in imports.findall(source_text):
+        direct_imports[owner].add(imported)
         if imported != owner and imported not in allowed:
             error(f"{relative}: {owner} may not import {imported}")
+
+for name, declaration in production.items():
+    implementation_only = set(declaration.get("implementationOnlyDependencies", {}))
+    for dependency in sorted(set(declaration["dependencies"]) - direct_imports[name] - implementation_only):
+        error(f"target {name} declares unused internal dependency {dependency}; no owned production source imports it")
 
 # Fail closed for resource-owner-looking concrete types declared by Services.
 # A peer may construct its own declarations; cross-layer construction requires

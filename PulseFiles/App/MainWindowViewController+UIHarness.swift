@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
+import PulseFilesModels
+import PulseFilesPane
 
 #if DEBUG
 /// Narrow, debug-only seam used by the deterministic AppKit UI harness.

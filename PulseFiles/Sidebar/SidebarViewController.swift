@@ -3,6 +3,10 @@
 
 import AppKit
 import ImageIO
+import PulseFilesModels
+import PulseFilesServices
+import PulseFilesUtilities
+import PulseFilesPresentationSupport
 
 package protocol DirectorySizing: Sendable {
     func size(of root: URL) async throws -> DirectorySizeResult

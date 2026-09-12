@@ -3,6 +3,11 @@
 
 import AppKit
 import PulseFilesPresentationCommands
+import PulseFilesModels
+import PulseFilesServices
+import PulseFilesUtilities
+import PulseFilesWorkflows
+import PulseFilesPresentationSupport
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
