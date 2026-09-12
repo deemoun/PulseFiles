@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesPresentationSupport
 
 final class QuickLocationsViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
     var onActivate: ((QuickLocationEntry, Bool) -> Void)?

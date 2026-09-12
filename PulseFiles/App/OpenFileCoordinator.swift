@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
+import PulseFilesModels
+import PulseFilesServices
 
 enum OpenFileValidationError: LocalizedError, Equatable {
     case notApplicationBundle(URL)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
+import PulseFilesPresentationSupport
 
 package struct SidebarNavigationSection {
     package let title: String

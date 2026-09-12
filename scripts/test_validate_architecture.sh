@@ -17,6 +17,26 @@ mkdir -p "$BASE/PulseFiles/PresentationSupport/Commands"
 mkdir -p "$BASE"/{PulseFilesCoreTests,PulseFilesServicesTests,PulseFilesTests,PulseFilesAppKitUITests}
 cp "$REPO_ROOT/Package.swift" "$BASE/Package.swift"
 
+# Keep the otherwise intentionally sparse fixture targets representative of the
+# direct-import requirement enforced for declared production dependencies.
+python3 - "$BASE" "$REPO_ROOT/scripts/architecture_policy.json" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+policy = json.loads(pathlib.Path(sys.argv[2]).read_text())
+for declaration in policy["productionTargets"].values():
+    dependencies = declaration["dependencies"]
+    if dependencies:
+        relative = pathlib.Path(declaration["path"])
+        if relative == pathlib.Path("PulseFiles/PresentationSupport"):
+            relative /= "Models"
+        path = root / relative / "FixtureImports.swift"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(f"import {dependency}\n" for dependency in dependencies))
+PY
+
 new_case() {
   local name="$1"
   local destination="$FIXTURE/$name"
@@ -59,6 +79,7 @@ accept_source directory-read PulseFiles/App/Fixture.swift 'let children = try fm
 reject_source lateral-feature-import PulseFiles/FilePane/Fixture.swift 'import PulseFilesSidebar'
 reject_source coordination-lateral-import PulseFiles/AppCoordination/Fixture.swift 'import PulseFilesPane'
 reject_source reverse-lower-layer-import PulseFiles/Services/Fixture.swift 'import PulseFilesTerminal'
+reject_source undeclared-import PulseFiles/Models/Fixture.swift 'import PulseFilesServices'
 accept_source composition-import PulseFiles/App/Fixture.swift 'import PulseFilesTerminal'
 accept_source coordination-workflow-import PulseFiles/AppCoordination/Fixture.swift 'import PulseFilesWorkflows'
 
@@ -98,5 +119,14 @@ if run_validator "$case_root"; then
   echo 'ERROR: missing direct manifest dependency was accepted' >&2
   exit 1
 fi
+
+case_root="$(new_case unnecessary-target-dependency)"
+sed -i '/import PulseFilesUtilities/d' "$case_root/PulseFiles/Models/FixtureImports.swift"
+if run_validator "$case_root"; then
+  echo 'ERROR: unnecessary target dependency was accepted' >&2
+  exit 1
+fi
+
+reject_source internal-module-reexport PulseFiles/App/Fixture.swift '@_exported import PulseFilesServices'
 
 echo 'Architecture dependency regression tests passed'

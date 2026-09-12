@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
+import PulseFilesModels
+import PulseFilesServices
+import PulseFilesUtilities
 
 @MainActor
 package final class FilePaneViewModel {

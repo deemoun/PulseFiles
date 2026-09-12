@@ -3,6 +3,12 @@
 
 import AppKit
 import Foundation
+import PulseFilesServices
+import PulseFilesWorkflows
+import PulseFilesPresentationSupport
+import PulseFilesTerminal
+import PulseFilesSidebar
+import PulseFilesSettings
 
 // MARK: - Injectable application boundaries
 

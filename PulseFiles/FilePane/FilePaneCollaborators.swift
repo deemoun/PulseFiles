@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
+import PulseFilesWorkflows
 
 package enum FilePaneNavigationEvent {
     case activate, switchPane

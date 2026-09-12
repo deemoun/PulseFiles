@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
+import PulseFilesUtilities
+import PulseFilesPresentationSupport
 
 /// Owns table-column construction and responsive column layout. Row identity,
 /// selection, focus, and view-model state remain in `FilePaneViewController`.

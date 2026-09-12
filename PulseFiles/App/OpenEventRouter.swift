@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
+import PulseFilesServices
 
 /// Deterministic classification for URLs received through macOS open events.
 ///
