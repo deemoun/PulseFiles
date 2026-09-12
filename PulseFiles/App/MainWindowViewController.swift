@@ -98,6 +98,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
             restoration: settings.leftPaneTabRestoration,
             fileSystem: fileSystem,
             accessPolicy: accessPolicy,
+            probe: fileSystemProbe,
             quickSearchMatchMode: settings.quickSearchMatchMode,
             quickSearchPresentation: settings.quickSearchPresentation
         ),
@@ -116,6 +117,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
             restoration: settings.rightPaneTabRestoration,
             fileSystem: fileSystem,
             accessPolicy: accessPolicy,
+            probe: fileSystemProbe,
             quickSearchMatchMode: settings.quickSearchMatchMode,
             quickSearchPresentation: settings.quickSearchPresentation
         ),
@@ -152,7 +154,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         onFeedbackExpired: { [weak self] in self?.clearClipboardFeedback() }
     )
     private let applicationOpener: any ApplicationOpening
-    private lazy var openFileCoordinator = OpenFileCoordinator(accessPolicy: accessPolicy) { [weak self] fileURL, applicationURL in
+    private lazy var openFileCoordinator = OpenFileCoordinator(accessPolicy: accessPolicy, probe: fileSystemProbe) { [weak self] fileURL, applicationURL in
         if let applicationURL {
             let configuration = NSWorkspace.OpenConfiguration()
             NSWorkspace.shared.open([fileURL], withApplicationAt: applicationURL, configuration: configuration) { [weak self] _, error in
@@ -354,7 +356,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
                     currentDirectories: panes.map(\.currentDirectory)
                 ) else { return }
                 for (pane, action) in zip(panes, actions) where action == .fallBack {
-                    pane.fallBackIfCurrentDirectoryIsUnavailable()
+                    await pane.fallBackIfCurrentDirectoryIsUnavailable()
                 }
                 for (pane, action) in zip(panes, actions) where action == .revalidate {
                     pane.revalidateAfterVolumeChange()
@@ -1270,11 +1272,11 @@ extension MainWindowViewController {
     }
 
     private func openFile(_ fileURL: URL, with applicationURL: URL?) {
-        do {
-            try openFileCoordinator.open(fileURL, with: applicationURL)
+        Task { do {
+            try await openFileCoordinator.open(fileURL, with: applicationURL)
         } catch {
             showError(message: "Could Not Open File".localized, detail: error.localizedDescription)
-        }
+        } }
     }
 
     private func promptForGoToFolder() {
@@ -1292,15 +1294,15 @@ extension MainWindowViewController {
     }
 
     private func routeSearchResultAction(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) {
-        do {
-            let destination = try workflows.search.route(action, item: item, root: root)
+        Task { do {
+            let destination = try await workflows.search.route(action, item: item, root: root)
             switch action {
             case .open: NSWorkspace.shared.open(item.url)
             case .reveal: NSWorkspace.shared.activateFileViewerSelecting([item.url])
             case .navigate:
                 try accessPolicy.validateAccess(to: destination); targetPane().preparePendingSelection(item.url); targetPane().navigate(to: destination)
             }
-        } catch { showError(message: "Search Result Unavailable".localized, detail: error.localizedDescription) }
+        } catch { showError(message: "Search Result Unavailable".localized, detail: error.localizedDescription) } }
     }
 
     private func beginInlineRename() {

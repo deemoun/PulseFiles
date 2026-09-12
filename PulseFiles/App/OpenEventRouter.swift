@@ -31,8 +31,9 @@ enum OpenEventRouter {
     static func route(
         _ urls: [URL],
         accessPolicy: SandboxFileAccessPolicy,
-        fileManager: FileManager = .default
-    ) -> OpenEventRoutingResult {
+        probe: any FileSystemProbing,
+        deadline: Duration = .milliseconds(250)
+    ) async -> OpenEventRoutingResult {
         var firstAcceptedFolder: URL?
         var acceptedFolderCount = 0
         var ignoredFileCount = 0
@@ -45,12 +46,12 @@ enum OpenEventRouter {
             }
 
             do {
-                let isDirectory = try accessPolicy.withValidatedAccess(to: url) {
-                    var value = ObjCBool(false)
-                    guard fileManager.fileExists(atPath: url.path, isDirectory: &value) else {
-                        throw CocoaError(.fileNoSuchFile)
-                    }
-                    return value.boolValue
+                let isDirectory = try await accessPolicy.withValidatedAccess(to: url) {
+                    async let existence = probe.exists(url, deadline: deadline)
+                    async let directory = probe.isDirectory(url, deadline: deadline)
+                    guard case .value(true) = await existence,
+                          case .value(let value) = await directory else { throw CocoaError(.fileReadUnknown) }
+                    return value
                 }
                 guard isDirectory else {
                     ignoredFileCount += 1

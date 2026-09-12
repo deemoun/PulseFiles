@@ -249,11 +249,15 @@ final class FilePaneViewModelTests: XCTestCase {
         let viewModel = FilePaneViewModel(
             initialDirectory: removedDirectory,
             fileSystem: fileSystem,
-            accessPolicy: sandbox.policy
+            accessPolicy: sandbox.policy,
+            probe: FileSystemProbeService(
+                existsOperation: { $0 != removedDirectory },
+                directoryOperation: { _ in true },
+                volumeOperation: { _ in nil }
+            )
         )
 
-        let didFallBack = viewModel.fallBackIfCurrentDirectoryIsUnavailable(
-            directoryExists: { $0 != removedDirectory },
+        let didFallBack = await viewModel.fallBackIfCurrentDirectoryIsUnavailable(
             preferredFallback: sandbox.allowedDirectory
         )
         await waitUntilLoaded(viewModel)

@@ -305,8 +305,8 @@ package final class FilePaneViewController: NSViewController {
 
     /// Clears UI state before redirecting away from an unmounted directory.
     @discardableResult
-    package func fallBackIfCurrentDirectoryIsUnavailable() -> Bool {
-        guard viewModel.fallBackIfCurrentDirectoryIsUnavailable() else { return false }
+    package func fallBackIfCurrentDirectoryIsUnavailable() async -> Bool {
+        guard await viewModel.fallBackIfCurrentDirectoryIsUnavailable() else { return false }
         selectionRestoration.prepare(nil)
         previousSelectedRowIndexes = []
         selectionRestoration.record([])

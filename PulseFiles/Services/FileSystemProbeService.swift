@@ -10,6 +10,7 @@ import Foundation
 /// as a positive result.
 package enum FileSystemProbeAnswer<Value: Sendable>: Sendable, Equatable where Value: Equatable {
     case value(Value)
+    case timedOut
     case unavailable
 }
 
@@ -17,6 +18,13 @@ package protocol FileSystemProbing: Sendable {
     func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
     func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
     func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?>
+    func isApplicationBundle(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
+}
+
+package extension FileSystemProbing {
+    func isApplicationBundle(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> {
+        .unavailable
+    }
 }
 
 /// Keeps potentially blocking FileManager and resource-value queries off the
@@ -26,6 +34,7 @@ package final class FileSystemProbeService: FileSystemProbing, @unchecked Sendab
     private let existsOperation: @Sendable (URL) -> Bool
     private let directoryOperation: @Sendable (URL) -> Bool
     private let volumeOperation: @Sendable (URL) -> String?
+    private let applicationBundleOperation: @Sendable (URL) -> Bool
     private let scheduler: FileSystemOperationScheduler
 
     package init(fileManager: FileManager = .default, scheduler: FileSystemOperationScheduler = .shared) {
@@ -37,18 +46,25 @@ package final class FileSystemProbeService: FileSystemProbing, @unchecked Sendab
             let values = try? url.resourceValues(forKeys: [.volumeURLKey])
             return (values?.allValues[.volumeURLKey] as? URL)?.standardizedFileURL.path
         }
+        applicationBundleOperation = { url in
+            (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?.conforms(to: .applicationBundle) == true
+        }
     }
 
     package init(
         existsOperation: @escaping @Sendable (URL) -> Bool,
         directoryOperation: @escaping @Sendable (URL) -> Bool,
         volumeOperation: @escaping @Sendable (URL) -> String?,
+        applicationBundleOperation: @escaping @Sendable (URL) -> Bool = { url in
+            (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?.conforms(to: .applicationBundle) == true
+        },
         scheduler: FileSystemOperationScheduler = .shared
     ) {
         self.scheduler = scheduler
         self.existsOperation = existsOperation
         self.directoryOperation = directoryOperation
         self.volumeOperation = volumeOperation
+        self.applicationBundleOperation = applicationBundleOperation
     }
 
     package func exists(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<Bool> {
@@ -61,6 +77,10 @@ package final class FileSystemProbeService: FileSystemProbing, @unchecked Sendab
 
     package func volumeIdentifier(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<String?> {
         await query(deadline: deadline) { [volumeOperation] in .value(volumeOperation(url)) }
+    }
+
+    package func isApplicationBundle(_ url: URL, deadline: Duration = .milliseconds(250)) async -> FileSystemProbeAnswer<Bool> {
+        await query(deadline: deadline) { [applicationBundleOperation] in .value(applicationBundleOperation(url)) }
     }
 
     private func query<Value: Sendable & Equatable>(deadline: Duration, operation: @escaping @Sendable () -> FileSystemProbeAnswer<Value>) async -> FileSystemProbeAnswer<Value> {
@@ -77,7 +97,7 @@ package final class FileSystemProbeService: FileSystemProbing, @unchecked Sendab
                 }
                 cancellation.set {
                     operationTask.cancel()
-                    completion.finish(.unavailable)
+                    completion.finish(.timedOut)
                 }
                 Task.detached {
                     try? await Task.sleep(for: deadline)

@@ -8,12 +8,14 @@ import Foundation
 final class SearchWorkflowCoordinator {
     private let service: any DescendantSearching
     private let accessPolicy: SandboxFileAccessPolicy
+    private let probe: any FileSystemProbing
     private var task: Task<Void, Never>?
     private var resultsWindow: NSWindowController?
 
-    init(service: any DescendantSearching, accessPolicy: SandboxFileAccessPolicy) {
+    init(service: any DescendantSearching, accessPolicy: SandboxFileAccessPolicy, probe: any FileSystemProbing) {
         self.service = service
         self.accessPolicy = accessPolicy
+        self.probe = probe
     }
 
     func cancel() { task?.cancel() }
@@ -53,18 +55,20 @@ final class SearchWorkflowCoordinator {
         }
     }
 
-    func route(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) throws -> URL {
+    func route(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) async throws -> URL {
         try accessPolicy.validateAccess(to: root); try accessPolicy.validateAccess(to: item.url)
         let command: SearchResultAction = action == .open ? .open : (action == .reveal ? .reveal : .navigate)
+        let existence = await probe.exists(item.url, deadline: .milliseconds(250))
+        guard case .value(let itemExists) = existence else { throw SearchResultRoutingError.probeUnavailable }
         let route = SearchResultActionRouter().route(command, item: item, root: root,
-            canAccess: { accessPolicy.canAccess($0, logDecision: false) }, fileExists: FileManager.default.fileExists(atPath:))
+            canAccess: { accessPolicy.canAccess($0, logDecision: false) }, itemExists: itemExists)
         guard case .perform(_, let destination) = route else { throw SearchResultRoutingError.staleResult }
         return destination
     }
 
     enum SearchResultRoutingError: LocalizedError {
-        case staleResult
-        var errorDescription: String? { "The result moved, was removed, or is no longer inside the search scope.".localized }
+        case staleResult, probeUnavailable
+        var errorDescription: String? { self == .probeUnavailable ? "The result could not be checked in time. Try again.".localized : "The result moved, was removed, or is no longer inside the search scope.".localized }
     }
 
     func present(_ result: DescendantSearchResult, root: URL, query: String, sender: Any?, onAction: @escaping (DescendantSearchResultsViewController.Action, DescendantSearchItem) -> Void) throws {

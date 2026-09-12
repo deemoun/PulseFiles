@@ -6,10 +6,9 @@ import AppKit
 package struct DropTransferPolicy {
     package enum Operation: Equatable { case copy, move }
     package typealias VolumeIdentifierProvider = (URL) -> String?
-    package var volumeIdentifierProvider: VolumeIdentifierProvider = { url in
-        let values = try? url.resourceValues(forKeys: [.volumeURLKey])
-        return (values?.allValues[.volumeURLKey] as? URL).map { $0.standardizedFileURL.path }
-    }
+    /// UI callers inject the asynchronously populated `FileSystemProbeCache`.
+    /// An unknown volume conservatively resolves to copy rather than risking a move.
+    package var volumeIdentifierProvider: VolumeIdentifierProvider = { _ in nil }
     package func resolvedOperation(for sources: [URL], destinationDirectory: URL, isInternalAppDrag: Bool, optionForcesCopy: Bool) -> Operation {
         guard !optionForcesCopy, isInternalAppDrag, !sources.isEmpty,
               sourcesShareVolume(with: destinationDirectory, sources: sources) else { return .copy }

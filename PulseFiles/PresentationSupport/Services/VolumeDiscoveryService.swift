@@ -89,9 +89,8 @@ package enum VolumeChangePaneRefreshRouter {
     }
   }
 
-  /// Async variant for UI callers. A deadline/unavailable probe is deliberately
-  /// routed to fallback: keeping a pane attached to a possibly ejected volume is
-  /// less safe than returning it to an available folder.
+  /// Async variant for UI callers. Only confirmed absence triggers fallback;
+  /// timeout/provider uncertainty requests revalidation without claiming removal.
   package static func actions(
     for directories: [URL],
     change: VolumeChange,
@@ -101,9 +100,10 @@ package enum VolumeChangePaneRefreshRouter {
       for (index, directory) in directories.enumerated() {
         group.addTask {
           let answer = await isReachable(directory)
-          guard case .value(true) = answer else { return (index, .fallBack) }
+          if case .value(false) = answer { return (index, .fallBack) }
           let affected = change.affectedRoots.contains { directory.isDescendant(of: $0) }
             || change.networkRootsRequiringFreshnessValidation.contains { directory.isDescendant(of: $0) }
+          guard case .value(true) = answer else { return (index, .revalidate) }
           return (index, affected ? .revalidate : .none)
         }
       }
@@ -188,18 +188,20 @@ private extension URL {
 /// Discovers mounted volumes through FileManager's mounted-volume API.
 package final class VolumeDiscoveryService: VolumeDiscovering {
   private let fileManager: FileManager
+  private let metadataProbe: any VolumeMetadataProbing
 
-  package init(fileManager: FileManager = .default) {
+  package init(fileManager: FileManager = .default, metadataProbe: any VolumeMetadataProbing = VolumeMetadataProbeService()) {
     self.fileManager = fileManager
+    self.metadataProbe = metadataProbe
   }
 
   package func mountedVolumes() async -> [Volume] {
-    await Task.detached(priority: .utility) { [fileManager] in
-      Self.discoverMountedVolumes(using: fileManager)
+    await Task.detached(priority: .utility) { [fileManager, metadataProbe] in
+      Self.discoverMountedVolumes(using: fileManager, metadataProbe: metadataProbe)
     }.value
   }
 
-  private static func discoverMountedVolumes(using fileManager: FileManager) -> [Volume] {
+  private static func discoverMountedVolumes(using fileManager: FileManager, metadataProbe: any VolumeMetadataProbing) -> [Volume] {
     let keys: Set<URLResourceKey> = [
       .volumeNameKey,
       .volumeIsRemovableKey,
@@ -216,17 +218,17 @@ package final class VolumeDiscoveryService: VolumeDiscovering {
 
     return sortedVolumes(
       urls.compactMap { url in
-        guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
-        let isLocal = values.volumeIsLocal ?? false
+        guard let values = metadataProbe.metadata(for: url) else { return nil }
+        let isLocal = values.isLocal
         return Volume(
           url: url,
-          displayName: values.volumeName ?? url.lastPathComponent,
-          isRemovable: values.volumeIsRemovable ?? false,
+          displayName: values.name ?? url.lastPathComponent,
+          isRemovable: values.isRemovable,
           isLocal: isLocal,
           isNetwork: !isLocal,
-          isReadOnly: values.volumeIsReadOnly ?? false,
-          totalCapacity: values.volumeTotalCapacity.map(Int64.init),
-          availableCapacity: values.volumeAvailableCapacity.map(Int64.init)
+          isReadOnly: values.isReadOnly,
+          totalCapacity: values.totalCapacity,
+          availableCapacity: values.availableCapacity
         )
       })
   }

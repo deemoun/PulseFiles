@@ -8,6 +8,7 @@ package final class FilePaneViewModel {
     private typealias PendingHistoryTransition = PaneNavigationStateMachine.HistoryTransition
     private let fileSystem: FileSystemServicing
     private let accessPolicy: any BrowseAccessPolicy
+    private let probe: (any FileSystemProbing)?
     package var fileSystemForCompositionTesting: any FileSystemServicing { fileSystem }
     package var accessPolicyIdentityForCompositionTesting: ObjectIdentifier { ObjectIdentifier(accessPolicy) }
     private let loadCoordinator: DirectoryLoadCoordinator
@@ -75,6 +76,7 @@ package final class FilePaneViewModel {
         restoration: PaneRestorationState? = nil,
         fileSystem: FileSystemServicing,
         accessPolicy: any BrowseAccessPolicy,
+        probe: (any FileSystemProbing)? = nil,
         directoryLoadTimeout: TimeInterval = 15,
         directoryMonitor: DirectoryMonitor = DirectoryMonitor(),
         snapshotCache: DirectorySnapshotCache = DirectorySnapshotCache(),
@@ -84,6 +86,7 @@ package final class FilePaneViewModel {
         precondition(directoryLoadTimeout > 0 && directoryLoadTimeout.isFinite)
         self.fileSystem = fileSystem
         self.accessPolicy = accessPolicy
+        self.probe = probe
         self.loadCoordinator = DirectoryLoadCoordinator(
             fileSystem: fileSystem, accessPolicy: accessPolicy, snapshotCache: snapshotCache,
             monitor: directoryMonitor, timeout: directoryLoadTimeout
@@ -95,17 +98,7 @@ package final class FilePaneViewModel {
         self.quickSearchMatchMode = quickSearchMatchMode
         self.quickSearchPresentation = quickSearchPresentation
         let validatedDirectory = accessPolicy.validatedDirectory(initialDirectory)
-        let restoredTabs = restoration?.tabs.compactMap { saved -> PaneTabState? in
-            guard accessPolicy.canAccess(saved.directory),
-                  (try? saved.directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return nil }
-            let directory = saved.directory.standardizedFileURL
-            return PaneTabState(id: saved.id, currentDirectory: directory, history: NavigationHistory(initialURL: directory), sort: saved.sort, showsHiddenFiles: saved.showsHiddenFiles)
-        } ?? []
-        if restoredTabs.isEmpty {
-            navigation = PaneNavigationStateMachine(state: PaneState(currentDirectory: validatedDirectory, history: NavigationHistory(initialURL: validatedDirectory), sort: sort, showsHiddenFiles: showsHiddenFiles))
-        } else {
-            navigation = PaneNavigationStateMachine(state: PaneState(tabs: restoredTabs, activeTabID: restoration?.activeTabID))
-        }
+        navigation = PaneNavigationStateMachine(state: PaneState(currentDirectory: validatedDirectory, history: NavigationHistory(initialURL: validatedDirectory), sort: sort, showsHiddenFiles: showsHiddenFiles))
         loadCoordinator.onMonitorChange = { [weak self] in
             self?.reloadAfterExternalDirectoryChange()
         }
@@ -115,6 +108,7 @@ package final class FilePaneViewModel {
             }
         }
         memoryPressureSource.resume()
+        if let restoration { restoreTabsAsynchronously(restoration) }
     }
 
     deinit {
@@ -281,10 +275,15 @@ package final class FilePaneViewModel {
     /// generate further directory events. The fallback is always policy-validated.
     @discardableResult
     package func fallBackIfCurrentDirectoryIsUnavailable(
-        directoryExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
         preferredFallback: URL = FileManager.default.homeDirectoryForCurrentUser
-    ) -> Bool {
-        guard !directoryExists(state.currentDirectory) else { return false }
+    ) async -> Bool {
+        let directory = state.currentDirectory
+        let generation = activeLoadID
+        guard let probe else { return false }
+        let answer = await probe.exists(directory, deadline: .milliseconds(250))
+        guard !Task.isCancelled, generation == activeLoadID, directory == state.currentDirectory else { return false }
+        // Timeout/provider failure is uncertain: preserve state and allow retry.
+        guard case .value(false) = answer else { return false }
         loadCoordinator.stopMonitoring()
         loadCoordinator.cancel()
         let fallback = accessPolicy.validatedDirectory(preferredFallback, fallback: accessPolicy.rootURL)
@@ -294,6 +293,24 @@ package final class FilePaneViewModel {
         state.history.visit(fallback)
         load(directory: fallback, addToHistory: false)
         return true
+    }
+
+    private func restoreTabsAsynchronously(_ restoration: PaneRestorationState) {
+        let generation = activeLoadID
+        guard let probe else { return }
+        Task { [weak self, probe, accessPolicy] in
+            var tabs: [PaneTabState] = []
+            for saved in restoration.tabs where accessPolicy.canAccess(saved.directory) {
+                guard !Task.isCancelled else { return }
+                guard case .value(true) = await probe.isDirectory(saved.directory, deadline: .milliseconds(250)) else { continue }
+                let directory = saved.directory.standardizedFileURL
+                tabs.append(PaneTabState(id: saved.id, currentDirectory: directory, history: NavigationHistory(initialURL: directory), sort: saved.sort, showsHiddenFiles: saved.showsHiddenFiles))
+            }
+            guard let self, !tabs.isEmpty, self.activeLoadID == generation else { return }
+            self.navigation = PaneNavigationStateMachine(state: PaneState(tabs: tabs, activeTabID: restoration.activeTabID))
+            self.activateCurrentTab()
+            self.onTabsChanged?()
+        }
     }
 
     package func goParent() {
