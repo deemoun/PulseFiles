@@ -3,7 +3,6 @@
 
 import PulseFilesUtilities
 import PulseFilesModels
-import PulseFilesServices
 import Foundation
 
 package enum MainCommand: CaseIterable, Equatable {

@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import PulseFilesModels
 
 @MainActor
 final class SearchWorkflowCoordinator {

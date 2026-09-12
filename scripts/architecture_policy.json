@@ -3,7 +3,7 @@
     "PulseFilesUtilities": { "path": "PulseFiles/Utilities", "dependencies": [] },
     "PulseFilesModels": { "path": "PulseFiles/Models", "dependencies": ["PulseFilesUtilities"] },
     "PulseFilesServices": { "path": "PulseFiles/Services", "dependencies": ["PulseFilesModels", "PulseFilesUtilities"] },
-    "PulseFilesWorkflows": { "path": "PulseFiles/Commands", "dependencies": ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
+    "PulseFilesWorkflows": { "path": "PulseFiles/Commands", "dependencies": ["PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesPresentationSupport": { "path": "PulseFiles/PresentationSupport", "dependencies": ["PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesPresentationCommands": { "path": "PulseFiles/PresentationSupport/Commands", "dependencies": ["PulseFilesPresentationSupport", "PulseFilesWorkflows"] },
     "PulseFilesTerminal": { "path": "PulseFiles/Terminal", "dependencies": ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesUtilities"] },
@@ -15,6 +15,7 @@
   },
   "testTargets": {
     "PulseFilesCoreTests": { "path": "PulseFilesCoreTests", "dependencies": ["PulseFilesModels", "PulseFilesUtilities"] },
+    "PulseFilesWorkflowsTests": { "path": "PulseFilesWorkflowsTests", "dependencies": ["PulseFilesWorkflows", "PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesServicesTests": { "path": "PulseFilesServicesTests", "dependencies": ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesTests": { "path": "PulseFilesTests", "dependencies": ["PulseFiles", "PulseFilesAppCoordination", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationCommands", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] },
     "PulseFilesAppKitUITests": { "path": "PulseFilesAppKitUITests", "dependencies": ["PulseFiles", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"] }

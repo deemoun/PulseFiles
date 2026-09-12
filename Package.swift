@@ -13,7 +13,7 @@ let package = Package(
         .target(name: "PulseFilesUtilities", path: "PulseFiles/Utilities"),
         .target(name: "PulseFilesModels", dependencies: ["PulseFilesUtilities"], path: "PulseFiles/Models"),
         .target(name: "PulseFilesServices", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Services"),
-        .target(name: "PulseFilesWorkflows", dependencies: ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Commands"),
+        .target(name: "PulseFilesWorkflows", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Commands"),
         .target(
             name: "PulseFilesPresentationSupport",
             dependencies: ["PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
@@ -58,6 +58,7 @@ let package = Package(
             resources: [.process("Resources")]
         ),
         .testTarget(name: "PulseFilesCoreTests", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesCoreTests"),
+        .testTarget(name: "PulseFilesWorkflowsTests", dependencies: ["PulseFilesWorkflows", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesWorkflowsTests"),
         .testTarget(name: "PulseFilesServicesTests", dependencies: ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesServicesTests"),
         .testTarget(name: "PulseFilesTests", dependencies: ["PulseFiles", "PulseFilesAppCoordination", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationCommands", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesTests", exclude: ["TestSupport/README.md"]),
         .testTarget(name: "PulseFilesAppKitUITests", dependencies: ["PulseFiles", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesAppKitUITests", exclude: ["README.md"])
