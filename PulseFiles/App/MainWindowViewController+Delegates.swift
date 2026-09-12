@@ -3,4 +3,6 @@
 
 import AppKit
 
-extension MainWindowViewController: NSSplitViewDelegate, NSWindowDelegate, NSMenuItemValidation {}
+// Split-view behavior is implemented by PaneArrangementCoordinator. Keeping only
+// window and menu validation here makes these remaining controller roles explicit.
+extension MainWindowViewController: NSWindowDelegate, NSMenuItemValidation {}

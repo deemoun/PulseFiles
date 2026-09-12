@@ -345,14 +345,24 @@ rewritten. The distinctive method groups now have these ownership boundaries:
 * `performFileTransfer` and `startFileOperation`: workflow coordinators validate
   requests and `MainWindowFileOperationCoordinator` owns operation lifecycle.
   Mutations continue exclusively through injected `FileOperationCoordinating`.
-* Operation alerts, conflict prompts, result models, and diagnostics export
-  presentation belong to `FileOperationPresentationCoordinator`; it receives no
-  pane, sidebar, settings, or terminal module dependency.
+* Operation presentation values and diagnostics export belong to
+  `FileOperationPresentationCoordinator`; `FileOperationUIAdapter` owns confirmation
+  sheets and progress-window/title mechanics. Neither receives pane, sidebar,
+  settings, or terminal module dependencies.
+* `PaneArrangementRoute` makes the single/dual-pane choice without AppKit, while
+  `PaneArrangementCoordinator` owns arranged subviews and all split-view delegation.
+* `SettingsWindowLifecycleCoordinator` owns JSON reload ordering and settings-window
+  presentation through typed action closures; the controller remains the composition
+  point that supplies child-setting propagation actions.
+* `DeletePromptRoute` decides whether selection deletion is rejected, immediate, or
+  confirmed without AppKit. `SelectionInformationUIAdapter` owns information and
+  destructive-confirmation alerts and receives only display values and completions.
 * `toggleTerminal` and `setSidebarVisible`: `TerminalLayoutCoordinator` and
   `SidebarLayoutCoordinator` are the installation/session/split-size authorities.
   The controller composes their views and routes focus or persisted-setting events.
-* `applySettingsChanges`: the controller broadcasts typed setting changes to the
-  owned children and layout coordinators; it does not recreate production services.
+* `applySettingsChanges`: `SettingsWindowLifecycleCoordinator` triggers the typed
+  propagation action; the controller broadcasts values to owned children and layout
+  coordinators without recreating production services.
 
 Coordinator inputs and outputs are deliberately small closures over values or
 typed routes. Cross-feature adapters stay in the application composition target,
