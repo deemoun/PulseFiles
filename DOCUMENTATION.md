@@ -13,7 +13,8 @@ direction at compile time:
 
 ```text
 PulseFilesUtilities → PulseFilesModels → PulseFilesServices
-    → PulseFilesWorkflows → PulseFiles (AppKit presentation and composition)
+PulseFilesUtilities / PulseFilesModels → PulseFilesWorkflows
+PulseFilesServices / PulseFilesWorkflows → PulseFiles (AppKit composition)
 ```
 
 Arrows mean “may be depended on by.” `PulseFilesUtilities` contains
@@ -22,7 +23,8 @@ value and state types and may depend on utilities. Utilities must not import
 models, services, or presentation; models must not import services or AppKit.
 `PulseFilesServices` owns filesystem access, mutation, policy, and Foundation
 persistence implementations. `PulseFilesWorkflows` owns reusable commands and
-routing decisions. AppKit adapters and composition may depend on every lower
+routing decisions and depends only on models and utilities, never services.
+AppKit adapters and composition may depend on every lower
 layer. Reverse dependencies are forbidden and checked by
 `scripts/validate_architecture.sh`.
 
@@ -49,7 +51,8 @@ PulseFilesApp (composition root)
   ├── PulseFilesSettings ───────────┼──→ PulseFilesPresentationSupport
   └── PulseFilesTerminal ───────────┘
 
-PulseFilesApp ───────────────→ PulseFilesWorkflows → PulseFilesServices
+PulseFilesApp ───────────────→ PulseFilesWorkflows → Models / Utilities
+PulseFilesApp ───────────────→ PulseFilesServices
 feature modules ─────────────→ minimum required Models / Services protocols
 PulseFilesPresentationSupport → PulseFilesServices / Models / Utilities
 PulseFilesServices ──────────→ PulseFilesModels → PulseFilesUtilities
@@ -70,6 +73,9 @@ persistence services, or `PTYTerminalProcess`.
 capability protocols live in `PulseFilesPresentationSupport`; the reusable
 shortcut registry, AppKit command routing, and command bar live in
 `PulseFilesPresentationCommands`; AppKit-free values live in `PulseFilesModels`.
+Search request, result, and item values likewise live there, while bounded
+traversal, provider access, deadlines, and concrete search execution stay in
+`PulseFilesServices`.
 `PulseFiles/Debug` deliberately remains an
 application-only DEBUG adapter rather than a target: its single log controller is
 created only by the composition root, has no reusable feature boundary, and a

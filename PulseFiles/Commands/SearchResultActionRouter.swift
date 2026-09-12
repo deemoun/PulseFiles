@@ -3,7 +3,6 @@
 
 import PulseFilesUtilities
 import PulseFilesModels
-import PulseFilesServices
 import Foundation
 
 package enum SearchResultAction: Equatable { case open, reveal, navigate }

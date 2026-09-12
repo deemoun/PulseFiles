@@ -5,42 +5,6 @@ import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
 
-/// Bounded, policy-aware recursive search. Symbolic links may be returned but
-/// are never followed.
-package struct DescendantSearchItem: Equatable {
-    package let url: URL
-    package let name: String
-    package let pathContext: String
-    package let typeDescription: String
-    package let isDirectory: Bool
-    package let isSymbolicLink: Bool
-    package let size: Int64?
-    package let modificationDate: Date?
-
-    package init(url: URL, name: String, pathContext: String, typeDescription: String, isDirectory: Bool, isSymbolicLink: Bool, size: Int64? = nil, modificationDate: Date? = nil) {
-        self.url = url; self.name = name; self.pathContext = pathContext; self.typeDescription = typeDescription
-        self.isDirectory = isDirectory; self.isSymbolicLink = isSymbolicLink; self.size = size; self.modificationDate = modificationDate
-    }
-}
-
-package struct DescendantSearchQuery: Equatable {
-    package enum NameMatcher: Equatable { case glob(String), regularExpression(String) }
-    package enum FileKind: Equatable { case file, directory, symbolicLink }
-    package struct SizePredicate: Equatable { var minimumBytes: Int64?; var maximumBytes: Int64? }
-    package struct DatePredicate: Equatable { var earliest: Date?; var latest: Date? }
-    package enum Scope: Equatable { case folder(URL, includeDescendants: Bool) }
-
-    package var nameMatcher: NameMatcher
-    package var fileKinds: Set<FileKind> = []
-    package var size: SizePredicate?
-    package var modificationDate: DatePredicate?
-    package var scopes: [Scope]
-
-    package init(nameMatcher: NameMatcher, fileKinds: Set<FileKind> = [], size: SizePredicate? = nil, modificationDate: DatePredicate? = nil, scopes: [Scope]) {
-        self.nameMatcher = nameMatcher; self.fileKinds = fileKinds; self.size = size; self.modificationDate = modificationDate; self.scopes = scopes
-    }
-}
-
 package enum DescendantSearchError: LocalizedError, Equatable {
     case emptyPattern
     case malformedRegularExpression(String)
@@ -71,16 +35,6 @@ package struct DescendantSearchLimits: Equatable {
         self.timeout = timeout
         self.batchSize = batchSize
     }
-}
-
-package struct DescendantSearchResult {
-    package let items: [DescendantSearchItem]
-    package let wasCancelled: Bool
-    package let hitItemLimit: Bool
-    package let hitDepthLimit: Bool
-    package let timedOut: Bool
-    package let inaccessibleURLs: [URL]
-    package var isPartial: Bool { wasCancelled || hitItemLimit || hitDepthLimit || timedOut || !inaccessibleURLs.isEmpty }
 }
 
 package typealias DescendantSearchBatchHandler = @Sendable ([DescendantSearchItem]) async -> Void
