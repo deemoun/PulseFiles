@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesAppCoordination
 import PulseFilesPresentationCommands
 import Quartz
 import UniformTypeIdentifiers
@@ -199,9 +200,19 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private let rootSplitView = NSSplitView()
     private let contentSplitView = NSSplitView()
     private let paneSplitView = MinimalDividerSplitView()
+    private lazy var paneArrangementCoordinator = PaneArrangementCoordinator(
+        inputs: .init(
+            root: rootSplitView,
+            content: contentSplitView,
+            panes: paneSplitView,
+            paneView: { [weak self] paneID in self?.pane(for: paneID).view ?? NSView() },
+            sidebarInstalled: { [weak self] in self?.isSidebarInstalled == true }
+        ),
+        persistSidebarWidth: { [weak self] in self?.persistSidebarWidthFromSplitPosition() }
+    )
     private let mainStack = NSView()
     weak var toolbarSearchField: NSSearchField?
-    private weak var sidebarToolbarItem: NSToolbarItem?
+    weak var sidebarToolbarItem: NSToolbarItem?
     private var didSetInitialSplitPositions = false
     private var keyEventMonitor: Any?
     private var flagsChangedEventMonitor: Any?
@@ -228,7 +239,23 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     var quickLookPreviewURL: NSURL?
     private var quickLookProbeGeneration = 0
     private lazy var readOnlyViewerCoordinator = ReadOnlyViewerPresentationCoordinator(service: readOnlyViewerService)
-    private var fileOperationPreviousWindowTitle: String?
+    private lazy var fileOperationUIAdapter = FileOperationUIAdapter(
+        presentation: fileOperationPresentationCoordinator,
+        progress: fileOperationProgressWindowController,
+        probe: fileSystemProbe,
+        window: { [weak self] in self?.view.window },
+        showError: { [weak self] message, detail in self?.showError(message: message, detail: detail) }
+    )
+    private lazy var selectionInformationUIAdapter = SelectionInformationUIAdapter(window: { [weak self] in self?.view.window })
+    private lazy var settingsWindowCoordinator = SettingsWindowLifecycleCoordinator(actions: .init(
+        importJSONIfChanged: { [settings] in settings.importJSONIfChanged() },
+        applyChanges: { [weak self] in self?.applySettingsChanges() },
+        reloadVisibleSettings: { [weak self] in
+            (self?.workflows.auxiliaryPanels.settingsWindowController?.contentViewController as? SettingsViewController)?.reloadFromSettings()
+        },
+        makeSettingsController: { [unowned self] in self.makeSettingsViewController() },
+        show: { [weak self] controller, sender in self?.workflows.auxiliaryPanels.showSettings(controller, sender: sender) }
+    ))
     private var isFileOperationActive: Bool { operationCoordinator.isActive }
     private var undoRecovery: FileOperationRecovery? { operationCoordinator.undoRecovery }
 
@@ -359,7 +386,6 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private func buildLayout() {
         rootSplitView.isVertical = true
         rootSplitView.dividerStyle = .paneSplitter
-        rootSplitView.delegate = self
         rootSplitView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(rootSplitView)
         NSLayoutConstraint.activate([
@@ -381,7 +407,6 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
 
         contentSplitView.isVertical = false
         contentSplitView.dividerStyle = .paneSplitter
-        contentSplitView.delegate = self
         contentSplitView.translatesAutoresizingMaskIntoConstraints = false
         commandBar.translatesAutoresizingMaskIntoConstraints = false
         mainStack.addSubview(contentSplitView)
@@ -399,7 +424,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
 
         paneSplitView.isVertical = true
         paneSplitView.dividerStyle = .thin
-        paneSplitView.delegate = self
+        paneArrangementCoordinator.installAsDelegate()
         addChild(leftPane)
         addChild(rightPane)
         leftPane.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
@@ -506,7 +531,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         }
     }
 
-    private func performCommand(_ command: MainCommand, from pane: PaneID? = nil, entrySurface: MainCommandEntrySurface = .menu) {
+    func performCommand(_ command: MainCommand, from pane: PaneID? = nil, entrySurface: MainCommandEntrySurface = .menu) {
         if let pane { activePaneID = pane }
         DiagnosticLogger.log(.info, category: "MainWindow", "Command execution requested: command=\(command); activePane=\(String(describing: activePaneID))")
         commandCoordinator.perform(command, from: entrySurface)
@@ -943,94 +968,18 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     }
 }
 
+
 extension MainWindowViewController {
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .search, .toggleTerminal, .toggleSidebar, .viewOptions, .settings]
-    }
-
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        switch itemIdentifier {
-        case .search:
-            let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = "Search".localized
-            item.searchField.placeholderString = "Search active pane".localized
-            item.searchField.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.searchField)
-            item.searchField.target = self
-            item.searchField.action = #selector(toolbarSearchChanged(_:))
-            item.searchField.sendsSearchStringImmediately = true
-            toolbarSearchField = item.searchField
-            return item
-        case .toggleTerminal:
-            let item = toolbarItem(itemIdentifier, label: "Beta Terminal".localized, symbol: "terminal", action: #selector(toolbarToggleTerminal(_:)))
-            item.view?.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.terminalToggle)
-            return item
-        case .toggleSidebar:
-            let item = toolbarItem(itemIdentifier, label: "Sidebar".localized, symbol: "sidebar.right", action: #selector(toolbarToggleSidebar(_:)))
-            item.view?.setAccessibilityIdentifier(AccessibilityIdentifiers.Toolbar.sidebarToggle)
-            sidebarToolbarItem = item
-            updateSidebarToolbarItem()
-            return item
-        case .viewOptions:
-            return toolbarItem(itemIdentifier, label: "View".localized, symbol: "line.3.horizontal.decrease.circle", action: #selector(toolbarViewOptions(_:)))
-        case .settings:
-            return toolbarItem(itemIdentifier, label: "Settings".localized, symbol: "gearshape", action: #selector(toolbarSettings(_:)))
-        default:
-            return nil
-        }
-    }
-
-    private func toolbarItem(_ identifier: NSToolbarItem.Identifier, label: String, symbol: String, action: Selector) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: identifier)
-        item.label = label
-        item.paletteLabel = label
-        item.toolTip = label
-        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-        item.isBordered = true
-        item.target = self
-        item.action = action
-        return item
-    }
-
-    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        if item.itemIdentifier == .toggleSidebar {
-            updateSidebarToolbarItem()
-        }
-        return true
-    }
-
-    @objc private func toolbarBack(_ sender: Any?) {
-        performCommand(.back, entrySurface: .toolbar)
-    }
-
-    @objc private func toolbarForward(_ sender: Any?) {
-        performCommand(.forward, entrySurface: .toolbar)
-    }
-
-    @objc private func toolbarToggleTerminal(_ sender: Any?) {
-        performCommand(.toggleTerminal, entrySurface: .toolbar)
-    }
-
-    @objc private func toolbarToggleSidebar(_ sender: Any?) {
-        performCommand(.toggleSidebar, entrySurface: .toolbar)
-    }
-
-    @objc func toolbarSettings(_ sender: Any?) {
-        presentSettings(sender)
-    }
-
     func reloadSettingsFromJSONIfChanged() {
         DiagnosticLogger.log(.info, category: "MainWindow", "Settings reload requested from JSON")
-        settings.importJSONIfChanged()
-        applySettingsChanges()
-        (workflows.auxiliaryPanels.settingsWindowController?.contentViewController as? SettingsViewController)?.reloadFromSettings()
+        settingsWindowCoordinator.reloadFromJSON()
     }
 
-    private func presentSettings(_ sender: Any?) {
-        reloadSettingsFromJSONIfChanged()
+    func presentSettings(_ sender: Any?) {
+        settingsWindowCoordinator.present(sender: sender)
+    }
+
+    private func makeSettingsViewController() -> SettingsViewController {
         let cleanupService = stagingCleanupFactory { [weak self] in
             guard let self else { return [] }
             return [self.leftPane.currentDirectory, self.rightPane.currentDirectory]
@@ -1049,7 +998,7 @@ extension MainWindowViewController {
             self?.refreshBothPanes()
             self?.presentFileOperationResult(result, operationName: operationName)
         }
-        workflows.auxiliaryPanels.showSettings(controller, sender: sender)
+        return controller
     }
 
 
@@ -1154,22 +1103,7 @@ extension MainWindowViewController {
     private func rebuildPaneArrangement() {
         leftPane.setHasOppositePane(!isSinglePaneMode)
         rightPane.setHasOppositePane(!isSinglePaneMode)
-        paneSplitView.arrangedSubviews.forEach { subview in
-            paneSplitView.removeArrangedSubview(subview)
-            subview.removeFromSuperview()
-        }
-
-        if isSinglePaneMode {
-            paneSplitView.addArrangedSubview(targetPane().view)
-        } else {
-            paneSplitView.addArrangedSubview(leftPane.view)
-            paneSplitView.addArrangedSubview(rightPane.view)
-        }
-
-        view.layoutSubtreeIfNeeded()
-        if !isSinglePaneMode, paneSplitView.bounds.width > 0 {
-            paneSplitView.setPosition(max(260, paneSplitView.bounds.width / 2), ofDividerAt: 0)
-        }
+        paneArrangementCoordinator.apply(.init(singlePane: isSinglePaneMode, focusedPane: activePaneID))
     }
 
     private func toggleTerminal() {
@@ -1292,7 +1226,7 @@ extension MainWindowViewController {
         sidebarLayoutCoordinator.clampedWidth(width)
     }
 
-    private func updateSidebarToolbarItem() {
+    func updateSidebarToolbarItem() {
         guard let item = sidebarToolbarItem else { return }
         let label = isSidebarInstalled ? "Hide Sidebar".localized : "Show Sidebar".localized
         let symbol = isSidebarInstalled ? "sidebar.right" : "sidebar.left"
@@ -1431,24 +1365,10 @@ extension MainWindowViewController {
                 }.value
                 guard let self else { return }
 
-                let size = ByteCountFormatter.string(fromByteCount: details.size, countStyle: .file)
-                let modified = details.modificationDate.map {
-                    DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short)
-                } ?? "Unknown".localized
-                let alert = NSAlert()
-                alert.messageText = item.displayName
-                alert.informativeText = "Location: %@\nKind: %@\nSize: %@\nModified: %@".localized(
-                    with: item.url.path,
-                    details.isDirectory ? "Folder".localized : "File".localized,
-                    size,
-                    modified
+                self.selectionInformationUIAdapter.presentInformation(
+                    name: item.displayName, path: item.url.path, isDirectory: details.isDirectory,
+                    size: details.size, modificationDate: details.modificationDate
                 )
-                alert.addButton(withTitle: "OK".localized)
-                if let window = self.view.window {
-                    alert.beginSheetModal(for: window) { _ in }
-                } else {
-                    _ = alert.runModal()
-                }
             } catch {
                 self?.showError(message: "Information Unavailable".localized, detail: error.localizedDescription)
             }
@@ -1457,40 +1377,22 @@ extension MainWindowViewController {
 
     private func confirmDeleteSelectedItems() {
         let items = targetPane().selectedItems
-        guard !items.isEmpty else {
+        let route = DeletePromptRoute.resolve(
+            itemCount: items.count,
+            permanently: settings.permanentlyDeleteInsteadOfTrash,
+            confirmsTrash: settings.confirmDeleteOperations
+        )
+        guard route != .nothingSelected else {
             showError(message: "Nothing Selected".localized, detail: "Select one or more items to delete.".localized)
             return
         }
         let permanentlyDelete = settings.permanentlyDeleteInsteadOfTrash
-        let operationName = permanentlyDelete ? "Permanently Delete".localized : "Move to Trash".localized
-        let confirmButtonTitle = permanentlyDelete ? "Permanently Delete".localized : "Move to Trash".localized
-        if !permanentlyDelete && settings.confirmDeleteOperations == false {
+        if case .performImmediately = route {
             delete(items: items, permanently: permanentlyDelete)
             return
         }
-
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = deleteConfirmationMessage(permanently: permanentlyDelete, itemCount: items.count)
-        alert.informativeText = deleteConfirmationDetail(
-            permanently: permanentlyDelete,
-            urls: items.map(\.url)
-        )
-        alert.addButton(withTitle: confirmButtonTitle)
-        alert.addButton(withTitle: "Cancel — Keep Items".localized)
-
-        let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else {
-                DiagnosticLogger.log(.info, category: "MainWindow", "User cancelled destructive confirmation: operation=\(operationName); itemCount=\(items.count)")
-                return
-            }
-            self.delete(items: items, permanently: permanentlyDelete)
-        }
-
-        if let window = view.window {
-            alert.beginSheetModal(for: window, completionHandler: handleResponse)
-        } else {
-            handleResponse(alert.runModal())
+        selectionInformationUIAdapter.confirmDelete(urls: items.map(\.url), permanently: permanentlyDelete) { [weak self] in
+            self?.delete(items: items, permanently: permanentlyDelete)
         }
     }
 
@@ -1642,49 +1544,7 @@ extension MainWindowViewController {
         confirmButtonTitle: String,
         completion: @escaping () -> Void
     ) {
-        let alert = fileOperationPresentationCoordinator.confirmation(
-            operationName: operationName, urls: urls, destinationDirectory: destinationDirectory,
-            confirmButtonTitle: confirmButtonTitle
-        ).makeAlert()
-
-        let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .alertFirstButtonReturn else {
-                DiagnosticLogger.log(.info, category: "MainWindow", "User cancelled destructive confirmation: operation=\(operationName); itemCount=\(urls.count)")
-                return
-            }
-            completion()
-        }
-
-        if let window = view.window {
-            alert.beginSheetModal(for: window, completionHandler: handleResponse)
-        } else {
-            handleResponse(alert.runModal())
-        }
-    }
-
-    private func deleteConfirmationMessage(permanently: Bool, itemCount: Int) -> String {
-        let itemLabel = itemCount == 1 ? "1 Item".localized : "%d Items".localized(with: itemCount)
-        return permanently
-            ? "Permanently Delete %@?".localized(with: itemLabel)
-            : "Move %@ to Trash?".localized(with: itemLabel)
-    }
-
-    private func deleteConfirmationDetail(permanently: Bool, urls: [URL]) -> String {
-        let operationName = permanently ? "Permanent Delete".localized : "Move to Trash".localized
-        var lines = [
-            "Operation: %@".localized(with: operationName),
-            permanently
-                ? "This permanently deletes the selected item(s) immediately. This cannot be undone from the Trash.".localized
-                : "This moves the selected item(s) to the macOS Trash. You can restore them from the Trash until it is emptied.".localized,
-            "",
-            "Items:".localized
-        ]
-        let visibleNames = urls.prefix(8).map { "- \($0.lastPathComponent)" }
-        lines.append(contentsOf: visibleNames)
-        if urls.count > visibleNames.count {
-            lines.append("- ...and %d more".localized(with: urls.count - visibleNames.count))
-        }
-        return lines.joined(separator: "\n")
+        fileOperationUIAdapter.confirm(operationName: operationName, urls: urls, destination: destinationDirectory, buttonTitle: confirmButtonTitle, completion: completion)
     }
 
     private func undoLastOperation() { operationCoordinator.undo() }
@@ -1730,22 +1590,18 @@ extension MainWindowViewController {
     }
 
     func updateFileOperationProgress(_ progress: FileOperationProgress, operationName: String) {
-        fileOperationProgressWindowController.update(operationName: operationName, progress: progress)
-        view.window?.title = "\(operationName): \(progress.currentItemName)"
+        fileOperationUIAdapter.update(progress, operationName: operationName)
     }
 
     func beginFileOperationProgress(named operationName: String) {
-        fileOperationPreviousWindowTitle = view.window?.title
-        fileOperationProgressWindowController.show(operationName: operationName, parentWindow: view.window)
+        fileOperationUIAdapter.beginProgress(named: operationName)
     }
 
     func endFileOperationProgress() {
-        if let title = fileOperationPreviousWindowTitle { view.window?.title = title }
-        fileOperationPreviousWindowTitle = nil
-        fileOperationProgressWindowController.dismiss()
+        fileOperationUIAdapter.endProgress()
     }
 
-    func showFileOperationCancellationPending() { fileOperationProgressWindowController.showCancellationPending() }
+    func showFileOperationCancellationPending() { fileOperationUIAdapter.showCancellationPending() }
 
     func presentFileOperationError(operationName: String, detail: String) {
         showError(message: "Could Not %@ Items".localized(with: operationName), detail: detail)
@@ -1787,37 +1643,7 @@ extension MainWindowViewController {
 
     @MainActor
     func resolveFileOperationConflict(destination: URL, operationName: String) async -> FileConflictResolution {
-        guard let keepBoth = await FileSystemProbeDecisionCoordinator(probe: fileSystemProbe)
-            .keepBothDestination(for: destination) else {
-            showError(message: "Could Not Verify Conflict".localized, detail: "The destination could not be checked in time. The operation was cancelled without replacing anything.".localized)
-            return .cancel
-        }
-        let conflict = fileOperationPresentationCoordinator.conflict(
-            destination: destination, operationName: operationName,
-            keepBothDestination: keepBoth
-        )
-        let alert = conflict.0.makeAlert()
-
-        let applyToRemaining = NSButton(checkboxWithTitle: "Apply this choice to remaining conflicts".localized, target: nil, action: nil)
-        applyToRemaining.setAccessibilityLabel("Apply this conflict choice to remaining conflicts".localized)
-        alert.accessoryView = applyToRemaining
-
-        guard let window = view.window else { return .cancel }
-        return await withCheckedContinuation { continuation in
-            alert.beginSheetModal(for: window) { response in
-                let apply = applyToRemaining.state == .on
-                switch response {
-                case .alertFirstButtonReturn:
-                    continuation.resume(returning: apply ? .applyToRemainingKeepBoth : .keepBoth)
-                case .alertSecondButtonReturn:
-                    continuation.resume(returning: apply ? .applyToRemainingReplace : .replace)
-                case .alertThirdButtonReturn:
-                    continuation.resume(returning: apply ? .applyToRemainingSkip : .skip)
-                default:
-                    continuation.resume(returning: .cancel)
-                }
-            }
-        }
+        await fileOperationUIAdapter.resolveConflict(destination: destination, operationName: operationName)
     }
     private func refreshBothPanes() {
         refreshPanes([leftPane, rightPane])
@@ -1882,42 +1708,6 @@ extension MainWindowViewController {
         } else {
             alert.runModal()
         }
-    }
-}
-
-extension MainWindowViewController {
-    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        switch splitView {
-        case rootSplitView:
-            return SidebarMetrics.contentMinWidth
-        case paneSplitView:
-            return 260
-        case contentSplitView:
-            return 220
-        default:
-            return proposedMinimumPosition
-        }
-    }
-
-    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        switch splitView {
-        case rootSplitView:
-            if !isSidebarInstalled {
-                return splitView.bounds.width
-            }
-            return max(SidebarMetrics.contentMinWidth, splitView.bounds.width - SidebarMetrics.minWidth)
-        case paneSplitView:
-            return max(260, splitView.bounds.width - 260)
-        case contentSplitView:
-            return max(220, splitView.bounds.height - 120)
-        default:
-            return proposedMaximumPosition
-        }
-    }
-
-    func splitViewDidResizeSubviews(_ notification: Notification) {
-        guard let splitView = notification.object as? NSSplitView, splitView === rootSplitView else { return }
-        persistSidebarWidthFromSplitPosition()
     }
 }
 
@@ -2175,15 +1965,6 @@ private extension MainCommand {
     }
 }
 
-private extension NSToolbarItem.Identifier {
-    static let back = NSToolbarItem.Identifier("PulseFilesToolbarBack")
-    static let forward = NSToolbarItem.Identifier("PulseFilesToolbarForward")
-    static let search = NSToolbarItem.Identifier("PulseFilesToolbarSearch")
-    static let toggleTerminal = NSToolbarItem.Identifier("PulseFilesToolbarTerminal")
-    static let toggleSidebar = NSToolbarItem.Identifier("PulseFilesToolbarSidebar")
-    static let viewOptions = NSToolbarItem.Identifier("PulseFilesToolbarViewOptions")
-    static let settings = NSToolbarItem.Identifier("PulseFilesToolbarSettings")
-}
 
 private final class MinimalDividerSplitView: NSSplitView {
     override var dividerThickness: CGFloat { 7 }
