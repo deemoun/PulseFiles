@@ -2,10 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesServices
+import PulseFilesSettings
+import PulseFilesTerminal
 
 /// Owns sidebar installation and its persisted split position.
 @MainActor
 final class SidebarLayoutCoordinator {
+    struct Inputs {
+        let settings: SettingsService
+        let sidebarView: NSView
+        let splitView: NSSplitView
+        let constraints: [NSLayoutConstraint]
+        let layout: () -> Void
+        let updateToolbar: () -> Void
+    }
+
+    enum VisibilityResult: Equatable { case unchanged, installed, removed }
     let minimumWidth: CGFloat
     let maximumWidth: CGFloat
     let contentMinimumWidth: CGFloat
@@ -45,11 +58,46 @@ final class SidebarLayoutCoordinator {
         guard isInstalled, splitView.arrangedSubviews.count > 1, splitView.bounds.width > 0 else { return nil }
         return Double(clampedWidth(sidebarView.frame.width))
     }
+
+    @discardableResult
+    func setVisible(_ visible: Bool, inputs: Inputs) -> VisibilityResult {
+        guard visible != isInstalled else {
+            inputs.settings.isSidebarVisible = visible
+            inputs.updateToolbar()
+            return .unchanged
+        }
+        if visible {
+            install(inputs.sidebarView, in: inputs.splitView, constraints: inputs.constraints)
+        } else {
+            if let width = persistedWidth(sidebarView: inputs.sidebarView, in: inputs.splitView) {
+                inputs.settings.sidebarWidth = width
+            }
+            remove(inputs.sidebarView, from: inputs.splitView, constraints: inputs.constraints)
+        }
+        inputs.settings.isSidebarVisible = visible
+        inputs.layout()
+        if visible { applyPersistedWidth(inputs.settings.sidebarWidth, sidebarView: inputs.sidebarView, in: inputs.splitView) }
+        inputs.updateToolbar()
+        return visible ? .installed : .removed
+    }
 }
 
 /// Owns terminal view and session lifecycle as one indivisible layout operation.
 @MainActor
 final class TerminalLayoutCoordinator {
+    struct Inputs {
+        let settings: SettingsService
+        let terminal: TerminalViewController
+        let splitView: NSSplitView
+        let activeDirectory: URL
+        let accessPolicy: SandboxFileAccessPolicy
+        let focusPane: () -> Void
+        let presentDisabledWarning: () -> Void
+        let presentFirstUseWarning: () -> Void
+        let layout: () -> Void
+    }
+
+    enum ToggleResult: Equatable { case shown, hidden, disabled }
     private(set) var isInstalled = false
 
     func install(_ terminal: TerminalViewController, in splitView: NSSplitView, heightConstraint: inout NSLayoutConstraint?) {
@@ -68,5 +116,34 @@ final class TerminalLayoutCoordinator {
         splitView.removeArrangedSubview(terminal.view)
         terminal.view.removeFromSuperview()
         isInstalled = false
+    }
+
+    func toggle(
+        inputs: Inputs,
+        presentation: TerminalPresentationCoordinator,
+        heightConstraint: inout NSLayoutConstraint?
+    ) -> ToggleResult {
+        presentation.synchronize(installed: isInstalled)
+        switch presentation.toggle(isEnabled: inputs.settings.experimentalTerminalEnabled) {
+        case .hide:
+            remove(inputs.terminal, from: inputs.splitView, heightConstraint: heightConstraint)
+            inputs.settings.isTerminalVisible = false
+            inputs.focusPane()
+            return .hidden
+        case .disabled:
+            inputs.presentDisabledWarning()
+            return .disabled
+        case .show:
+            inputs.presentFirstUseWarning()
+            install(inputs.terminal, in: inputs.splitView, heightConstraint: &heightConstraint)
+            inputs.settings.isTerminalVisible = true
+            inputs.terminal.suggestedWorkingDirectory = presentation.workingDirectory(
+                activePaneURL: inputs.activeDirectory, accessPolicy: inputs.accessPolicy
+            )
+            inputs.layout()
+            inputs.splitView.setPosition(max(220, inputs.splitView.bounds.height - 180), ofDividerAt: 0)
+            inputs.terminal.focusCommandField()
+            return .shown
+        }
     }
 }

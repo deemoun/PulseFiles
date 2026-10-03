@@ -373,6 +373,22 @@ rewritten. The distinctive method groups now have these ownership boundaries:
 * `applySettingsChanges`: `SettingsWindowLifecycleCoordinator` triggers the typed
   propagation action; the controller broadcasts values to owned children and layout
   coordinators without recreating production services.
+* Quick Look probe generations, preview-panel data-source state, and read-only
+  viewer windows now belong to `PreviewPresentationAdapter`. The controller sends
+  only a focused-item value and a stale-focus predicate.
+* Sidebar and terminal installation, removal, persisted sizing, session lifecycle,
+  focus restoration, and typed disabled/warning outcomes belong to their layout and
+  presentation coordinators; the controller supplies settings, split views, and
+  event closures without transferring child-controller ownership.
+* `MainWindowCommandAdapter` is the thin AppKit menu-validation and forwarding
+  boundary. It decorates menu state from a typed snapshot and invokes only
+  `MainCommandHandling`; command availability remains in the command router.
+* `PaneRefreshCoordinator` makes AppKit-free refresh decisions for rename,
+  transfer, delete, and recovery. The controller translates pane indexes and an
+  optional selection URL into reloads while preserving active-pane focus.
+* `DiagnosticsWorkflow` owns bounded operation-summary collection and the complete
+  authorized-folder export/reveal presentation. It is injected with exporter,
+  log-entry, reveal, and error-presentation boundaries.
 
 Coordinator inputs and outputs are deliberately small closures over values or
 typed routes. Cross-feature adapters stay in the application composition target,

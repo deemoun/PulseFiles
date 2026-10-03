@@ -161,6 +161,11 @@ final class ControllerWiringUITests: XCTestCase {
         XCTAssertNotNil(app.element(AccessibilityIdentifiers.Toolbar.terminalToggle))
     }
 
+    func testMainWindowConnectsExtractedPreviewCommandAndDiagnosticsAdapters() throws {
+        let controller = try XCTUnwrap(app.window.contentViewController as? MainWindowViewController)
+        XCTAssertTrue(controller.uiHarnessHasExtractedPresentationAdapters)
+    }
+
     func testIndependentPaneNavigationAndSearchRouteThroughTheActivePane() throws {
         guard let controller = app.window.contentViewController as? MainWindowViewController else {
             return XCTFail("The production main window must host MainWindowViewController")
