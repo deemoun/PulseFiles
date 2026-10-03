@@ -97,6 +97,9 @@ fi
 echo "==> Running AppKit-free PulseFiles core tests with disposable preferences and fixture paths"
 swift test -c debug --filter PulseFilesCoreTests
 
+echo "==> Running AppKit-free PulseFiles command-routing and workflow tests"
+swift test -c debug --filter PulseFilesWorkflowsTests
+
 echo "==> Running PulseFiles service tests with disposable preferences and fixture paths"
 swift test -c debug --filter PulseFilesServicesTests
 

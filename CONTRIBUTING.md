@@ -49,6 +49,7 @@ the change crosses layers or affects the runnable app:
 | --- | --- |
 | Architecture or filesystem boundaries | `./scripts/validate_architecture.sh` |
 | Core models and utilities | `swift test --filter PulseFilesCoreTests` |
+| AppKit-free command routing and workflows | `swift test --filter PulseFilesWorkflowsTests` |
 | Filesystem, access, or persistence services | `swift test --filter PulseFilesServicesTests` |
 | Application or cross-layer behavior | `swift test --filter PulseFilesTests` |
 | AppKit wiring or accessibility | `swift test --filter PulseFilesAppKitUITests` |

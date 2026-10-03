@@ -20,15 +20,16 @@ The entry point creates an isolated preferences home and an
 DEBUG sandbox restriction, then runs these stages in order:
 
 1. `swift test -c debug --filter PulseFilesCoreTests`
-2. `swift test -c debug --filter PulseFilesServicesTests`
-3. `swift test -c debug --filter PulseFilesTests`
-4. On macOS, `swift test -c debug --filter PulseFilesAppKitUITests`
-5. On macOS with Accessibility permission, the disposable System Events
+2. `swift test -c debug --filter PulseFilesWorkflowsTests`
+3. `swift test -c debug --filter PulseFilesServicesTests`
+4. `swift test -c debug --filter PulseFilesTests`
+5. On macOS, `swift test -c debug --filter PulseFilesAppKitUITests`
+6. On macOS with Accessibility permission, the disposable System Events
    workflows listed below.
 
-On a non-macOS host, stages 4 and 5 are skipped after the three AppKit-free
+On a non-macOS host, stages 5 and 6 are skipped after the four AppKit-free
 targets complete. On macOS CI without Accessibility permission, retain stages
-1–4 and explicitly skip only stage 5:
+1–5 and explicitly skip only stage 6:
 
 ```sh
 ./scripts/run_automation_tests.sh --skip-system-events
@@ -57,8 +58,8 @@ report, fixture snapshots, and final screenshot. See
 
 | ID | Workflow and execution | Expected result | Safety / evidence notes |
 | --- | --- | --- | --- |
-| AUTO-01 | **AppKit-free core, service, and application/integration suites** — stages 1–3 of `./scripts/run_automation_tests.sh`. | `PulseFilesCoreTests`, `PulseFilesServicesTests`, and `PulseFilesTests` pass under disposable preferences and fixture paths. | Covers deterministic model/utility, service, and cross-layer application behavior before external UI automation. |
-| AUTO-02 | **AppKit controller wiring** — stage 4 on macOS. | `PulseFilesAppKitUITests` passes against the production AppKit controller tree and its accessibility identifiers. | In-process coverage; no System Events permission is needed for this stage. |
+| AUTO-01 | **AppKit-free core, workflow, service, and application/integration suites** — stages 1–4 of `./scripts/run_automation_tests.sh`. | `PulseFilesCoreTests`, `PulseFilesWorkflowsTests`, `PulseFilesServicesTests`, and `PulseFilesTests` pass under disposable preferences and fixture paths. | Covers deterministic model/utility, command-routing/workflow, service, and cross-layer application behavior before external UI automation. |
+| AUTO-02 | **AppKit controller wiring** — stage 5 on macOS. | `PulseFilesAppKitUITests` passes against the production AppKit controller tree and its accessibility identifiers. | In-process coverage; no System Events permission is needed for this stage. |
 | AUTO-03 | **Navigation** — `navigation` in the DEBUG and signed-release UI runners. | The harness switches panes, moves through rows, and requests parent navigation without a UI automation failure. | Uses fixture startup folders only. |
 | AUTO-04 | **Active-pane search** — `active-pane-search` in both UI runners. | After focus changes, searching for `needle-search` displays `needle-search.txt`. | The assertion reads the window accessibility content. |
 | AUTO-05 | **Copy conflict handling** — `copy-conflicts` in both UI runners. | A conflict sheet appears and the harness chooses **Skip This Item**. | The signed-release flow remains non-mutating; the DEBUG flow is confined to its fixture. |

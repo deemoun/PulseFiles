@@ -19,7 +19,8 @@ PulseFilesAppKitUITests` remains available on macOS, but does not provide the
 automation command's isolated configuration.
 
 The suite intentionally complements rather than replaces the AppKit-free
-`PulseFilesCoreTests`, service-focused `PulseFilesServicesTests`, and
+`PulseFilesCoreTests`, AppKit-free command-routing/workflow
+`PulseFilesWorkflowsTests`, service-focused `PulseFilesServicesTests`, and
 application/integration `PulseFilesTests` targets. Service-level conflict
 resolution, destructive-operation safety, drag/drop policy, recents persistence,
 and terminal warning acknowledgement stay in the appropriate deterministic test

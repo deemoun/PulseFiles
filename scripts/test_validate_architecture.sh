@@ -16,6 +16,7 @@ mkdir -p "$BASE/PulseFiles"/{App,AppCoordination,Capabilities,Utilities,Models,S
 mkdir -p "$BASE/PulseFiles/PresentationSupport/Commands"
 mkdir -p "$BASE"/{PulseFilesCoreTests,PulseFilesWorkflowsTests,PulseFilesServicesTests,PulseFilesTests,PulseFilesAppKitUITests}
 cp "$REPO_ROOT/Package.swift" "$BASE/Package.swift"
+cp "$REPO_ROOT/DOCUMENTATION.md" "$BASE/DOCUMENTATION.md"
 
 # Keep the otherwise intentionally sparse fixture targets representative of the
 # direct-import requirement enforced for declared production dependencies.
@@ -129,6 +130,13 @@ case_root="$(new_case missing-manifest-dependency)"
 sed -i 's/"PulseFilesWorkflows", //' "$case_root/Package.swift"
 if run_validator "$case_root"; then
   echo 'ERROR: missing direct manifest dependency was accepted' >&2
+  exit 1
+fi
+
+case_root="$(new_case stale-documented-test-inventory)"
+sed -i '/^| PulseFilesWorkflowsTests |/d' "$case_root/DOCUMENTATION.md"
+if run_validator "$case_root"; then
+  echo 'ERROR: stale documented test target inventory was accepted' >&2
   exit 1
 fi
 

@@ -171,6 +171,7 @@ performCommand path. Keep cross-pane behavior here, not in a pane controller.
 | PulseFiles/Utilities | Foundation-only formatting, validation, flags, localization, and path helpers. |
 | PulseFiles/PresentationSupport | AppKit-only icons, colors, shortcuts, pasteboard/macOS adapters, and presentation models split from lower layers. |
 | PulseFilesCoreTests | AppKit-free tests for utilities and value models. |
+| PulseFilesWorkflowsTests | AppKit-free tests for command routing and workflows. |
 | PulseFilesServicesTests | Service tests for filesystem behavior, access policy, and persistence. |
 | PulseFilesTests | Application and integration tests for cross-layer workflows and composed behavior. |
 | PulseFilesAppKitUITests | In-process AppKit wiring and accessibility tests. |
@@ -435,12 +436,14 @@ Run from the repository root:
     ./scripts/build_app.sh --release
     ./scripts/release_validation.sh
 
-`swift test` runs all four SwiftPM test targets: `PulseFilesCoreTests` provides
-AppKit-free utility and model coverage; `PulseFilesServicesTests` exercises
-filesystem, access-policy, and persistence services; `PulseFilesTests` covers
-application and cross-layer integration behavior; and `PulseFilesAppKitUITests`
-verifies in-process AppKit wiring and accessibility. For a focused development
-iteration, use `swift test --filter PulseFilesCoreTests`, `swift test --filter
+`swift test` runs all five SwiftPM test targets: `PulseFilesCoreTests` provides
+AppKit-free utility and model coverage; `PulseFilesWorkflowsTests` provides
+AppKit-free command-routing and workflow coverage; `PulseFilesServicesTests`
+exercises filesystem, access-policy, and persistence services; `PulseFilesTests`
+covers application and cross-layer integration behavior; and
+`PulseFilesAppKitUITests` verifies in-process AppKit wiring and accessibility. For
+a focused development iteration, use `swift test --filter PulseFilesCoreTests`,
+`swift test --filter PulseFilesWorkflowsTests`, `swift test --filter
 PulseFilesServicesTests`, `swift test --filter PulseFilesTests`, or `swift test
 --filter PulseFilesAppKitUITests` as appropriate. A filtered run does not replace
 the full `swift test` release gate.
