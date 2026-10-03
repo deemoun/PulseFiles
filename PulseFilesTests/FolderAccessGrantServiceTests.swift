@@ -201,11 +201,11 @@ final class FolderAccessGrantServiceTests: XCTestCase {
     func testSettingsServiceExposesStoredFolderAccessGrants() throws {
         let grantedFolder = try temporaryDirectory.folder("SettingsGrant")
         let data = Data(grantedFolder.path.utf8)
-        let settings = SettingsService(defaults: fixture.defaults)
+        let settings = SettingsService.testing(defaults: fixture.defaults)
 
         settings.folderAccessGrants = [FolderAccessGrant(url: grantedFolder, bookmarkData: data)]
 
-        XCTAssertEqual(SettingsService(defaults: fixture.defaults).folderAccessGrants, [FolderAccessGrant(url: grantedFolder, bookmarkData: data)])
+        XCTAssertEqual(SettingsService.testing(defaults: fixture.defaults).folderAccessGrants, [FolderAccessGrant(url: grantedFolder, bookmarkData: data)])
     }
 }
 

@@ -95,7 +95,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaults),
             bookmarkService: BookmarkService(defaults: defaults),
-            settings: SettingsService(defaults: defaults),
+            settings: SettingsService.testing(defaults: defaults),
             accessPolicy: .current,
             volumeDiscovery: VolumeDiscoveryService(),
             directorySizing: ImmediateSidebarSizing(),
@@ -135,7 +135,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaults),
             bookmarkService: BookmarkService(defaults: defaults),
-            settings: SettingsService(defaults: defaults),
+            settings: SettingsService.testing(defaults: defaults),
             accessPolicy: .current,
             volumeDiscovery: VolumeDiscoveryService(),
             directorySizing: sizing
@@ -165,7 +165,7 @@ final class SidebarSelectionInspectorPresentationTests: XCTestCase {
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaults),
             bookmarkService: BookmarkService(defaults: defaults),
-            settings: SettingsService(defaults: defaults),
+            settings: SettingsService.testing(defaults: defaults),
             accessPolicy: .current,
             volumeDiscovery: VolumeDiscoveryService(),
             directorySizing: ImmediateSidebarSizing(),

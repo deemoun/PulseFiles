@@ -9,8 +9,8 @@ final class LiquidGlassStyleTests: XCTestCase {
     func testInjectedSettingsControlPanelStyleRegardlessOfStandardDefaults() throws {
         let fixture = try IsolatedDefaultsFixture(prefix: "LiquidGlassStyleTests", testCase: self)
         let unrelatedFixture = try IsolatedDefaultsFixture(prefix: "UnrelatedLiquidGlassDefaults", testCase: self)
-        let settings = SettingsService(defaults: fixture.defaults)
-        let unrelatedSettings = SettingsService(defaults: unrelatedFixture.defaults)
+        let settings = SettingsService.testing(defaults: fixture.defaults)
+        let unrelatedSettings = SettingsService.testing(defaults: unrelatedFixture.defaults)
         unrelatedSettings.liquidGlassEnabled = true
 
         settings.liquidGlassEnabled = false
@@ -30,7 +30,7 @@ final class LiquidGlassStyleTests: XCTestCase {
 
     func testInjectedSettingsControlButtonChrome() throws {
         let fixture = try IsolatedDefaultsFixture(prefix: "LiquidGlassButtonStyleTests", testCase: self)
-        let settings = SettingsService(defaults: fixture.defaults)
+        let settings = SettingsService.testing(defaults: fixture.defaults)
         let button = NSButton()
 
         settings.liquidGlassEnabled = false

@@ -31,17 +31,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     static func makeProductionMainWindowController(
-        settings: SettingsService,
-        accessPolicy: SandboxFileAccessPolicy = .current,
+        userDefaults: UserDefaults = .standard,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) -> MainWindowController {
-        let dependencies = MainWindowDependencies.production(accessPolicy: accessPolicy)
+        let repository = SettingsRepository(defaults: userDefaults)
+        let folderAccessGrants = FolderAccessGrantService(defaults: userDefaults)
+        let accessPolicy = SandboxFileAccessPolicy(
+            rootURL: ExperimentalFlags.appSandboxRoot,
+            grantService: folderAccessGrants
+        )
+        let startupNavigation = StartupNavigationService(
+            settings: repository,
+            accessPolicy: accessPolicy,
+            grantService: folderAccessGrants
+        )
+        let settings = SettingsService(
+            repository: repository,
+            startupNavigation: startupNavigation,
+            folderAccessGrants: folderAccessGrants,
+            sessionState: WindowSessionState()
+        )
+        let dependencies = MainWindowDependencies.production(
+            accessPolicy: accessPolicy,
+            folderAccessGrants: folderAccessGrants
+        )
         return MainWindowController(
             settings: settings,
             dependencies: dependencies,
             workflowDependencies: .production(from: dependencies, accessPolicy: accessPolicy),
             sandboxRootEnsurer: sandboxRootEnsurer
         )
+    }
+
+    /// Test/integration seam for an already assembled settings capability.
+    static func makeMainWindowController(
+        settings: SettingsService,
+        accessPolicy: SandboxFileAccessPolicy,
+        sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
+    ) -> MainWindowController {
+        let dependencies = MainWindowDependencies.production(
+            accessPolicy: accessPolicy,
+            folderAccessGrants: settings.folderAccessGrantsForComposition
+        )
+        return MainWindowController(settings: settings, dependencies: dependencies, workflowDependencies: .production(from: dependencies, accessPolicy: accessPolicy), sandboxRootEnsurer: sandboxRootEnsurer)
     }
 
     init(
@@ -52,14 +84,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fileManager: FileManager = .default,
         mainWindowControllerFactory: ((SettingsService) -> MainWindowController)? = nil
     ) {
-        let settings = settings ?? SettingsService(defaults: userDefaults, accessPolicy: accessPolicy)
+        let productionController = settings == nil
+            ? Self.makeProductionMainWindowController(userDefaults: userDefaults)
+            : nil
+        let settings = settings ?? productionController!.settingsForComposition
+        let assembledAccessPolicy = productionController?.accessPolicyForComposition ?? accessPolicy
         self.launchArguments = launchArguments
         self.userDefaults = userDefaults
         self.settings = settings
-        self.accessPolicy = accessPolicy
+        self.accessPolicy = assembledAccessPolicy
         self.fileManager = fileManager
+        var initialController = productionController
         self.mainWindowControllerFactory = mainWindowControllerFactory ?? { settings in
-            Self.makeProductionMainWindowController(settings: settings, accessPolicy: accessPolicy)
+            if let controller = initialController {
+                initialController = nil
+                return controller
+            }
+            return Self.makeMainWindowController(settings: settings, accessPolicy: assembledAccessPolicy)
         }
         super.init()
     }

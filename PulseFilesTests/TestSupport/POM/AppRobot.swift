@@ -50,9 +50,9 @@ final class AppRobot: AppPageObject {
     init(dependencies: Dependencies) {
         defaults = dependencies.defaults
         fileSystem = dependencies.fileSystem
-        settings = SettingsService(defaults: dependencies.defaults)
+        settings = SettingsService.testing(defaults: dependencies.defaults)
         activePaneID = .left
-        isSidebarVisible = SettingsService(defaults: dependencies.defaults).isSidebarVisible
+        isSidebarVisible = SettingsService.testing(defaults: dependencies.defaults).isSidebarVisible
         pendingDestructiveConfirmation = nil
 
         let leftViewModel = FilePaneViewModel(

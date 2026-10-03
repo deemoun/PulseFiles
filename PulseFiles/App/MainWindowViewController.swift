@@ -94,6 +94,8 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private let thumbnailLoader: any ThumbnailLoading
     private let standardFolderAccess: any StandardFolderAccessProviding
     private let folderAccessGrants: any FolderAccessGrantProviding
+    var folderAccessGrantsForCompositionTesting: any FolderAccessGrantProviding { folderAccessGrants }
+    var authorizedFolderSelectionForCompositionTesting: AuthorizedFolderSelectionCoordinator { authorizedFolderSelection }
 
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
     private lazy var rightStartupResolution = settings.startupDirectoryResolution(for: .right)

@@ -7,6 +7,8 @@ import PulseFilesPresentationSupport
 
 final class MainWindowController: NSWindowController {
     static let frameAutosaveName = "PulseFilesMainWindow"
+    let settingsForComposition: SettingsService
+    let accessPolicyForComposition: SandboxFileAccessPolicy
 
     init(
         settings: SettingsService,
@@ -14,6 +16,8 @@ final class MainWindowController: NSWindowController {
         workflowDependencies: MainWindowWorkflowDependencies,
         sandboxRootEnsurer: @escaping () -> Void = ExperimentalFlags.ensureAppSandboxRootExists
     ) {
+        settingsForComposition = settings
+        accessPolicyForComposition = dependencies.accessPolicy
         let content = MainWindowViewController(
             settings: settings,
             dependencies: dependencies,
