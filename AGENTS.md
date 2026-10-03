@@ -18,9 +18,9 @@ architecture and maintenance guide.
 
 ## Repository map
 
-- `Package.swift` declares the `PulseFiles` executable and four SwiftPM test
-  targets: `PulseFilesCoreTests`, `PulseFilesServicesTests`, `PulseFilesTests`,
-  and `PulseFilesAppKitUITests`.
+- `Package.swift` declares the `PulseFiles` executable and five SwiftPM test
+  targets: `PulseFilesCoreTests`, `PulseFilesWorkflowsTests`,
+  `PulseFilesServicesTests`, `PulseFilesTests`, and `PulseFilesAppKitUITests`.
 - `PulseFiles/App`, `FilePane`, `Sidebar`, and `Terminal` contain AppKit lifecycle,
   window composition, pane browsing, secondary navigation, and the opt-in terminal.
 - `PulseFiles/Commands`, `Models`, `Services`, and `Utilities` contain command
@@ -28,6 +28,8 @@ architecture and maintenance guide.
 - `PulseFiles/Settings` contains preferences UI; `PulseFiles/Debug` contains
   DEBUG-oriented diagnostics UI; `PulseFiles/Resources` contains packaged assets.
 - `PulseFilesCoreTests` contains AppKit-free utility and model tests;
+  `PulseFilesWorkflowsTests` contains AppKit-free command-routing and workflow
+  tests;
   `PulseFilesServicesTests` covers filesystem, access-policy, and persistence
   services; and `PulseFilesTests` covers application and cross-layer integration
   behavior. `PulseFilesTests/TestSupport` documents shared test-support conventions.
@@ -59,7 +61,8 @@ for cross-cutting, runnable-app, or release changes.
 | Command | Use |
 | --- | --- |
 | `./scripts/validate_architecture.sh` | Enforce package-layer dependency and filesystem-mutation boundaries. |
-| `swift test` | Run all four SwiftPM test targets. |
+| `swift test` | Run all five SwiftPM test targets. |
+| `swift test --filter PulseFilesWorkflowsTests` | Run the AppKit-free command-routing and workflow suite. |
 | `./scripts/run_automation_tests.sh` | Run the disposable automated suite, including the macOS System Events mutation harness. |
 | `./scripts/run_automation_tests.sh --skip-system-events` | Run the disposable Swift and in-process AppKit coverage where Accessibility automation is unavailable. |
 | `./scripts/build_app.sh` | Build the local DEBUG app bundle. |

@@ -144,7 +144,7 @@ Run these commands from the repository root:
 # Validate package-layer and filesystem-mutation boundaries
 ./scripts/validate_architecture.sh
 
-# All four SwiftPM test targets
+# All five SwiftPM test targets
 swift test
 
 # Package a local debug app at artifacts/PulseFiles.app
@@ -167,13 +167,15 @@ distribution gate](RELEASE_CHECKLIST.md#licensing-and-source-distribution-gate)
 in addition to signing, notarizing, and validating the candidate archive.
 
 `swift test` runs the complete test suite: AppKit-free core tests
-(`PulseFilesCoreTests`), service tests (`PulseFilesServicesTests`), application and
-integration tests (`PulseFilesTests`), and in-process AppKit UI tests
+(`PulseFilesCoreTests`), AppKit-free command-routing and workflow tests
+(`PulseFilesWorkflowsTests`), service tests (`PulseFilesServicesTests`), application
+and integration tests (`PulseFilesTests`), and in-process AppKit UI tests
 (`PulseFilesAppKitUITests`). During a focused development iteration, run the
 appropriate narrow command:
 
 ```sh
 swift test --filter PulseFilesCoreTests
+swift test --filter PulseFilesWorkflowsTests
 swift test --filter PulseFilesServicesTests
 swift test --filter PulseFilesTests
 swift test --filter PulseFilesAppKitUITests

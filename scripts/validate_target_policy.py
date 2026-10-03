@@ -22,7 +22,7 @@ def error(message: str) -> None:
 
 
 def target_blocks(source: str):
-    marker = re.compile(r"\.(?:executableTarget|testTarget|target)\s*\(")
+    marker = re.compile(r"\.(executableTarget|testTarget|target)\s*\(")
     for match in marker.finditer(source):
         depth = 0
         in_string = False
@@ -43,7 +43,7 @@ def target_blocks(source: str):
             elif char == ")":
                 depth -= 1
                 if depth == 0:
-                    yield source[match.start():index + 1]
+                    yield match.group(1), source[match.start():index + 1]
                     break
 
 
@@ -57,7 +57,8 @@ def has_array(block: str, label: str) -> bool:
 
 
 actual = {}
-for block in target_blocks(manifest):
+actual_test_targets = set()
+for target_kind, block in target_blocks(manifest):
     name_match = re.search(r"\bname\s*:\s*\"([^\"]+)\"", block)
     path_match = re.search(r"\bpath\s*:\s*\"([^\"]+)\"", block)
     if not name_match or not path_match:
@@ -69,6 +70,32 @@ for block in target_blocks(manifest):
         "exclude": string_array(block, "exclude"),
         "sources": string_array(block, "sources") if has_array(block, "sources") else None,
     }
+    if target_kind == "testTarget":
+        actual_test_targets.add(name_match.group(1))
+
+policy_test_targets = set(policy.get("testTargets", {}))
+for name in sorted(actual_test_targets - policy_test_targets):
+    error(f"Package.swift test target {name} is missing from architecture_policy.json")
+for name in sorted(policy_test_targets - actual_test_targets):
+    error(f"architecture policy test target {name} is not a Package.swift test target")
+
+# DOCUMENTATION.md's architecture table is contributor-facing target inventory.
+# Tie it to both sources of truth so adding a manifest target and its policy
+# entry cannot silently leave the architecture guide stale.
+documentation_path = root / "DOCUMENTATION.md"
+if not documentation_path.is_file():
+    error("DOCUMENTATION.md is missing; cannot validate documented test targets")
+else:
+    documented_test_targets = set(re.findall(
+        r"^\|\s*(`?PulseFiles[A-Za-z0-9_]*Tests`?)\s*\|",
+        documentation_path.read_text(),
+        re.M,
+    ))
+    documented_test_targets = {name.strip("`") for name in documented_test_targets}
+    for name in sorted(policy_test_targets - documented_test_targets):
+        error(f"DOCUMENTATION.md test target inventory is missing {name}")
+    for name in sorted(documented_test_targets - policy_test_targets):
+        error(f"DOCUMENTATION.md documents unknown test target {name}")
 
 for name, declaration in expected.items():
     if name not in actual:
