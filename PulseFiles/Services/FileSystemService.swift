@@ -1,57 +1,11 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
 import UniformTypeIdentifiers
-
-package struct DirectoryItemReadFailure {
-    package let url: URL
-    package let error: Error
-}
-
-package struct DirectoryContentsReadError: LocalizedError {
-    package let failures: [DirectoryItemReadFailure]
-
-    package init(failures: [DirectoryItemReadFailure]) { self.failures = failures }
-
-    package var errorDescription: String? {
-        "Could not read metadata for \(failures.count) item(s)."
-    }
-}
-
-/// Indicates that a directory read did not finish before the pane's load deadline.
-/// This is intentionally distinct from filesystem errors so callers can offer a
-/// retry without presenting the folder as unreadable.
-package struct DirectoryLoadTimeoutError: LocalizedError, Equatable {
-    package let timeout: TimeInterval
-
-    package init(timeout: TimeInterval) { self.timeout = timeout }
-
-    package var errorDescription: String? {
-        "Folder is taking too long to respond. Try again."
-    }
-}
-
-/// The outcome of enumerating a directory. Metadata failures are reported rather
-/// than silently removing the affected children from the listing.
-package struct DirectoryContentsResult {
-    package let items: [FileItem]
-    package let itemReadFailures: [DirectoryItemReadFailure]
-
-    package init(items: [FileItem], itemReadFailures: [DirectoryItemReadFailure]) {
-        self.items = items
-        self.itemReadFailures = itemReadFailures
-    }
-
-    package var isComplete: Bool { itemReadFailures.isEmpty }
-}
-
-package protocol FileSystemServicing: AnyObject {
-    func contentsOfDirectory(at url: URL, includingHidden: Bool, sort: FileSortDescriptor) async throws -> DirectoryContentsResult
-    func directorySnapshotMetadata(at url: URL) async throws -> DirectorySnapshotMetadata
-}
 
 package final class FileSystemService: FileSystemServicing {
     private let fileManager: FileManager

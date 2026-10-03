@@ -1,22 +1,14 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import Foundation
 import PulseFilesModels
 import PulseFilesUtilities
 
-package enum StartupDirectorySource: Equatable { case `default`, lastVisited, userSelected }
-
-package struct StartupDirectoryResolution {
-    package let directory: URL
-    package let requestedDirectory: URL
-    package let source: StartupDirectorySource
-    package let needsAccessRecovery: Bool
-}
-
 /// Resolves launch navigation independently from preference presentation. It is
 /// the sole owner of fallback probing and saved-folder access-policy validation.
-package final class StartupNavigationService {
+package final class StartupNavigationService: StartupDirectoryResolving {
     private let settings: SettingsPersisting
     private let accessPolicyOverride: SandboxFileAccessPolicy?
     private let grantService: FolderAccessGrantService

@@ -27,7 +27,7 @@ package struct DiagnosticOperationSummary: Equatable {
     }
 }
 
-package struct DiagnosticsExportService {
+package struct DiagnosticsExportService: DiagnosticsExportCapability {
     package struct AppInfo: Equatable {
         let name: String
         let version: String
@@ -57,6 +57,14 @@ package struct DiagnosticsExportService {
         self.fileManager = fileManager
         self.dateProvider = dateProvider
         self.appInfoProvider = appInfoProvider
+    }
+
+    package func export(_ request: DiagnosticsExportRequest) throws -> DiagnosticsExportResult {
+        let bundleURL = request.destinationDirectory.appendingPathComponent("PulseFiles-Diagnostics-\(Self.timestamp(dateProvider()))", isDirectory: true)
+        try fileManager.createDirectory(at: bundleURL, withIntermediateDirectories: false)
+        try request.renderedContents.write(to: bundleURL.appendingPathComponent("diagnostics.txt"), atomically: true, encoding: .utf8)
+        try Self.redactionPolicy.write(to: bundleURL.appendingPathComponent("REDACTION_POLICY.txt"), atomically: true, encoding: .utf8)
+        return DiagnosticsExportResult(bundleURL: bundleURL)
     }
 
     package func export(to parentDirectory: URL, entries: [DiagnosticLogEntry], operationSummaries: [DiagnosticOperationSummary]) throws -> URL {

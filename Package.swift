@@ -12,11 +12,12 @@ let package = Package(
     targets: [
         .target(name: "PulseFilesUtilities", path: "PulseFiles/Utilities"),
         .target(name: "PulseFilesModels", dependencies: ["PulseFilesUtilities"], path: "PulseFiles/Models"),
-        .target(name: "PulseFilesServices", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Services"),
+        .target(name: "PulseFilesCapabilities", dependencies: ["PulseFilesModels"], path: "PulseFiles/Capabilities"),
+        .target(name: "PulseFilesServices", dependencies: ["PulseFilesCapabilities", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Services"),
         .target(name: "PulseFilesWorkflows", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFiles/Commands"),
         .target(
             name: "PulseFilesPresentationSupport",
-            dependencies: ["PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesCapabilities", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles/PresentationSupport",
             exclude: ["Commands"]
         ),
@@ -27,22 +28,22 @@ let package = Package(
         ),
         .target(
             name: "PulseFilesTerminal",
-            dependencies: ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesCapabilities", "PulseFilesPresentationSupport", "PulseFilesUtilities"],
             path: "PulseFiles/Terminal"
         ),
         .target(
             name: "PulseFilesPane",
-            dependencies: ["PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesCapabilities", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles/FilePane"
         ),
         .target(
             name: "PulseFilesSidebar",
-            dependencies: ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesCapabilities", "PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles/Sidebar"
         ),
         .target(
             name: "PulseFilesSettings",
-            dependencies: ["PulseFilesPresentationSupport", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesCapabilities", "PulseFilesPresentationSupport", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles/Settings"
         ),
         .target(
@@ -52,15 +53,15 @@ let package = Package(
         ),
         .executableTarget(
             name: "PulseFiles",
-            dependencies: ["PulseFilesAppCoordination", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationCommands", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesAppCoordination", "PulseFilesCapabilities", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationCommands", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"],
             path: "PulseFiles",
-            exclude: ["Info.plist", "AppCoordination", "Utilities", "Models", "Services", "Commands", "FilePane", "Sidebar", "Settings", "Terminal", "PresentationSupport/Commands", "PresentationSupport/Models", "PresentationSupport/Module", "PresentationSupport/Services", "PresentationSupport/Utilities"],
+            exclude: ["Info.plist", "AppCoordination", "Capabilities", "Utilities", "Models", "Services", "Commands", "FilePane", "Sidebar", "Settings", "Terminal", "PresentationSupport/Commands", "PresentationSupport/Models", "PresentationSupport/Module", "PresentationSupport/Services", "PresentationSupport/Utilities"],
             resources: [.process("Resources")]
         ),
         .testTarget(name: "PulseFilesCoreTests", dependencies: ["PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesCoreTests"),
         .testTarget(name: "PulseFilesWorkflowsTests", dependencies: ["PulseFilesWorkflows", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesWorkflowsTests"),
         .testTarget(name: "PulseFilesServicesTests", dependencies: ["PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesServicesTests"),
-        .testTarget(name: "PulseFilesTests", dependencies: ["PulseFiles", "PulseFilesAppCoordination", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationCommands", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesTests", exclude: ["TestSupport/README.md"]),
+        .testTarget(name: "PulseFilesTests", dependencies: ["PulseFilesCapabilities", "PulseFiles", "PulseFilesAppCoordination", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesTerminal", "PulseFilesPresentationCommands", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesTests", exclude: ["TestSupport/README.md"]),
         .testTarget(name: "PulseFilesAppKitUITests", dependencies: ["PulseFiles", "PulseFilesPane", "PulseFilesSidebar", "PulseFilesSettings", "PulseFilesPresentationSupport", "PulseFilesWorkflows", "PulseFilesServices", "PulseFilesModels", "PulseFilesUtilities"], path: "PulseFilesAppKitUITests", exclude: ["README.md"])
     ]
 )

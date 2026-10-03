@@ -1,14 +1,10 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
-
-package struct DirectorySnapshotMetadata: Equatable, Sendable {
-    package let resourceIdentifier: String?
-    package let changeDate: Date?
-}
 
 @MainActor
 package final class DirectorySnapshotCache {

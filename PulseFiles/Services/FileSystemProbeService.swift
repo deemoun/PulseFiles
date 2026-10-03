@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
@@ -8,25 +9,6 @@ import Foundation
 /// A short, cancellable read-only filesystem query.  A missing answer means the
 /// filesystem did not respond before the caller's UI deadline; it is not treated
 /// as a positive result.
-package enum FileSystemProbeAnswer<Value: Sendable>: Sendable, Equatable where Value: Equatable {
-    case value(Value)
-    case timedOut
-    case unavailable
-}
-
-package protocol FileSystemProbing: Sendable {
-    func exists(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
-    func isDirectory(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
-    func volumeIdentifier(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<String?>
-    func isApplicationBundle(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool>
-}
-
-package extension FileSystemProbing {
-    func isApplicationBundle(_ url: URL, deadline: Duration) async -> FileSystemProbeAnswer<Bool> {
-        .unavailable
-    }
-}
-
 /// Keeps potentially blocking FileManager and resource-value queries off the
 /// main actor. Network volumes occasionally block these APIs, so callers always
 /// supply a small deadline and treat `.unavailable` conservatively.

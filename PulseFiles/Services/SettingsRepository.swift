@@ -1,16 +1,10 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import Foundation
 import PulseFilesModels
 import PulseFilesUtilities
-
-package protocol SettingsPersisting: AnyObject {
-    var snapshot: SettingsSnapshot { get }
-    func update(_ mutation: (inout SettingsSnapshot) -> Void)
-    func importJSONIfChanged()
-    @discardableResult func writeSettingsJSON() throws -> URL
-}
 
 /// Owns the v1 UserDefaults and JSON persistence contract. JSON replacement is
 /// atomic and a malformed or unsupported document never replaces known-good defaults.

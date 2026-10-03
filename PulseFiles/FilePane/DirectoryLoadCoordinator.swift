@@ -3,6 +3,7 @@
 
 import Foundation
 import PulseFilesModels
+import PulseFilesCapabilities
 import PulseFilesServices
 
 package protocol DirectoryMonitoring: AnyObject {

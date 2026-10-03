@@ -3,7 +3,7 @@
 
 import AppKit
 import PulseFilesModels
-import PulseFilesServices
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesPresentationSupport
 
