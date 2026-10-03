@@ -68,6 +68,23 @@ final class FilePaneViewModelTests: XCTestCase {
         XCTAssertFalse(visibleNames.contains(".."))
     }
 
+    func testReloadKeepsViewModelFocusAuthoritativeWhenFocusedItemIsTemporarilyFilteredOut() async throws {
+        let fixture = try PaneFixture(testCase: self)
+        try fixture.makeSearchLayout()
+        await load(fixture.viewModel)
+        let focused = try XCTUnwrap(fixture.viewModel.visibleItems.first { $0.displayName == "Notes.md" }).url
+        fixture.viewModel.setFocusedURL(focused)
+
+        fixture.viewModel.setSearchQuery("report")
+        fixture.viewModel.reloadAfterExternalDirectoryChange()
+        await waitUntilLoaded(fixture.viewModel)
+
+        XCTAssertEqual(fixture.viewModel.focusedURL, focused)
+        XCTAssertFalse(fixture.viewModel.visibleItems.contains { $0.url == focused })
+        fixture.viewModel.setSearchQuery("")
+        XCTAssertTrue(fixture.viewModel.visibleItems.contains { $0.url == focused })
+    }
+
     func testHiddenFilesAreExcludedByDefaultWhenConfiguredOff() async throws {
         let fixture = try PaneFixture(showsHiddenFiles: false, testCase: self)
         try fixture.makeHiddenFilesLayout()

@@ -292,7 +292,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         previousSelectedRowIndexes = currentSelectedRowIndexes
         guard !changedRows.isEmpty else { return }
         guard !inlineRenameSession.isEditing else {
-            hasDeferredTableReload = true
+            _ = tableReloads.request(editedURL: inlineRenameItem?.url, isEditing: true, cachedExists: true)
             return
         }
         tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))

@@ -9,7 +9,7 @@ import XCTest
 final class ExtractedPaneAndSidebarStateTests: XCTestCase {
     func testQuickSearchCapturesFocusOnlyForActiveSearch() {
         let url = URL(fileURLWithPath: "/tmp/focused")
-        var state = QuickSearchState()
+        var state = PaneQuickSearchState()
 
         state.transition(from: "", to: "f", focusedURL: url)
         XCTAssertEqual(state.focusedURLBeforeSearch, url)
@@ -24,13 +24,13 @@ final class ExtractedPaneAndSidebarStateTests: XCTestCase {
     func testSelectionRestorationUsesURLsInsteadOfOldRowIndexes() {
         let first = URL(fileURLWithPath: "/tmp/first")
         let second = URL(fileURLWithPath: "/tmp/second")
-        var state = FilePaneSelectionRestoration()
+        var state = PaneSelectionRestorationState()
         state.record([second])
 
-        XCTAssertEqual(state.rows(in: [second, first], offset: 1) { $0.path }, IndexSet(integer: 1))
+        XCTAssertEqual(IndexSet(state.indexes(in: [second, first]) { $0.path }.map { $0 + 1 }), IndexSet(integer: 1))
         state.prepare(first)
         XCTAssertEqual(state.pendingURL, first)
-        XCTAssertEqual(state.consumePending(), first)
+        XCTAssertEqual(state.consumePending(ifAvailable: [first]) { $0.path }, first)
         XCTAssertNil(state.pendingURL)
     }
 

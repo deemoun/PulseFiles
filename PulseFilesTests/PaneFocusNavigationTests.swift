@@ -81,4 +81,15 @@ final class PaneFocusNavigationTests: XCTestCase {
 
         XCTAssertEqual(state.markedURLs, [item])
     }
+
+    func testSelectionRestorationCoordinatorKeepsPendingFocusAcrossMissingReload() {
+        let wanted = directory.appendingPathComponent("wanted")
+        let coordinator = PaneSelectionRestorationCoordinator()
+        coordinator.prepare(wanted)
+
+        XCTAssertNil(coordinator.consumePending(in: [], normalize: { $0.standardizedFileURL.path }))
+        XCTAssertEqual(coordinator.snapshot.pendingURL, wanted)
+        XCTAssertEqual(coordinator.consumePending(in: [wanted], normalize: { $0.standardizedFileURL.path }), wanted)
+        XCTAssertNil(coordinator.snapshot.pendingURL)
+    }
 }
