@@ -40,29 +40,88 @@ package protocol FilePanePresentationDelegate: AnyObject {
     func filePane(_ pane: FilePaneViewController, didEmit event: FilePanePresentationEvent)
 }
 
-/// Owns the transient focus captured while the view model applies a quick-search filter.
-package struct QuickSearchState {
-    private(set) var focusedURLBeforeSearch: URL?
+/// Owns selection/focus restoration and exposes only renderable snapshots.
+package final class PaneSelectionRestorationCoordinator {
+    package struct Snapshot { let pendingURL: URL?; let previousURLs: [URL] }
+    private var state = PaneSelectionRestorationState()
 
-    mutating func transition(from oldQuery: String, to newQuery: String, focusedURL: URL?) {
-        if oldQuery.isEmpty, !newQuery.isEmpty { focusedURLBeforeSearch = focusedURL }
-        if newQuery.isEmpty { focusedURLBeforeSearch = nil }
+    package var snapshot: Snapshot { .init(pendingURL: state.pendingURL, previousURLs: state.previousURLs) }
+    package func prepare(_ url: URL?) { state.prepare(url) }
+    package func reset() { state.reset() }
+    package func record(_ urls: [URL]) { state.record(urls) }
+    package func consumePending(in urls: [URL], normalize: (URL) -> String) -> URL? {
+        state.consumePending(ifAvailable: urls, normalize: normalize)
+    }
+    package func rows(in urls: [URL], offset: Int, normalize: (URL) -> String) -> IndexSet {
+        IndexSet(state.indexes(in: urls, normalize: normalize).map { $0 + offset })
     }
 }
 
-/// URL-based selection state that remains stable across sorting and table reloads.
-package struct FilePaneSelectionRestoration {
-    private(set) var pendingURL: URL?
-    private(set) var previousURLs: [URL] = []
+/// Owns quick-search keystroke interpretation and transient presentation state.
+package final class QuickSearchCoordinator {
+    package enum Command: Equatable { case update(String), navigateParent, ignored }
+    private var state = PaneQuickSearchState()
+    package var focusedURLBeforeSearch: URL? { state.focusedURLBeforeSearch }
+    package func transition(from old: String, to new: String, focusedURL: URL?) { state.transition(from: old, to: new, focusedURL: focusedURL) }
+    package func command(keyCode: UInt16, input: String?, modifiersAreEmpty: Bool, query: String) -> Command {
+        if keyCode == 53, !query.isEmpty { return .update("") }
+        if keyCode == 51, modifiersAreEmpty { return query.isEmpty ? .navigateParent : .update(String(query.dropLast())) }
+        guard modifiersAreEmpty, let input, !input.isEmpty,
+              input.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) && !(0xF700...0xF8FF).contains($0.value) }) else { return .ignored }
+        return .update(query + input)
+    }
+}
 
-    mutating func prepare(_ url: URL?) { pendingURL = url }
-    mutating func clear() { pendingURL = nil; previousURLs = [] }
-    mutating func record(_ urls: [URL]) { previousURLs = urls }
-    mutating func consumePending() -> URL? { defer { pendingURL = nil }; return pendingURL }
+/// Owns table reload coalescing while inline rename metadata is unresolved.
+package final class TableReloadCoordinator {
+    package enum Request { case reloadNow, probe(URL), deferred }
+    private var deferred = false
+    private var probingURL: URL?
+    package var hasDeferredReload: Bool { deferred }
+    package func request(editedURL: URL?, isEditing: Bool, cachedExists: Bool?) -> Request {
+        guard isEditing, let editedURL else { deferred = false; probingURL = nil; return .reloadNow }
+        guard let cachedExists else {
+            deferred = true
+            if probingURL == editedURL { return .deferred }
+            probingURL = editedURL
+            return .probe(editedURL)
+        }
+        probingURL = nil
+        if cachedExists { deferred = true; return .deferred }
+        deferred = false; return .reloadNow
+    }
+    package func clearDeferred() -> Bool { defer { deferred = false }; return deferred }
+}
 
-    package func rows(in urls: [URL], offset: Int, normalize: (URL) -> String) -> IndexSet {
-        let paths = Set(previousURLs.map(normalize))
-        return IndexSet(urls.enumerated().compactMap { paths.contains(normalize($0.element)) ? $0.offset + offset : nil })
+/// Renders tabs and presentation mode without owning pane navigation state.
+package final class PaneChromeCoordinator {
+    package struct Input { let tabs: [PaneTabState]; let activeTabID: UUID; let mode: PanePresentationMode }
+    private let tabs: NSSegmentedControl
+    private let modes: NSSegmentedControl
+    package init(tabs: NSSegmentedControl, modes: NSSegmentedControl) { self.tabs = tabs; self.modes = modes }
+    package func render(_ input: Input) {
+        tabs.segmentCount = input.tabs.count
+        for (index, tab) in input.tabs.enumerated() {
+            let title = tab.currentDirectory.lastPathComponent.isEmpty ? "/" : tab.currentDirectory.lastPathComponent
+            tabs.setLabel(title, forSegment: index)
+            tabs.setToolTip(tab.currentDirectory.path, forSegment: index)
+        }
+        tabs.selectedSegment = input.tabs.firstIndex { $0.id == input.activeTabID } ?? 0
+        modes.selectedSegment = PanePresentationMode.allCases.firstIndex(of: input.mode) ?? 0
+    }
+}
+
+/// Maps directory-loading state to the content overlay's AppKit presentation.
+package final class ContentOverlayCoordinator {
+    package struct Input {
+        let paneID: PaneID; let isLoading: Bool; let visibleItems: [FileItem]
+        let errorMessage: String?; let actions: [PaneStatusView.Action]
+    }
+    private let view: PaneContentOverlayView
+    package init(view: PaneContentOverlayView) { self.view = view }
+    package func render(_ input: Input) {
+        view.configure(paneID: input.paneID, isLoading: input.isLoading, visibleItems: input.visibleItems,
+                       errorMessage: input.errorMessage, actions: input.actions)
     }
 }
 

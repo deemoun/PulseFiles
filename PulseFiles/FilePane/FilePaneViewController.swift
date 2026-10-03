@@ -30,21 +30,20 @@ package final class FilePaneViewController: NSViewController {
     package let contentOverlay = PaneContentOverlayView()
     package let statusView = PaneStatusView()
     package let activeStripe = NSView()
-    package var isReloadingData = false
+    var isReloadingData = false
     package var isPaneActive = false
     package var dimmedFileURLs = Set<String>()
-    package var previousSelectedRowIndexes = IndexSet()
-    package var previousSelectionURLs: [URL] = []
+    var previousSelectedRowIndexes = IndexSet()
     /// URLs survive sorting, filtering, and monitor-driven reloads; row indexes do not.
-    package var selectionRestoration = FilePaneSelectionRestoration()
-    package var quickSearchState = QuickSearchState()
-    package var inlineRenameRow: Int?
+    private let selectionRestoration = PaneSelectionRestorationCoordinator()
+    private let quickSearch = QuickSearchCoordinator()
+    var inlineRenameRow: Int?
     /// The item snapshot remains valid while a refresh is deferred, even when
     /// filtering, sorting, or navigation has already changed the view model.
-    package var inlineRenameItem: FileItem?
-    package var inlineRenameSession = InlineRenameCommitSession()
+    var inlineRenameItem: FileItem?
+    var inlineRenameSession = InlineRenameCommitSession()
     package let inlineRenameCoordinator = InlineRenameCoordinator()
-    package var hasDeferredTableReload = false
+    let tableReloads = TableReloadCoordinator()
     package var hasOppositePane = true
     /// Single-pane tables have room to breathe, so keep metadata away from column dividers.
     /// Compact dual-pane tables retain their tighter spacing to preserve useful width.
@@ -60,7 +59,9 @@ package final class FilePaneViewController: NSViewController {
     package let fileSystemProbe: any FileSystemProbing
     package lazy var volumeStatusCache = VolumeStatusResolutionCache(directory: viewModel.currentDirectory)
     package let thumbnailLoader: any ThumbnailLoading
-    package let thumbnailRequests = ThumbnailRequestCoordinator()
+    private let thumbnailRequests = ThumbnailRequestCoordinator()
+    private lazy var chromeCoordinator = PaneChromeCoordinator(tabs: tabSelector, modes: presentationSelector)
+    private lazy var overlayCoordinator = ContentOverlayCoordinator(view: contentOverlay)
     private(set) var presentationMode: PanePresentationMode
     private var liquidGlassStyle: LiquidGlassStyle
 
@@ -285,7 +286,7 @@ package final class FilePaneViewController: NSViewController {
     package func setPresentationMode(_ mode: PanePresentationMode, notify: Bool = true) {
         guard presentationMode != mode else { return }
         presentationMode = mode
-        presentationSelector.selectedSegment = PanePresentationMode.allCases.firstIndex(of: mode) ?? 0
+        chromeCoordinator.render(.init(tabs: viewModel.tabs, activeTabID: viewModel.activeTabID, mode: mode))
         thumbnailRequests.cancelAll()
         tableView.rowHeight = mode == .gallery ? 72 : (mode == .brief ? 26 : 34)
         tableView.headerView = mode == .brief ? nil : NSTableHeaderView()
@@ -416,7 +417,7 @@ package final class FilePaneViewController: NSViewController {
     }
 
     package func setSearchQuery(_ query: String) {
-        quickSearchState.transition(from: viewModel.searchQuery, to: query, focusedURL: focusedItem?.url)
+        quickSearch.transition(from: viewModel.searchQuery, to: query, focusedURL: focusedItem?.url)
         viewModel.setSearchQuery(query)
     }
 
@@ -425,25 +426,12 @@ package final class FilePaneViewController: NSViewController {
     package func handleQuickSearchKeyDown(_ event: NSEvent) -> Bool {
         guard view.window?.firstResponder === tableView else { return false }
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        if event.keyCode == 53, !viewModel.searchQuery.isEmpty {
-            updateQuickSearchQuery("")
-            return true
+        switch quickSearch.command(keyCode: event.keyCode, input: event.characters,
+                                   modifiersAreEmpty: modifiers.isEmpty, query: viewModel.searchQuery) {
+        case let .update(query): updateQuickSearchQuery(query); return true
+        case .navigateParent: goParent(); return true
+        case .ignored: return false
         }
-        if event.keyCode == 51, !viewModel.searchQuery.isEmpty, modifiers.isEmpty {
-            updateQuickSearchQuery(String(viewModel.searchQuery.dropLast()))
-            return true
-        }
-        if event.keyCode == 51, viewModel.searchQuery.isEmpty, modifiers.isEmpty {
-            goParent()
-            return true
-        }
-        guard modifiers.isEmpty, let input = event.characters, !input.isEmpty,
-              input.unicodeScalars.allSatisfy({ scalar in
-                  !CharacterSet.controlCharacters.contains(scalar)
-                      && !(0xF700...0xF8FF).contains(scalar.value)
-              }) else { return false }
-        updateQuickSearchQuery(viewModel.searchQuery + input)
-        return true
     }
 
     package func updateQuickSearchQuery(_ query: String) {
@@ -510,13 +498,7 @@ package final class FilePaneViewController: NSViewController {
     }
 
     package func refreshTabSelector() {
-        tabSelector.segmentCount = viewModel.tabs.count
-        for (index, tab) in viewModel.tabs.enumerated() {
-            let title = tab.currentDirectory.lastPathComponent.isEmpty ? "/" : tab.currentDirectory.lastPathComponent
-            tabSelector.setLabel(title, forSegment: index)
-            tabSelector.setToolTip(tab.currentDirectory.path, forSegment: index)
-        }
-        tabSelector.selectedSegment = viewModel.state.activeTabIndex
+        chromeCoordinator.render(.init(tabs: viewModel.tabs, activeTabID: viewModel.activeTabID, mode: presentationMode))
     }
 
     package func buildTable() {
@@ -685,22 +667,18 @@ package final class FilePaneViewController: NSViewController {
     /// changing. This is deliberately a defer/coalesce policy: the current
     /// rename is completed or cancelled before the table is rebuilt.
     package func requestTableReload() {
-        guard let editedItem = inlineRenameItem,
-              inlineRenameSession.isEditing else {
-            performTableReload()
-            return
+        let editedURL = inlineRenameItem?.url
+        let cachedAnswer = editedURL.flatMap { existenceProbeCache.existenceAnswer(for: $0) }
+        let cachedExists = cachedAnswer.map(FileSystemProbeDecisionCoordinator.inlineRenameItemExists)
+        switch tableReloads.request(editedURL: editedURL, isEditing: inlineRenameSession.isEditing, cachedExists: cachedExists) {
+        case .reloadNow:
+            if let editedURL, let cachedAnswer { applyReloadDecision(itemURL: editedURL, answer: cachedAnswer) }
+            else { performTableReload() }
+        case let .probe(url):
+            existenceProbeCache.requestExistence(url) { [weak self] answer in self?.completeDeferredReloadProbe(for: url, answer: answer) }
+        case .deferred:
+            break
         }
-
-        // A filtered-out item is still a valid rename target. Only cancel when
-        // the file itself has disappeared, so we never submit a stale path.
-        guard let answer = existenceProbeCache.existenceAnswer(for: editedItem.url) else {
-            hasDeferredTableReload = true
-            existenceProbeCache.requestExistence(editedItem.url) { [weak self] answer in
-                self?.completeDeferredReloadProbe(for: editedItem.url, answer: answer)
-            }
-            return
-        }
-        applyReloadDecision(itemURL: editedItem.url, answer: answer)
     }
 
     private func completeDeferredReloadProbe(for itemURL: URL, answer: FileSystemProbeAnswer<Bool>) {
@@ -714,11 +692,11 @@ package final class FilePaneViewController: NSViewController {
             itemExists: FileSystemProbeDecisionCoordinator.inlineRenameItemExists(answer)
         ) {
         case .deferReload:
-            hasDeferredTableReload = true
+            _ = tableReloads.request(editedURL: itemURL, isEditing: true, cachedExists: true)
         case .cancelRenameAndReload:
             inlineRenameSession.cancel()
             clearInlineRenameState()
-            hasDeferredTableReload = false
+            _ = tableReloads.clearDeferred()
             performTableReload()
             showInlineRenameItemRemovedAlert()
         case .reloadNow:
@@ -765,8 +743,7 @@ package final class FilePaneViewController: NSViewController {
     }
 
     package func flushDeferredTableReloadIfNeeded() {
-        guard hasDeferredTableReload else { return }
-        hasDeferredTableReload = false
+        guard tableReloads.clearDeferred() else { return }
         performTableReload()
     }
 
@@ -785,7 +762,7 @@ package final class FilePaneViewController: NSViewController {
 
     @discardableResult
     package func selectPendingItemIfAvailable() -> Bool {
-        guard !viewModel.isLoading, let pendingSelectionURL = selectionRestoration.pendingURL else { return false }
+        guard !viewModel.isLoading, let pendingSelectionURL = selectionRestoration.snapshot.pendingURL else { return false }
         let selectedURL = pendingSelectionURL
         guard let itemIndex = viewModel.visibleItems.firstIndex(where: {
             isSameFileURL($0.url, pendingSelectionURL)
@@ -830,7 +807,7 @@ package final class FilePaneViewController: NSViewController {
     }
 
     package func restorePreviousSelectionIfPossible() {
-        guard selectionRestoration.pendingURL == nil, !selectionRestoration.previousURLs.isEmpty else { return }
+        guard selectionRestoration.snapshot.pendingURL == nil, !selectionRestoration.snapshot.previousURLs.isEmpty else { return }
 
         let rows = selectionRestoration.rows(in: viewModel.visibleItems.map(\.url), offset: realRowOffset, normalize: normalizedPath)
         guard !rows.isEmpty else { return }
@@ -856,13 +833,10 @@ package final class FilePaneViewController: NSViewController {
     }
 
     package func configureContentOverlay() {
-        contentOverlay.configure(
-            paneID: paneID,
-            isLoading: viewModel.isLoading,
-            visibleItems: viewModel.visibleItems,
-            errorMessage: viewModel.errorMessage,
-            actions: contentOverlayActions()
-        )
+        overlayCoordinator.render(.init(
+            paneID: paneID, isLoading: viewModel.isLoading, visibleItems: viewModel.visibleItems,
+            errorMessage: viewModel.errorMessage, actions: contentOverlayActions()
+        ))
     }
 
     /// The empty-state overlay covers the synthetic `..` table row, so expose

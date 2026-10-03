@@ -67,6 +67,31 @@ final class InlineRenameCommitSessionTests: XCTestCase {
         XCTAssertNotNil(session.generation(for: normalizedURL))
     }
 
+    func testReloadCoordinatorCoalescesMetadataProbeAndFlushesAfterRename() {
+        let fileURL = URL(fileURLWithPath: "/tmp/Original.txt")
+        let coordinator = TableReloadCoordinator()
+
+        guard case .probe(fileURL) = coordinator.request(editedURL: fileURL, isEditing: true, cachedExists: nil) else {
+            return XCTFail("The first reload must schedule an existence probe")
+        }
+        guard case .deferred = coordinator.request(editedURL: fileURL, isEditing: true, cachedExists: nil) else {
+            return XCTFail("Repeated reloads must coalesce behind the active probe")
+        }
+        XCTAssertTrue(coordinator.clearDeferred())
+        XCTAssertFalse(coordinator.clearDeferred())
+    }
+
+    func testReloadCoordinatorCancelsDeferredStateWhenEditingEnds() {
+        let fileURL = URL(fileURLWithPath: "/tmp/Original.txt")
+        let coordinator = TableReloadCoordinator()
+        _ = coordinator.request(editedURL: fileURL, isEditing: true, cachedExists: true)
+
+        guard case .reloadNow = coordinator.request(editedURL: nil, isEditing: false, cachedExists: nil) else {
+            return XCTFail("Completing rename must release the pending reload")
+        }
+        XCTAssertFalse(coordinator.hasDeferredReload)
+    }
+
     private func submit(_ result: InlineRenameCommitSession.Result, into callbacks: inout [String]) {
         if case let .rename(_, name) = result {
             callbacks.append(name)
