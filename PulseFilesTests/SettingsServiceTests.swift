@@ -8,13 +8,13 @@ import XCTest
 final class SettingsServiceTests: XCTestCase {
     func testPanePresentationSettingsAreTypedAndFallBackToDefault() throws {
         let fixture = try IsolatedDefaultsFixture(prefix: "SettingsServicePresentationTests", testCase: self)
-        let settings = SettingsService(defaults: fixture.defaults)
+        let settings = SettingsService.testing(defaults: fixture.defaults)
         XCTAssertEqual(settings.defaultPanePresentationMode, .list)
         settings.defaultPanePresentationMode = .brief
         XCTAssertEqual(settings.presentationMode(for: .left), .brief)
         settings.setPresentationMode(.gallery, for: .right)
-        XCTAssertEqual(SettingsService(defaults: fixture.defaults).rightPanePresentationMode, .gallery)
-        XCTAssertEqual(SettingsService(defaults: fixture.defaults).leftPanePresentationMode, .brief)
+        XCTAssertEqual(SettingsService.testing(defaults: fixture.defaults).rightPanePresentationMode, .gallery)
+        XCTAssertEqual(SettingsService.testing(defaults: fixture.defaults).leftPanePresentationMode, .brief)
     }
     private var fixture: IsolatedDefaultsFixture!
     private var settings: SettingsService!
@@ -89,12 +89,58 @@ final class SettingsServiceTests: XCTestCase {
         fixture.defaults.set(try JSONEncoder().encode(storedGrants), forKey: FolderAccessGrantService.defaultsKey)
         let resolver = FolderAccessBookmarkResolutionSpy(resolvedURL: grantedFolder)
 
-        _ = SettingsService(
+        _ = SettingsService.testing(
             defaults: fixture.defaults,
             folderAccessBookmarkResolver: resolver
         )
 
         XCTAssertEqual(resolver.resolveBookmarkDataCallCount, 1)
+    }
+
+    func testGrantMutationIsImmediatelyObservedByStartupNavigationAndAccessPolicy() throws {
+        let home = try settingsJSONFixture.folder("Shared Grant Home")
+        let granted = try settingsJSONFixture.folder("Shared Grant")
+        let repository = SettingsRepository(defaults: fixture.defaults, jsonURLProvider: { self.settingsJSONURL })
+        let resolver = FolderAccessBookmarkResolutionSpy(resolvedURL: granted)
+        let grants = FolderAccessGrantService(
+            defaults: fixture.defaults,
+            resolver: resolver,
+            startSecurityScopedAccess: { _ in true },
+            stopSecurityScopedAccess: { _ in }
+        )
+        let policy = SandboxFileAccessPolicy(
+            isEnabled: true,
+            rootURL: home,
+            grantService: grants,
+            accessProbe: .init(
+                fileExists: { _ in true },
+                isReadableFile: { _ in true },
+                isWritableFile: { _ in true }
+            )
+        )
+        let navigation = StartupNavigationService(
+            settings: repository,
+            accessPolicy: policy,
+            grantService: grants,
+            homeDirectoryProvider: { home },
+            applicationSupportDirectoryProvider: { home }
+        )
+        let sharedSettings = SettingsService(
+            repository: repository,
+            startupNavigation: navigation,
+            folderAccessGrants: grants,
+            sessionState: WindowSessionState()
+        )
+        sharedSettings.startupLeftDirectory = granted
+
+        XCTAssertFalse(policy.canAccess(granted, logDecision: false))
+        XCTAssertTrue(sharedSettings.startupDirectoryResolution(for: .left).needsAccessRecovery)
+
+        sharedSettings.folderAccessGrants = [FolderAccessGrant(url: granted, bookmarkData: Data("grant".utf8))]
+
+        XCTAssertTrue(policy.canAccess(granted, logDecision: false))
+        XCTAssertEqual(sharedSettings.startupDirectoryResolution(for: .left).directory, granted)
+        XCTAssertFalse(sharedSettings.startupDirectoryResolution(for: .left).needsAccessRecovery)
     }
 
 
@@ -104,7 +150,7 @@ final class SettingsServiceTests: XCTestCase {
         let inaccessibleDocuments = temporaryDirectory.path("MissingDocuments", isDirectory: true)
         let appSupport = try temporaryDirectory.folder("Application Support/PulseFiles")
         let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot)
-        let fallbackSettings = SettingsService(
+        let fallbackSettings = SettingsService.testing(
             defaults: fixture.defaults,
             accessPolicy: policy,
             homeDirectoryProvider: { accessibleHome },
@@ -130,7 +176,7 @@ final class SettingsServiceTests: XCTestCase {
                 isWritableFile: { _ in true }
             )
         )
-        let freshSettings = SettingsService(
+        let freshSettings = SettingsService.testing(
             defaults: fixture.defaults,
             accessPolicy: policy,
             homeDirectoryProvider: { home },
@@ -151,7 +197,7 @@ final class SettingsServiceTests: XCTestCase {
             rootURL: home,
             accessProbe: .init(fileExists: { $0 == home.path }, isReadableFile: { $0 == home.path }, isWritableFile: { _ in true })
         )
-        let recoveredSettings = SettingsService(defaults: fixture.defaults, accessPolicy: policy, homeDirectoryProvider: { home }, applicationSupportDirectoryProvider: { home })
+        let recoveredSettings = SettingsService.testing(defaults: fixture.defaults, accessPolicy: policy, homeDirectoryProvider: { home }, applicationSupportDirectoryProvider: { home })
         recoveredSettings.startupRightDirectory = protectedFolder
 
         let resolution = recoveredSettings.startupDirectoryResolution(for: .right)
@@ -171,7 +217,7 @@ final class SettingsServiceTests: XCTestCase {
             rootURL: home,
             accessProbe: .init(fileExists: { $0 == home.path || $0 == grantedFolder.path }, isReadableFile: { $0 == home.path || $0 == grantedFolder.path }, isWritableFile: { _ in true })
         )
-        let grantedSettings = SettingsService(defaults: fixture.defaults, accessPolicy: policy, homeDirectoryProvider: { home }, applicationSupportDirectoryProvider: { home })
+        let grantedSettings = SettingsService.testing(defaults: fixture.defaults, accessPolicy: policy, homeDirectoryProvider: { home }, applicationSupportDirectoryProvider: { home })
         grantedSettings.startupLeftDirectory = grantedFolder
 
         let resolution = grantedSettings.startupDirectoryResolution(for: .left)
@@ -185,7 +231,7 @@ final class SettingsServiceTests: XCTestCase {
         let inaccessibleDocuments = temporaryDirectory.path("MissingDocuments", isDirectory: true)
         let appSupport = temporaryDirectory.path("Application Support/PulseFiles", isDirectory: true)
         let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot)
-        let fallbackSettings = SettingsService(
+        let fallbackSettings = SettingsService.testing(
             defaults: fixture.defaults,
             accessPolicy: policy,
             homeDirectoryProvider: { inaccessibleHome },
@@ -495,7 +541,7 @@ final class SettingsServiceTests: XCTestCase {
     }
 
     private func makeSettings() -> SettingsService {
-        SettingsService(
+        SettingsService.testing(
             defaults: fixture.defaults,
             jsonSettingsURLProvider: { [settingsJSONURL] in settingsJSONURL }
         )

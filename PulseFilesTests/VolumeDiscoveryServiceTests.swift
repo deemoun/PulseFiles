@@ -10,7 +10,7 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
         let scratch = try fixture.folder("Personal Workspace")
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: fixture.root)
         let defaultsFixture = try IsolatedDefaultsFixture(prefix: "ScratchSidebarItemTests", testCase: self)
-        let settings = SettingsService(defaults: defaultsFixture.defaults, accessPolicy: policy)
+        let settings = SettingsService.testing(defaults: defaultsFixture.defaults, accessPolicy: policy)
         settings.scratchDirectory = scratch
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaultsFixture.defaults),
@@ -83,7 +83,7 @@ final class VolumeDiscoveryServiceTests: XCTestCase {
         let sidebar = SidebarViewController(
             recentLocations: RecentLocationService(defaults: defaults),
             bookmarkService: BookmarkService(defaults: defaults),
-            settings: SettingsService(defaults: defaults, accessPolicy: policy),
+            settings: SettingsService.testing(defaults: defaults, accessPolicy: policy),
             accessPolicy: policy,
             volumeDiscovery: discovery,
             directorySizing: SidebarSizingFake()

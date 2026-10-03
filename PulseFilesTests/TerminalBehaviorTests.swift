@@ -14,7 +14,7 @@ final class TerminalBehaviorTests: XCTestCase {
         try super.setUpWithError()
         defaultsFixture = try IsolatedDefaultsFixture(prefix: "TerminalBehaviorTests", testCase: self)
         sandboxFixture = try SandboxFixture(testCase: self)
-        settings = SettingsService(defaults: defaultsFixture.defaults)
+        settings = SettingsService.testing(defaults: defaultsFixture.defaults)
         service = TerminalService()
     }
 
@@ -43,7 +43,7 @@ final class TerminalBehaviorTests: XCTestCase {
         settings.experimentalTerminalEnabled = true
         settings.defaultTerminalVisible = true
 
-        let reloadedSettings = SettingsService(defaults: defaultsFixture.defaults)
+        let reloadedSettings = SettingsService.testing(defaults: defaultsFixture.defaults)
         let state = service.defaultVisibilityState(settings: reloadedSettings)
         XCTAssertTrue(state.isExperimentEnabled)
         XCTAssertTrue(state.isVisibleByDefault)
@@ -54,7 +54,7 @@ final class TerminalBehaviorTests: XCTestCase {
 
         service.acknowledgeFirstUseWarning(settings: settings)
 
-        let reloadedSettings = SettingsService(defaults: defaultsFixture.defaults)
+        let reloadedSettings = SettingsService.testing(defaults: defaultsFixture.defaults)
         XCTAssertTrue(service.warningState(settings: reloadedSettings, accessPolicy: sandboxFixture.policy).isAcknowledged)
     }
 

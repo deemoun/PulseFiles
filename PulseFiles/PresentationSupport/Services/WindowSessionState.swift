@@ -3,6 +3,10 @@
 
 /// Per-window, non-persistent state. A new window/session intentionally does not
 /// inherit manual terminal visibility changes from another settings instance.
-package final class WindowSessionState {
+package protocol WindowSessionStateProviding: AnyObject {
+    var runtimeTerminalVisible: Bool? { get set }
+}
+
+package final class WindowSessionState: WindowSessionStateProviding {
     package var runtimeTerminalVisible: Bool?
 }

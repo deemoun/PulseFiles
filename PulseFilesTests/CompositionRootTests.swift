@@ -10,7 +10,7 @@ final class CompositionRootTests: XCTestCase {
     func testPaneCompositionReplacementUsesOneInjectedGrantCapability() {
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: URL(fileURLWithPath: "/sandbox"))
         let grants = CompositionRootGrantSpy()
-        let base = MainWindowDependencies.production(accessPolicy: policy)
+        let base = MainWindowDependencies.production(accessPolicy: policy, folderAccessGrants: grants)
         let replaced = base.replacingPaneComposition(
             accessPolicy: policy,
             paneFileSystem: CompositionRootFileSystemSpy(),
@@ -24,7 +24,7 @@ final class CompositionRootTests: XCTestCase {
 
     func testStartupConfigurationAndWindowFactoryShareInjectedSettings() throws {
         let fixture = try IsolatedDefaultsFixture(prefix: "CompositionRootTests", testCase: self)
-        let settings = SettingsService(defaults: fixture.defaults)
+        let settings = SettingsService.testing(defaults: fixture.defaults)
         settings.appLanguage = .russian
         settings.fileColorScheme = .minimal
 
@@ -36,8 +36,9 @@ final class CompositionRootTests: XCTestCase {
             settings: settings
         ) { suppliedSettings in
             windowSettings = suppliedSettings
-            let controller = AppDelegate.makeProductionMainWindowController(
+            let controller = AppDelegate.makeMainWindowController(
                 settings: suppliedSettings,
+                accessPolicy: SandboxFileAccessPolicy(isEnabled: false, rootURL: ExperimentalFlags.appSandboxRoot),
                 sandboxRootEnsurer: {}
             )
             windowController = controller
@@ -58,6 +59,25 @@ final class CompositionRootTests: XCTestCase {
         XCTAssertEqual(
             FileTypeColorPalette.folder.usingColorSpace(.deviceRGB),
             settings.fileColorScheme.color(for: .folder).usingColorSpace(.deviceRGB)
+        )
+    }
+
+    func testProductionWindowCompositionSharesItsSettingsGrantCapability() throws {
+        let fixture = try IsolatedDefaultsFixture(prefix: "ProductionComposition", testCase: self)
+        let controller = AppDelegate.makeProductionMainWindowController(
+            userDefaults: fixture.defaults,
+            sandboxRootEnsurer: {}
+        )
+        defer { controller.close() }
+
+        let content = try XCTUnwrap(controller.contentViewController as? MainWindowViewController)
+        XCTAssertTrue(
+            controller.settingsForComposition.folderAccessGrantsForComposition
+                === content.folderAccessGrantsForCompositionTesting
+        )
+        XCTAssertTrue(
+            content.folderAccessGrantsForCompositionTesting
+                === content.authorizedFolderSelectionForCompositionTesting.grantServiceForCompositionTesting
         )
     }
 }

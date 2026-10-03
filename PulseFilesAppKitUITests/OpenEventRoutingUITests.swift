@@ -19,7 +19,7 @@ final class OpenEventRoutingUITests: XCTestCase {
             settings: dependencies.settings,
             accessPolicy: dependencies.policy
         ) { settings in
-            let controller = AppDelegate.makeProductionMainWindowController(
+            let controller = AppDelegate.makeMainWindowController(
                 settings: settings,
                 accessPolicy: dependencies.policy,
                 sandboxRootEnsurer: {}
@@ -51,7 +51,7 @@ final class OpenEventRoutingUITests: XCTestCase {
             settings: dependencies.settings,
             accessPolicy: dependencies.policy
         ) { settings in
-            let controller = AppDelegate.makeProductionMainWindowController(
+            let controller = AppDelegate.makeMainWindowController(
                 settings: settings,
                 accessPolicy: dependencies.policy,
                 sandboxRootEnsurer: {}
@@ -121,7 +121,7 @@ private final class OpenEventFixture {
 
     func makeDependencies() -> (settings: SettingsService, policy: SandboxFileAccessPolicy) {
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxRoot)
-        let settings = SettingsService(
+        let settings = SettingsService.testing(
             defaults: defaults,
             accessPolicy: policy,
             jsonSettingsURLProvider: { [root] in root.appendingPathComponent("Settings.json") },

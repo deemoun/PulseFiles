@@ -13,7 +13,7 @@ final class CompositionRootUITests: XCTestCase {
         let fileSystem = CompositionFileSystemSpy()
         let grants = CompositionGrantSpy()
         let directorySizing = CompositionDirectorySizingSpy(accessPolicy: policy)
-        let base = MainWindowDependencies.production(accessPolicy: policy)
+        let base = MainWindowDependencies.production(accessPolicy: policy, folderAccessGrants: FolderAccessGrantService.shared)
         let dependencies = base.replacingPaneComposition(
             accessPolicy: policy,
             paneFileSystem: fileSystem,
@@ -21,7 +21,7 @@ final class CompositionRootUITests: XCTestCase {
             directorySizing: directorySizing
         )
         let controller = MainWindowViewController(
-            settings: SettingsService(accessPolicy: policy),
+            settings: SettingsService.testing(defaults: .standard, accessPolicy: policy),
             dependencies: dependencies,
             workflowDependencies: .production(from: dependencies, accessPolicy: policy),
             sandboxRootEnsurer: {}
@@ -43,12 +43,12 @@ final class CompositionRootUITests: XCTestCase {
         let policy = SandboxFileAccessPolicy.current
         let process = CompositionTerminalProcessSpy()
         var factoryInvocationCount = 0
-        let dependencies = MainWindowDependencies.production(accessPolicy: policy)
+        let dependencies = MainWindowDependencies.production(accessPolicy: policy, folderAccessGrants: FolderAccessGrantService.shared)
             .replacingTerminalProcessFactory {
                 factoryInvocationCount += 1
                 return process
             }
-        let settings = SettingsService(accessPolicy: policy)
+        let settings = SettingsService.testing(defaults: .standard, accessPolicy: policy)
         settings.experimentalTerminalEnabled = true
         settings.hasAcknowledgedTerminalWarning = true
         let controller = MainWindowViewController(

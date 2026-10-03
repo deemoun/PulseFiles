@@ -55,7 +55,10 @@ package final class FolderAccessGrantService: FolderAccessGrantProviding {
             return grants
         }
         set {
-            _ = store(newValue)
+            guard store(newValue) else { return }
+            // Consumers share this long-lived capability, so replacing grants
+            // must update its resolved security-scoped view synchronously.
+            resolveStoredBookmarks()
         }
     }
 
@@ -73,7 +76,6 @@ package final class FolderAccessGrantService: FolderAccessGrantProviding {
         let bookmarkData = try resolver.makeBookmarkData(for: standardizedDirectory)
         let grant = FolderAccessGrant(url: standardizedDirectory, bookmarkData: bookmarkData)
         upsert(grant)
-        resolveStoredBookmarks()
         return grant
     }
 

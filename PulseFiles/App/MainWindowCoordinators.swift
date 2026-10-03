@@ -109,10 +109,12 @@ struct MainWindowDependencies {
     let scratchCleanup: (@escaping () -> [URL]) -> ScratchFolderCleanupService
 
     @MainActor
-    static func production(accessPolicy: SandboxFileAccessPolicy) -> Self {
+    static func production(
+        accessPolicy: SandboxFileAccessPolicy,
+        folderAccessGrants: any FolderAccessGrantProviding
+    ) -> Self {
         let scheduler = FileSystemOperationScheduler.shared
         let paneFileSystem = FileSystemService(accessPolicy: accessPolicy, scheduler: scheduler)
-        let folderAccessGrants = FolderAccessGrantService.shared
         let fileOperations = FileOperationService(accessPolicy: accessPolicy)
         return Self(
             accessPolicy: accessPolicy,

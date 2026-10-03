@@ -54,26 +54,39 @@ package final class SettingsService: SettingsPreferences, AppearanceSettingsProv
     package static var jsonSettingsURL: URL { SettingsRepository.defaultJSONURL }
 
     private let repository: SettingsPersisting
-    private let startupNavigation: StartupNavigationService
-    private let grantService: FolderAccessGrantService
-    private let sessionState: WindowSessionState
+    private let startupNavigation: any StartupDirectoryResolving
+    private let grantService: any FolderAccessGrantProviding
+    private let sessionState: any WindowSessionStateProviding
+    package var folderAccessGrantsForComposition: any FolderAccessGrantProviding { grantService }
 
     package init(
-        defaults: UserDefaults = .standard,
+        repository: any SettingsPersisting,
+        startupNavigation: any StartupDirectoryResolving,
+        folderAccessGrants: any FolderAccessGrantProviding,
+        sessionState: any WindowSessionStateProviding
+    ) {
+        self.repository = repository
+        self.startupNavigation = startupNavigation
+        grantService = folderAccessGrants
+        self.sessionState = sessionState
+    }
+
+    /// Compatibility factory for tests that need isolated persistence and path probes.
+    /// Production feature code must receive assembled capabilities through `init`.
+    package static func testing(
+        defaults: UserDefaults,
         accessPolicy: SandboxFileAccessPolicy? = nil,
         folderAccessBookmarkResolver: FolderAccessBookmarkResolving = SystemFolderAccessBookmarkResolver(),
         jsonSettingsURLProvider: (() -> URL)? = nil,
         homeDirectoryProvider: @escaping () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         documentsDirectoryProvider: @escaping () -> URL = { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents", isDirectory: true) },
         applicationSupportDirectoryProvider: @escaping () -> URL = { SettingsRepository.defaultJSONURL.deletingLastPathComponent() },
-        sessionState: WindowSessionState = WindowSessionState()
-    ) {
+        sessionState: any WindowSessionStateProviding = WindowSessionState()
+    ) -> SettingsService {
         let repository = SettingsRepository(defaults: defaults, jsonURLProvider: jsonSettingsURLProvider)
         let grants = FolderAccessGrantService(defaults: defaults, resolver: folderAccessBookmarkResolver)
-        self.repository = repository
-        grantService = grants
-        self.sessionState = sessionState
-        startupNavigation = StartupNavigationService(settings: repository, accessPolicy: accessPolicy, grantService: grants, homeDirectoryProvider: homeDirectoryProvider, documentsDirectoryProvider: documentsDirectoryProvider, applicationSupportDirectoryProvider: applicationSupportDirectoryProvider)
+        let navigation = StartupNavigationService(settings: repository, accessPolicy: accessPolicy, grantService: grants, homeDirectoryProvider: homeDirectoryProvider, documentsDirectoryProvider: documentsDirectoryProvider, applicationSupportDirectoryProvider: applicationSupportDirectoryProvider)
+        return SettingsService(repository: repository, startupNavigation: navigation, folderAccessGrants: grants, sessionState: sessionState)
     }
 
     private var snapshot: SettingsSnapshot { repository.snapshot }
