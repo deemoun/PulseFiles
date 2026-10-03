@@ -93,7 +93,6 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private let thumbnailLoader: any ThumbnailLoading
     private let standardFolderAccess: any StandardFolderAccessProviding
     private let folderAccessGrants: any FolderAccessGrantProviding
-    private var recentOperationSummaries: [DiagnosticOperationSummary] = []
 
     private lazy var leftStartupResolution = settings.startupDirectoryResolution(for: .left)
     private lazy var rightStartupResolution = settings.startupDirectoryResolution(for: .right)
@@ -177,8 +176,13 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     }
     private let fileSizeService: any FileSizeResolving
     private let readOnlyViewerService: any ViewerContentLoading
-    private let diagnosticsExporter: any DiagnosticsExporting
     private let fileOperationPresentationCoordinator = FileOperationPresentationCoordinator()
+    lazy var diagnosticsWorkflow = DiagnosticsWorkflow(
+        exporter: diagnosticsExporter,
+        folderSelection: authorizedFolderSelection,
+        showError: { [weak self] message, detail in self?.showError(message: message, detail: detail) }
+    )
+    private let diagnosticsExporter: any DiagnosticsExporting
     private let stagingCleanupFactory: (@escaping () -> [URL]) -> StagingCleanupService
     private let scratchCleanupFactory: (@escaping () -> [URL]) -> ScratchFolderCleanupService
     private lazy var scratchDirectoryCoordinator = ScratchDirectoryWorkflowCoordinator(
@@ -205,6 +209,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         ),
         output: { [weak self] in self?.handle($0) }
     )
+    lazy var appKitCommandAdapter = MainWindowCommandAdapter(handler: self)
     private lazy var previewCoordinator = PreviewCoordinator(accessPolicy: accessPolicy, probe: fileSystemProbe)
     private lazy var navigationCoordinator = NavigationCoordinator(probe: fileSystemProbe)
 
@@ -237,6 +242,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
     private var isTerminalInstalled: Bool { terminalLayoutCoordinator.isInstalled }
     private var isSinglePaneMode = false
     private let fileOperationCoordinator = FileOperationCoordinator()
+    private let paneRefreshCoordinator = PaneRefreshCoordinator()
     private lazy var operationCoordinator = MainWindowFileOperationCoordinator(
         fileOperations: fileOperations,
         state: fileOperationCoordinator,
@@ -244,12 +250,14 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         presenter: self,
         onActivityChanged: { [weak self] in self?.refreshCommandAvailability() },
         onDefaultRefresh: { [weak self] in self?.refreshBothPanes() },
-        onResult: { [weak self] name, result in self?.recordOperationSummary(name, result: result) },
+        onResult: { [weak self] name, result in self?.diagnosticsWorkflow.record(operation: name, result: result) },
         onOperationStarted: { [weak self] in self?.clearClipboardFeedback() }
     )
-    var quickLookPreviewURL: NSURL?
-    private var quickLookProbeGeneration = 0
-    private lazy var readOnlyViewerCoordinator = ReadOnlyViewerPresentationCoordinator(service: readOnlyViewerService)
+    lazy var previewPresentationAdapter = PreviewPresentationAdapter(
+        preview: previewCoordinator,
+        viewerService: readOnlyViewerService,
+        showError: { [weak self] message, detail in self?.showError(message: message, detail: detail) }
+    )
     private lazy var fileOperationUIAdapter = FileOperationUIAdapter(
         presentation: fileOperationPresentationCoordinator,
         progress: fileOperationProgressWindowController,
@@ -943,30 +951,8 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
             return
         }
 
-        quickLookProbeGeneration += 1
-        let generation = quickLookProbeGeneration
-        Task { [weak self] in
-            guard let self else { return }
-            let availability = await self.previewCoordinator.availability(of: item.url)
-            guard generation == self.quickLookProbeGeneration,
-                  self.targetPane().focusedItem?.url == item.url else { return }
-            if case .blocked(let detail) = availability {
-                self.showError(message: "Preview Blocked".localized, detail: detail)
-                return
-            }
-            guard availability == .available else {
-                self.showError(message: "Preview Unavailable".localized, detail: "The selected item is unavailable or no longer exists.".localized)
-                return
-            }
-            self.quickLookPreviewURL = item.url as NSURL
-            guard let panel = QLPreviewPanel.shared() else {
-                self.showError(message: "Preview Unavailable".localized, detail: "Quick Look is not available for this item.".localized)
-                return
-            }
-            panel.dataSource = self
-            panel.delegate = self
-            panel.reloadData()
-            panel.makeKeyAndOrderFront(nil)
+        previewPresentationAdapter.present(.quickLook(url: item.url)) { [weak self] url in
+            self?.targetPane().focusedItem?.url == url
         }
     }
 
@@ -975,7 +961,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
             showError(message: "Nothing Selected".localized, detail: "Select a file to view.".localized)
             return
         }
-        readOnlyViewerCoordinator.present(item.url)
+        previewPresentationAdapter.present(.viewer(url: item.url, isDirectory: item.isDirectory))
     }
 }
 
@@ -1119,26 +1105,18 @@ extension MainWindowViewController {
 
     private func toggleTerminal() {
         DiagnosticLogger.log(.info, category: "Terminal", "Terminal toggle requested: currentlyVisible=\(isTerminalInstalled); experimentEnabled=\(settings.experimentalTerminalEnabled)")
-        terminalPresentationCoordinator.synchronize(installed: isTerminalInstalled)
-        switch terminalPresentationCoordinator.toggle(isEnabled: settings.experimentalTerminalEnabled) {
-        case .hide:
-            removeTerminalPanel()
-            settings.isTerminalVisible = false
-            view.window?.makeFirstResponder(targetPane().tableView)
-        case .disabled:
-            DiagnosticLogger.log(.warning, category: "Terminal", "Terminal toggle denied because experimental terminal is disabled")
-            showTerminalDisabledAlert()
-        case .show:
-            installTerminalPanel(showWarning: true)
-            settings.isTerminalVisible = true
-            terminal.suggestedWorkingDirectory = terminalPresentationCoordinator.workingDirectory(
-                activePaneURL: targetPane().currentDirectory,
-                accessPolicy: accessPolicy
-            )
-            view.layoutSubtreeIfNeeded()
-            contentSplitView.setPosition(max(220, contentSplitView.bounds.height - 180), ofDividerAt: 0)
-            terminal.focusCommandField()
-        }
+        _ = terminalLayoutCoordinator.toggle(
+            inputs: .init(
+                settings: settings, terminal: terminal, splitView: contentSplitView,
+                activeDirectory: targetPane().currentDirectory, accessPolicy: accessPolicy,
+                focusPane: { [weak self] in self?.view.window?.makeFirstResponder(self?.targetPane().tableView) },
+                presentDisabledWarning: { [weak self] in self?.showTerminalDisabledAlert() },
+                presentFirstUseWarning: { [weak self] in self?.showFirstUseTerminalWarningIfNeeded() },
+                layout: { [weak self] in self?.view.layoutSubtreeIfNeeded() }
+            ),
+            presentation: terminalPresentationCoordinator,
+            heightConstraint: &terminalHeightConstraint
+        )
     }
 
     private func installTerminalPanel(showWarning: Bool = false) {
@@ -1199,18 +1177,12 @@ extension MainWindowViewController {
     }
 
     private func setSidebarVisible(_ visible: Bool) {
-        if visible {
-            installSidebarView()
-        } else {
-            persistSidebarWidthFromSplitPosition()
-            removeSidebarView()
-        }
-        settings.isSidebarVisible = visible
-        view.layoutSubtreeIfNeeded()
-        if visible {
-            applySidebarSplitPosition()
-        }
-        updateSidebarToolbarItem()
+        _ = sidebarLayoutCoordinator.setVisible(visible, inputs: .init(
+            settings: settings, sidebarView: sidebar.view, splitView: rootSplitView,
+            constraints: [sidebarMinWidthConstraint, sidebarMaxWidthConstraint].compactMap { $0 },
+            layout: { [weak self] in self?.view.layoutSubtreeIfNeeded() },
+            updateToolbar: { [weak self] in self?.updateSidebarToolbarItem() }
+        ))
     }
 
     private func applySidebarSplitPosition() {
@@ -1564,36 +1536,8 @@ extension MainWindowViewController {
 
     private func detachActiveFileOperation() { operationCoordinator.detach() }
 
-    private func recordOperationSummary(_ operation: String, result: FileOperationResult) {
-        recentOperationSummaries.append(DiagnosticOperationSummary(operation: operation, result: result))
-        if recentOperationSummaries.count > 20 { recentOperationSummaries.removeFirst(recentOperationSummaries.count - 20) }
-    }
-
     private func exportDiagnostics() {
-        let window = view.window
-        let request = AuthorizedFolderSelectionCoordinator.Request(
-            prompt: "Export".localized,
-            message: "Choose a folder for a local support bundle. Review it before attaching it to a support request.".localized,
-            acceptsExistingAccessibleURL: true,
-            presentingWindow: window
-        )
-        authorizedFolderSelection.selectFolder(for: request) { [weak self] result in
-            guard let self else { return }
-            guard case .success(let destination) = result else {
-                if case .failure(let failure) = result { FolderAccessFailurePresenter.present(failure, in: window) }
-                return
-            }
-            do {
-                try fileOperationPresentationCoordinator.exportDiagnostics(
-                    to: destination, exporter: diagnosticsExporter,
-                    entries: DiagnosticLogService.shared.entries,
-                    operationSummaries: recentOperationSummaries,
-                    reveal: NSWorkspace.shared.activateFileViewerSelecting
-                )
-            } catch {
-                showError(message: "Could Not Export Diagnostics".localized, detail: error.localizedDescription)
-            }
-        }
+        diagnosticsWorkflow.presentExport(in: view.window)
     }
 
     private func startFileOperation(named operationName: String, captureRecovery: Bool = false, operation: @escaping (FileOperationProgressHandler?) async throws -> FileOperationResult, refresh: ((FileOperationResult) -> Void)? = nil, completion: ((FileOperationResult) -> Void)? = nil) {
@@ -1667,24 +1611,22 @@ extension MainWindowViewController {
 
     private func refreshPanesAfterRename(sourceURL: URL, result: FileOperationResult) {
         let panes = [leftPane, rightPane]
-        let plan = RenamePaneRefreshPlan(currentDirectories: panes.map(\.currentDirectory), sourceURL: sourceURL)
-        guard let renamedURL = result.completedItems.first else {
-            refreshPanes(panes)
-            return
-        }
+        let route = paneRefreshCoordinator.afterRename(
+            currentDirectories: panes.map(\.currentDirectory), sourceURL: sourceURL, result: result
+        )
 
         // Capture this before loads complete: their selection notifications must
         // not change which pane receives keyboard focus after the rename.
         let activePaneID = self.activePaneID
-        let renamedPanes = plan.renamedPaneIndexes.map { panes[$0] }
-        let genericPanes = plan.genericRefreshPaneIndexes.map { panes[$0] }
+        let renamedPanes = route.targetedReload?.paneIndexes.map { panes[$0] } ?? []
+        let genericPanes = route.genericPaneIndexes.map { panes[$0] }
         refreshPanes(genericPanes)
-        guard !renamedPanes.isEmpty else { return }
+        guard let targetedReload = route.targetedReload, !renamedPanes.isEmpty else { return }
 
         var remainingReloads = renamedPanes.count
         renamedPanes.forEach { pane in
             pane.viewModel.invalidateCurrentDirectorySnapshot()
-            pane.loadDirectory(selecting: renamedURL) { [weak self] in
+            pane.loadDirectory(selecting: targetedReload.selectionURL) { [weak self] in
                 guard let self else { return }
                 remainingReloads -= 1
                 guard remainingReloads == 0 else { return }
@@ -1743,74 +1685,78 @@ extension MainWindowViewController {
     func workflowFailed(message: String, detail: String) { showError(message: message, detail: detail) }
     func resolveWorkflowConflict(destination: URL, operationName: String) async -> FileConflictResolution { await resolveFileOperationConflict(destination: destination, operationName: operationName) }
 
-    @objc func menuNewFile(_ sender: Any?) { performCommand(.newFile) }
-    @objc func menuNewFolder(_ sender: Any?) { performCommand(.newFolder) }
-    @objc func menuRename(_ sender: Any?) { performCommand(.rename) }
-    @objc func menuBatchRename(_ sender: Any?) { performCommand(.batchRename) }
-    @objc func menuCreateArchive(_ sender: Any?) { performCommand(.createArchive) }
-    @objc func menuExtractArchive(_ sender: Any?) { performCommand(.extractArchive) }
-    @objc func menuDuplicate(_ sender: Any?) { performCommand(.duplicate) }
-    @objc func menuGetInfo(_ sender: Any?) { performCommand(.getInfo) }
-    @objc func menuSelectAll(_ sender: Any?) { performCommand(.selectAll) }
-    @objc func menuDeselectAll(_ sender: Any?) { performCommand(.deselectAll) }
-    @objc func menuSelectByPattern(_ sender: Any?) { performCommand(.selectByPattern) }
-    @objc func menuDeselectByPattern(_ sender: Any?) { performCommand(.deselectByPattern) }
-    @objc func menuSelectSameExtension(_ sender: Any?) { performCommand(.selectSameExtension) }
-    @objc func menuDeselectSameExtension(_ sender: Any?) { performCommand(.deselectSameExtension) }
-    @objc func menuInvertSelection(_ sender: Any?) { performCommand(.invertSelection) }
-    @objc func menuUndo(_ sender: Any?) { performCommand(.undo) }
-    @objc func menuOpenWith(_ sender: Any?) { performCommand(.openWith) }
-    @objc func menuViewer(_ sender: Any?) { performCommand(.viewer) }
-    @objc func menuCopy(_ sender: Any?) { performCommand(.copy) }
-    @objc func menuMove(_ sender: Any?) { performCommand(.move) }
-    @objc func menuCopyToClipboard(_ sender: Any?) { performCommand(.copyToClipboard) }
-    @objc func menuCutToClipboard(_ sender: Any?) { performCommand(.cutToClipboard) }
-    @objc func menuPasteFromClipboard(_ sender: Any?) { performCommand(.pasteFromClipboard) }
-    @objc func menuMoveToTrash(_ sender: Any?) { performCommand(.trash) }
-    @objc func menuRefresh(_ sender: Any?) { performCommand(.refresh) }
-    @objc func menuReveal(_ sender: Any?) { performCommand(.reveal) }
-    @objc func menuToggleHiddenFiles(_ sender: Any?) { performCommand(.toggleHiddenFiles) }
+    private func forwardMenuCommand(_ command: MainCommand) {
+        appKitCommandAdapter.forward(commandCoordinator.route(command, from: .menu))
+    }
+
+    @objc func menuNewFile(_ sender: Any?) { forwardMenuCommand(.newFile) }
+    @objc func menuNewFolder(_ sender: Any?) { forwardMenuCommand(.newFolder) }
+    @objc func menuRename(_ sender: Any?) { forwardMenuCommand(.rename) }
+    @objc func menuBatchRename(_ sender: Any?) { forwardMenuCommand(.batchRename) }
+    @objc func menuCreateArchive(_ sender: Any?) { forwardMenuCommand(.createArchive) }
+    @objc func menuExtractArchive(_ sender: Any?) { forwardMenuCommand(.extractArchive) }
+    @objc func menuDuplicate(_ sender: Any?) { forwardMenuCommand(.duplicate) }
+    @objc func menuGetInfo(_ sender: Any?) { forwardMenuCommand(.getInfo) }
+    @objc func menuSelectAll(_ sender: Any?) { forwardMenuCommand(.selectAll) }
+    @objc func menuDeselectAll(_ sender: Any?) { forwardMenuCommand(.deselectAll) }
+    @objc func menuSelectByPattern(_ sender: Any?) { forwardMenuCommand(.selectByPattern) }
+    @objc func menuDeselectByPattern(_ sender: Any?) { forwardMenuCommand(.deselectByPattern) }
+    @objc func menuSelectSameExtension(_ sender: Any?) { forwardMenuCommand(.selectSameExtension) }
+    @objc func menuDeselectSameExtension(_ sender: Any?) { forwardMenuCommand(.deselectSameExtension) }
+    @objc func menuInvertSelection(_ sender: Any?) { forwardMenuCommand(.invertSelection) }
+    @objc func menuUndo(_ sender: Any?) { forwardMenuCommand(.undo) }
+    @objc func menuOpenWith(_ sender: Any?) { forwardMenuCommand(.openWith) }
+    @objc func menuViewer(_ sender: Any?) { forwardMenuCommand(.viewer) }
+    @objc func menuCopy(_ sender: Any?) { forwardMenuCommand(.copy) }
+    @objc func menuMove(_ sender: Any?) { forwardMenuCommand(.move) }
+    @objc func menuCopyToClipboard(_ sender: Any?) { forwardMenuCommand(.copyToClipboard) }
+    @objc func menuCutToClipboard(_ sender: Any?) { forwardMenuCommand(.cutToClipboard) }
+    @objc func menuPasteFromClipboard(_ sender: Any?) { forwardMenuCommand(.pasteFromClipboard) }
+    @objc func menuMoveToTrash(_ sender: Any?) { forwardMenuCommand(.trash) }
+    @objc func menuRefresh(_ sender: Any?) { forwardMenuCommand(.refresh) }
+    @objc func menuReveal(_ sender: Any?) { forwardMenuCommand(.reveal) }
+    @objc func menuToggleHiddenFiles(_ sender: Any?) { forwardMenuCommand(.toggleHiddenFiles) }
     @objc func menuPresentationList(_ sender: Any?) { targetPane().setPresentationMode(.list) }
     @objc func menuPresentationBrief(_ sender: Any?) { targetPane().setPresentationMode(.brief) }
     @objc func menuPresentationGallery(_ sender: Any?) { targetPane().setPresentationMode(.gallery) }
-    @objc func menuSortByName(_ sender: Any?) { performCommand(.sortByName) }
-    @objc func menuSortByExtension(_ sender: Any?) { performCommand(.sortByExtension) }
-    @objc func menuSortByKind(_ sender: Any?) { performCommand(.sortByKind) }
-    @objc func menuSortBySize(_ sender: Any?) { performCommand(.sortBySize) }
-    @objc func menuSortByModified(_ sender: Any?) { performCommand(.sortByModified) }
-    @objc func menuSortByCreated(_ sender: Any?) { performCommand(.sortByCreated) }
-    @objc func menuSortByAdded(_ sender: Any?) { performCommand(.sortByAdded) }
-    @objc func menuSortByAccessed(_ sender: Any?) { performCommand(.sortByAccessed) }
-    @objc func menuSortAscending(_ sender: Any?) { performCommand(.sortAscending) }
-    @objc func menuSortDescending(_ sender: Any?) { performCommand(.sortDescending) }
-    @objc func menuToggleTerminal(_ sender: Any?) { performCommand(.toggleTerminal) }
-    @objc func menuToggleSidebar(_ sender: Any?) { performCommand(.toggleSidebar) }
-    @objc func menuTogglePaneLayout(_ sender: Any?) { performCommand(.togglePaneLayout) }
-    @objc func menuNewTab(_ sender: Any?) { performCommand(.newTab) }
-    @objc func menuCloseTab(_ sender: Any?) { performCommand(.closeTab) }
-    @objc func menuNextTab(_ sender: Any?) { performCommand(.nextTab) }
-    @objc func menuPreviousTab(_ sender: Any?) { performCommand(.previousTab) }
-    @objc func menuBack(_ sender: Any?) { performCommand(.back) }
-    @objc func menuForward(_ sender: Any?) { performCommand(.forward) }
-    @objc func menuParent(_ sender: Any?) { performCommand(.parent) }
-    @objc func menuGoToFolder(_ sender: Any?) { performCommand(.goToFolder) }
-    @objc func menuQuickLocations(_ sender: Any?) { performCommand(.quickLocations) }
-    @objc func menuSearchDescendants(_ sender: Any?) { performCommand(.searchDescendants) }
-    @objc func menuHome(_ sender: Any?) { performCommand(.home) }
-    @objc func menuDownloads(_ sender: Any?) { performCommand(.downloads) }
-    @objc func menuApplications(_ sender: Any?) { performCommand(.applications) }
-    @objc func menuScratchDirectory(_ sender: Any?) { performCommand(.scratchDirectory) }
-    @objc func menuSwitchPane(_ sender: Any?) { performCommand(.switchPane) }
+    @objc func menuSortByName(_ sender: Any?) { forwardMenuCommand(.sortByName) }
+    @objc func menuSortByExtension(_ sender: Any?) { forwardMenuCommand(.sortByExtension) }
+    @objc func menuSortByKind(_ sender: Any?) { forwardMenuCommand(.sortByKind) }
+    @objc func menuSortBySize(_ sender: Any?) { forwardMenuCommand(.sortBySize) }
+    @objc func menuSortByModified(_ sender: Any?) { forwardMenuCommand(.sortByModified) }
+    @objc func menuSortByCreated(_ sender: Any?) { forwardMenuCommand(.sortByCreated) }
+    @objc func menuSortByAdded(_ sender: Any?) { forwardMenuCommand(.sortByAdded) }
+    @objc func menuSortByAccessed(_ sender: Any?) { forwardMenuCommand(.sortByAccessed) }
+    @objc func menuSortAscending(_ sender: Any?) { forwardMenuCommand(.sortAscending) }
+    @objc func menuSortDescending(_ sender: Any?) { forwardMenuCommand(.sortDescending) }
+    @objc func menuToggleTerminal(_ sender: Any?) { forwardMenuCommand(.toggleTerminal) }
+    @objc func menuToggleSidebar(_ sender: Any?) { forwardMenuCommand(.toggleSidebar) }
+    @objc func menuTogglePaneLayout(_ sender: Any?) { forwardMenuCommand(.togglePaneLayout) }
+    @objc func menuNewTab(_ sender: Any?) { forwardMenuCommand(.newTab) }
+    @objc func menuCloseTab(_ sender: Any?) { forwardMenuCommand(.closeTab) }
+    @objc func menuNextTab(_ sender: Any?) { forwardMenuCommand(.nextTab) }
+    @objc func menuPreviousTab(_ sender: Any?) { forwardMenuCommand(.previousTab) }
+    @objc func menuBack(_ sender: Any?) { forwardMenuCommand(.back) }
+    @objc func menuForward(_ sender: Any?) { forwardMenuCommand(.forward) }
+    @objc func menuParent(_ sender: Any?) { forwardMenuCommand(.parent) }
+    @objc func menuGoToFolder(_ sender: Any?) { forwardMenuCommand(.goToFolder) }
+    @objc func menuQuickLocations(_ sender: Any?) { forwardMenuCommand(.quickLocations) }
+    @objc func menuSearchDescendants(_ sender: Any?) { forwardMenuCommand(.searchDescendants) }
+    @objc func menuHome(_ sender: Any?) { forwardMenuCommand(.home) }
+    @objc func menuDownloads(_ sender: Any?) { forwardMenuCommand(.downloads) }
+    @objc func menuApplications(_ sender: Any?) { forwardMenuCommand(.applications) }
+    @objc func menuScratchDirectory(_ sender: Any?) { forwardMenuCommand(.scratchDirectory) }
+    @objc func menuSwitchPane(_ sender: Any?) { forwardMenuCommand(.switchPane) }
     @objc func menuFocusLeftPane(_ sender: Any?) { focusPane(.left) }
     @objc func menuFocusRightPane(_ sender: Any?) { focusPane(.right) }
-    @objc func menuSwapPanes(_ sender: Any?) { performCommand(.swapPanes) }
-    @objc func menuSyncOppositePane(_ sender: Any?) { performCommand(.syncOppositePane) }
-    @objc func menuRevealInOppositePane(_ sender: Any?) { performCommand(.revealInOppositePane) }
-    @objc func menuFollowSymbolicLink(_ sender: Any?) { performCommand(.followSymbolicLink) }
-    @objc func menuCancelOperation(_ sender: Any?) { performCommand(.cancelOperation) }
+    @objc func menuSwapPanes(_ sender: Any?) { forwardMenuCommand(.swapPanes) }
+    @objc func menuSyncOppositePane(_ sender: Any?) { forwardMenuCommand(.syncOppositePane) }
+    @objc func menuRevealInOppositePane(_ sender: Any?) { forwardMenuCommand(.revealInOppositePane) }
+    @objc func menuFollowSymbolicLink(_ sender: Any?) { forwardMenuCommand(.followSymbolicLink) }
+    @objc func menuCancelOperation(_ sender: Any?) { forwardMenuCommand(.cancelOperation) }
     @objc func menuSettings(_ sender: Any?) { presentSettings(sender) }
-    @objc func menuShowDebugLogs(_ sender: Any?) { performCommand(.debugLogs) }
-    @objc func menuExportDiagnostics(_ sender: Any?) { performCommand(.exportDiagnostics) }
+    @objc func menuShowDebugLogs(_ sender: Any?) { forwardMenuCommand(.debugLogs) }
+    @objc func menuExportDiagnostics(_ sender: Any?) { forwardMenuCommand(.exportDiagnostics) }
     @objc func menuEditSettingsJSON(_ sender: Any?) {
         do {
             let url = try settings.writeSettingsJSON()
@@ -1822,68 +1768,23 @@ extension MainWindowViewController {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let routedCommand = MainCommand(menuAction: menuItem.action)
-        let routeAllowsCommand: Bool = {
-            guard let routedCommand else { return true }
-            if case .disabled = commandCoordinator.route(routedCommand, from: .menu) { return false }
+        let routeAllowsCommand: (MainCommand) -> Bool = { [commandCoordinator] command in
+            if case .disabled = commandCoordinator.route(command, from: .menu) { return false }
             return true
-        }()
-        if menuItem.action == #selector(menuUndo(_:)) {
-            menuItem.title = undoRecovery?.undoTitle.localized ?? "Undo".localized
         }
-        if menuItem.action == #selector(menuToggleSidebar(_:)) {
-            menuItem.state = isSidebarInstalled ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuToggleTerminal(_:)) {
-            menuItem.state = isTerminalInstalled ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuTogglePaneLayout(_:)) {
-            menuItem.title = isSinglePaneMode ? "Use Dual Pane".localized : "Use Single Pane".localized
-            menuItem.state = isSinglePaneMode ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuToggleHiddenFiles(_:)) {
-            menuItem.state = targetPane().showsHiddenFiles ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuMoveToTrash(_:)) {
-            menuItem.title = settings.permanentlyDeleteInsteadOfTrash ? "Permanently Delete".localized : "Move to Trash".localized
-        }
-        let sort = targetPane().sortDescriptor
-        if menuItem.action == #selector(menuSortByName(_:)) {
-            menuItem.state = sort.key == .name ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuSortByExtension(_:)) {
-            menuItem.state = sort.key == .extension ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuSortByKind(_:)) {
-            menuItem.state = sort.key == .kind ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuSortBySize(_:)) {
-            menuItem.state = sort.key == .size ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuSortByModified(_:)) {
-            menuItem.state = sort.key == .modified ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuSortByCreated(_:)) { menuItem.state = sort.key == .created ? .on : .off; return routeAllowsCommand }
-        if menuItem.action == #selector(menuSortByAdded(_:)) { menuItem.state = sort.key == .added ? .on : .off; return routeAllowsCommand }
-        if menuItem.action == #selector(menuSortByAccessed(_:)) { menuItem.state = sort.key == .accessed ? .on : .off; return routeAllowsCommand }
-        if menuItem.action == #selector(menuSortAscending(_:)) {
-            menuItem.state = sort.ascending ? .on : .off
-            return routeAllowsCommand
-        }
-        if menuItem.action == #selector(menuSortDescending(_:)) {
-            menuItem.state = sort.ascending ? .off : .on
-            return routeAllowsCommand
-        }
-        menuItem.state = .off
-        return routeAllowsCommand
+        return appKitCommandAdapter.validate(menuItem, command: routedCommand, state: .init(
+            isEnabled: routeAllowsCommand, undoTitle: undoRecovery?.undoTitle,
+            sidebarVisible: isSidebarInstalled, terminalVisible: isTerminalInstalled,
+            singlePane: isSinglePaneMode, showsHiddenFiles: targetPane().showsHiddenFiles,
+            permanentlyDeletes: settings.permanentlyDeleteInsteadOfTrash, sort: targetPane().sortDescriptor
+        ), actions: .init(
+            undo: #selector(menuUndo(_:)), sidebar: #selector(menuToggleSidebar(_:)), terminal: #selector(menuToggleTerminal(_:)),
+            paneLayout: #selector(menuTogglePaneLayout(_:)), hiddenFiles: #selector(menuToggleHiddenFiles(_:)), trash: #selector(menuMoveToTrash(_:)),
+            sortName: #selector(menuSortByName(_:)), sortExtension: #selector(menuSortByExtension(_:)), sortKind: #selector(menuSortByKind(_:)),
+            sortSize: #selector(menuSortBySize(_:)), sortModified: #selector(menuSortByModified(_:)), sortCreated: #selector(menuSortByCreated(_:)),
+            sortAdded: #selector(menuSortByAdded(_:)), sortAccessed: #selector(menuSortByAccessed(_:)),
+            sortAscending: #selector(menuSortAscending(_:)), sortDescending: #selector(menuSortDescending(_:))
+        ))
     }
 
     private func commandSnapshot(for paneID: PaneID) -> MainWindowCommandCoordinator.PaneSnapshot {

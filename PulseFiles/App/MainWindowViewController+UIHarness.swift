@@ -49,5 +49,12 @@ extension MainWindowViewController {
     func uiHarnessPane(_ paneID: PaneID) -> FilePaneViewController {
         pane(for: paneID)
     }
+
+    var uiHarnessHasExtractedPresentationAdapters: Bool {
+        _ = previewPresentationAdapter
+        _ = appKitCommandAdapter
+        _ = diagnosticsWorkflow
+        return true
+    }
 }
 #endif

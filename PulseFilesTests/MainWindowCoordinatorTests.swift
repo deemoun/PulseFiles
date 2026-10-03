@@ -135,6 +135,21 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.clampedWidth(500), 340)
     }
 
+    @MainActor
+    func testPreviewPresentationAdapterRejectsDirectoriesWithoutRetainingPaneState() {
+        var error: (String, String)?
+        let adapter = PreviewPresentationAdapter(
+            preview: PreviewCoordinator(accessPolicy: .current, probe: FileSystemProbeService()),
+            viewerService: ReadOnlyViewerService(),
+            showError: { error = ($0, $1) }
+        )
+
+        adapter.present(.viewer(url: URL(fileURLWithPath: "/tmp/folder", isDirectory: true), isDirectory: true))
+
+        XCTAssertEqual(error?.0, "Nothing Selected".localized)
+        XCTAssertEqual(adapter.retainedViewerWindowCountForTesting, 0)
+    }
+
     func testWindowLayoutControllerTracksIndependentPanelsAndPaneMode() {
         var layout = WindowLayoutController(isSidebarVisible: true, isTerminalVisible: false)
         layout.setSidebarVisible(false)
