@@ -1,33 +1,10 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
-
-package enum ScratchFolderCleanupAction: Equatable, Sendable {
-    case moveToTrash
-    case permanentlyDelete
-}
-
-package struct ScratchFolderSelection: Equatable, Sendable {
-    package let directory: URL
-    package let identity: String
-    package let resolvedPath: String
-
-    package init(directory: URL, identity: String, resolvedPath: String) {
-        self.directory = directory
-        self.identity = identity
-        self.resolvedPath = resolvedPath
-    }
-}
-
-package struct ScratchFolderInventory: Sendable {
-    package let selection: ScratchFolderSelection
-    package let deletionURLs: [URL]
-    package let itemCount: Int
-    package let allocatedByteCount: Int64
-}
 
 package enum ScratchFolderCleanupError: LocalizedError, Equatable {
     case notDirectory(URL)
@@ -57,7 +34,7 @@ package enum ScratchFolderCleanupError: LocalizedError, Equatable {
 
 /// Explicitly inventories and cleans a user-owned scratch folder. This is
 /// intentionally unrelated to PulseFiles' privately owned transfer staging.
-package final class ScratchFolderCleanupService: @unchecked Sendable {
+package final class ScratchFolderCleanupService: ScratchFolderCleanupProviding, @unchecked Sendable {
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy
     private let fileOperations: FileOperationServicing

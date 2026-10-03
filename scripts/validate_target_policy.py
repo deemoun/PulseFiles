@@ -157,7 +157,13 @@ for target in policy["peerPresentationTargets"]:
         text = source.read_text()
         relative = source.relative_to(root).as_posix()
         for type_name in sorted(resource_owners):
-            if re.search(rf"\b{re.escape(type_name)}\s*\(", text, re.S) and f"{relative}:{type_name}" not in exceptions:
+            excepted = f"{relative}:{type_name}" in exceptions
+            if re.search(rf"\b{re.escape(type_name)}\s*\(", text, re.S) and not excepted:
                 error(f"{relative}: peer presentation constructs service resource owner {type_name}")
+            # Presentation boundaries must name capabilities rather than concrete
+            # service owners in stored-property or initializer type positions.
+            typed_boundary = rf"(?:(?:let|var)\s+\w+\s*:\s*|init\s*\([^)]*:\s*){re.escape(type_name)}\b"
+            if re.search(typed_boundary, text, re.S) and not excepted:
+                error(f"{relative}: peer presentation exposes concrete service type {type_name}; depend on a capability protocol")
 
 sys.exit(1 if failed else 0)

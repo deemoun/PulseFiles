@@ -1,27 +1,13 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import Foundation
-
-package struct DirectorySizeResult: Sendable, Equatable {
-    package enum Completeness: Sendable, Equatable {
-        case complete
-        case partial(skippedItemCount: Int)
-    }
-
-    package let bytes: Int64
-    package let completeness: Completeness
-
-    package init(bytes: Int64, completeness: Completeness) {
-        self.bytes = bytes
-        self.completeness = completeness
-    }
-}
 
 /// Performs blocking metadata traversal in the scheduler's bounded, lowest-priority lane.
 /// Symbolic links are counted as zero and never followed. Descendant read failures produce
 /// a lower-bound result rather than turning the bytes read so far into an exact total.
-package final class DirectorySizingService: @unchecked Sendable {
+package final class DirectorySizingService: DirectorySizing, @unchecked Sendable {
     package typealias Traversal = @Sendable (URL, FileManager, FileSystemOperationScheduler.CancellationToken) throws -> DirectorySizeResult
     private let fileManager: FileManager
     private let accessPolicy: SandboxFileAccessPolicy

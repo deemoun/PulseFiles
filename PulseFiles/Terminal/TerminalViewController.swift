@@ -3,7 +3,7 @@
 
 import AppKit
 import PulseFilesPresentationSupport
-import PulseFilesServices
+import PulseFilesCapabilities
 import PulseFilesUtilities
 
 /// An opt-in terminal backed by one interactive shell, rather than a new shell

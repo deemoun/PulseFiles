@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
 
-package final class RecentLocationService {
+package final class RecentLocationService: RecentLocationRecording {
     private let defaults: UserDefaults
     private let key = "recentLocations"
     package private(set) var locations: [URL] = []

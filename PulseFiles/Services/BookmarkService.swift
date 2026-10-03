@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
 
-package final class BookmarkService {
+package final class BookmarkService: BookmarkPersisting {
     private let defaults: UserDefaults
     private let key = "bookmarks"
 

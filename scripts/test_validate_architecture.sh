@@ -12,9 +12,9 @@ trap 'rm -rf "$FIXTURE"' EXIT
 mkdir -p "$FIXTURE/license-root"
 export PULSEFILES_LICENSE_ROOT="$FIXTURE/license-root"
 BASE="$FIXTURE/base"
-mkdir -p "$BASE/PulseFiles"/{App,AppCoordination,Utilities,Models,Services,Commands,PresentationSupport,Terminal,FilePane,Sidebar,Settings}
+mkdir -p "$BASE/PulseFiles"/{App,AppCoordination,Capabilities,Utilities,Models,Services,Commands,PresentationSupport,Terminal,FilePane,Sidebar,Settings}
 mkdir -p "$BASE/PulseFiles/PresentationSupport/Commands"
-mkdir -p "$BASE"/{PulseFilesCoreTests,PulseFilesServicesTests,PulseFilesTests,PulseFilesAppKitUITests}
+mkdir -p "$BASE"/{PulseFilesCoreTests,PulseFilesWorkflowsTests,PulseFilesServicesTests,PulseFilesTests,PulseFilesAppKitUITests}
 cp "$REPO_ROOT/Package.swift" "$BASE/Package.swift"
 
 # Keep the otherwise intentionally sparse fixture targets representative of the
@@ -95,6 +95,18 @@ printf '%s\n' 'package final class BrandNewService {}' > "$case_root/PulseFiles/
 printf '%s\n' 'let service = BrandNewService()' > "$case_root/PulseFiles/Sidebar/Fixture.swift"
 if run_validator "$case_root"; then
   echo 'ERROR: newly introduced service constructor was accepted' >&2
+  exit 1
+fi
+
+# Concrete resource owners are also forbidden at presentation injection boundaries.
+printf '%s\n' 'private let service: BrandNewService' > "$case_root/PulseFiles/Sidebar/Fixture.swift"
+if run_validator "$case_root"; then
+  echo 'ERROR: concrete service stored property was accepted' >&2
+  exit 1
+fi
+printf '%s\n' 'init(service: BrandNewService) {}' > "$case_root/PulseFiles/Sidebar/Fixture.swift"
+if run_validator "$case_root"; then
+  echo 'ERROR: concrete service initializer parameter was accepted' >&2
   exit 1
 fi
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
-import PulseFilesServices
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesPresentationSupport
 
@@ -14,11 +14,11 @@ package final class GeneralSettingsPageController: SettingsPageControllerBase {
     private let confirmMove = NSButton(checkboxWithTitle: "Confirm move operations".localized, target: nil, action: nil)
     private let confirmDelete = NSButton(checkboxWithTitle: "Confirm delete operations".localized, target: nil, action: nil)
     private let permanentDelete = NSButton(checkboxWithTitle: "Permanent delete instead of Move to Trash".localized, target: nil, action: nil)
-    private let stagingCleanupService: StagingCleanupService
+    private let stagingCleanupService: any StagingCleanupProviding
     private lazy var cleanupButton = NSButton(title: "Clear Incomplete Transfers…".localized, target: self, action: #selector(cleanup(_:)))
     package var onMaintenanceCleanup: (() -> Void)?
 
-    package init(settings: GeneralSettingsProviding, stagingCleanupService: StagingCleanupService) {
+    package init(settings: GeneralSettingsProviding, stagingCleanupService: any StagingCleanupProviding) {
         self.settings = settings
         self.stagingCleanupService = stagingCleanupService
         super.init()

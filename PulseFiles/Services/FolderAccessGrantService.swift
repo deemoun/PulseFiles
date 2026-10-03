@@ -1,35 +1,10 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
-
-package struct FolderAccessGrant: Codable, Equatable {
-    package let url: URL
-    package let bookmarkData: Data
-}
-
-package struct FolderAccessScope {
-    fileprivate let urls: [URL]
-
-    package var isActive: Bool {
-        !urls.isEmpty
-    }
-}
-
-/// The usable state of a persisted folder capability for a requested path.
-package enum FolderAccessGrantStatus: Equatable {
-    case noMatchingGrant
-    case staleOrUnavailable
-    case available
-    case inaccessible
-}
-
-package protocol FolderAccessBookmarkResolving {
-    func makeBookmarkData(for url: URL) throws -> Data
-    func resolveBookmarkData(_ data: Data) throws -> (url: URL, isStale: Bool)
-}
 
 package struct SystemFolderAccessBookmarkResolver: FolderAccessBookmarkResolving {
     package init() {}
@@ -43,22 +18,6 @@ package struct SystemFolderAccessBookmarkResolver: FolderAccessBookmarkResolving
         let url = try URL(resolvingBookmarkData: data, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &isStale)
         return (url, isStale)
     }
-}
-
-package protocol FolderAccessGrantProviding: AnyObject {
-    var grants: [FolderAccessGrant] { get set }
-    func grantAccess(to directory: URL) throws -> FolderAccessGrant
-    func refreshResolvedGrants()
-    @discardableResult func removeGrant(for directory: URL) -> Bool
-}
-
-package extension FolderAccessGrantProviding {
-    var grants: [FolderAccessGrant] {
-        get { [] }
-        set {}
-    }
-    func refreshResolvedGrants() {}
-    @discardableResult func removeGrant(for directory: URL) -> Bool { false }
 }
 
 package final class FolderAccessGrantService: FolderAccessGrantProviding {

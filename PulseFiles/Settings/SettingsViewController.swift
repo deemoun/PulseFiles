@@ -3,7 +3,7 @@
 
 import AppKit
 import PulseFilesModels
-import PulseFilesServices
+import PulseFilesCapabilities
 import PulseFilesPresentationSupport
 
 @MainActor
@@ -30,7 +30,7 @@ package final class SettingsViewController: NSViewController {
     private let navigationPage: NavigationSettingsPageController
     private let pages: [Category: SettingsPageController]
 
-    package init(settings: SettingsService, stagingCleanupService: StagingCleanupService, scratchCleanupService: ScratchFolderCleanupService, accessPolicy: any FileAccessValidating & AccessPolicyStatusProviding, accessGrantService: any FolderAccessGrantProviding, standardFolderAccess: any StandardFolderAccessProviding, folderSelection: any AuthorizedFolderSelecting) {
+    package init(settings: SettingsService, stagingCleanupService: any StagingCleanupProviding, scratchCleanupService: any ScratchFolderCleanupProviding, accessPolicy: any FileAccessValidating & AccessPolicyStatusProviding, accessGrantService: any FolderAccessGrantProviding, standardFolderAccess: any StandardFolderAccessProviding, folderSelection: any AuthorizedFolderSelecting) {
         let general = GeneralSettingsPageController(settings: settings, stagingCleanupService: stagingCleanupService)
         let appearance = AppearanceSettingsPageController(settings: settings)
         let navigation = NavigationSettingsPageController(settings: settings, accessPolicy: accessPolicy, scratchCleanupService: scratchCleanupService, folderSelection: folderSelection)

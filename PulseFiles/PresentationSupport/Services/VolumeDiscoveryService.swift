@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import PulseFilesCapabilities
 import PulseFilesServices
 
 /// A mounted filesystem that can be presented in the sidebar without granting access to it.

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
@@ -22,21 +23,6 @@ package enum StagingOwnershipRegistryError: LocalizedError {
         case .persistence: return "PulseFiles could not durably save staging recovery metadata."
         }
     }
-}
-
-package enum StagingOperationState: String, Codable, Sendable {
-    case active
-    case completed
-}
-
-package struct StagingOwnershipRecord: Codable, Equatable, Sendable {
-    package let operationID: UUID
-    package let stagingURL: URL
-    package let createdAt: Date
-    package let destinationURL: URL
-    package let stagingIdentity: String
-    package let destinationIdentity: String
-    package var state: StagingOperationState
 }
 
 /// Persists the minimum durable evidence needed to distinguish PulseFiles'
@@ -167,28 +153,7 @@ package final class StagingOwnershipRegistry: @unchecked Sendable {
     }
 }
 
-package struct StagingCleanupCandidate: Equatable, Sendable {
-    package let record: StagingOwnershipRecord
-    package let byteCount: Int64
-}
-
-package struct StagingCleanupInventory: Equatable, Sendable {
-    package let candidates: [StagingCleanupCandidate]
-    package let legacyItemsForReview: [URL]
-    package var totalByteCount: Int64 { candidates.reduce(0) { $0 + $1.byteCount } }
-}
-
-package struct StagingCleanupFailure: Sendable {
-    package let url: URL
-    package let message: String
-}
-
-package struct StagingCleanupResult: Sendable {
-    package let removed: [URL]
-    package let failures: [StagingCleanupFailure]
-}
-
-package final class StagingCleanupService: @unchecked Sendable {
+package final class StagingCleanupService: StagingCleanupProviding, @unchecked Sendable {
     package static let conservativeAutomaticAge: TimeInterval = 7 * 24 * 60 * 60
 
     private let registry: StagingOwnershipRegistry

@@ -4,29 +4,10 @@
 import AppKit
 import ImageIO
 import PulseFilesModels
+import PulseFilesCapabilities
 import PulseFilesServices
 import PulseFilesUtilities
 import PulseFilesPresentationSupport
-
-package protocol DirectorySizing: Sendable {
-    func size(of root: URL) async throws -> DirectorySizeResult
-}
-
-extension DirectorySizingService: DirectorySizing {}
-
-package protocol RecentLocationRecording: AnyObject {
-    var locations: [URL] { get }
-    var onChange: (([URL]) -> Void)? { get set }
-    func record(_ url: URL)
-}
-
-package protocol BookmarkPersisting: AnyObject {
-    func load() -> [Bookmark]
-    func save(_ bookmarks: [Bookmark])
-}
-
-extension RecentLocationService: RecentLocationRecording {}
-extension BookmarkService: BookmarkPersisting {}
 
 package final class SidebarViewController: NSViewController {
     package typealias MetadataReader = @Sendable (URL) throws -> String?
