@@ -3,20 +3,7 @@
 
 import Darwin
 import Foundation
-
-/// Narrow process capability used by the opt-in terminal presentation. All
-/// writable descriptor construction stays behind this service boundary.
-package protocol TerminalProcess: AnyObject {
-    var isRunning: Bool { get }
-    var terminationStatus: Int32 { get }
-    var outputHandler: ((Data) -> Void)? { get set }
-    var terminationHandler: ((TerminalProcess) -> Void)? { get set }
-    func configure(executableURL: URL, arguments: [String], environment: [String: String], currentDirectoryURL: URL)
-    func run() throws
-    func write(_ data: Data)
-    func resize(columns: Int, rows: Int)
-    func terminate()
-}
+import PulseFilesCapabilities
 
 package final class PTYTerminalProcess: TerminalProcess {
     private let process = Process()
