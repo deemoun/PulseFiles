@@ -31,7 +31,7 @@ package struct DiagnosticOperationSummary: Equatable {
 // FileManager documents its non-delegate operations as safe to call from
 // multiple threads. Provider closures are explicitly @Sendable below.
 package struct DiagnosticsExportService: DiagnosticsExportCapability, @unchecked Sendable {
-    package struct AppInfo: Equatable, Sendable {
+    package struct AppInfo: Equatable {
         let name: String
         let version: String
         let build: String
@@ -54,8 +54,8 @@ package struct DiagnosticsExportService: DiagnosticsExportCapability, @unchecked
 
     package init(
         fileManager: FileManager = .default,
-        dateProvider: @escaping @Sendable () -> Date = { Date() },
-        appInfoProvider: @escaping @Sendable () -> AppInfo = { DiagnosticsExportService.currentAppInfo() }
+        dateProvider: @escaping @Sendable () -> Date = Date.init,
+        appInfoProvider: @escaping @Sendable () -> AppInfo = Self.currentAppInfo
     ) {
         self.fileManager = fileManager
         self.dateProvider = dateProvider
