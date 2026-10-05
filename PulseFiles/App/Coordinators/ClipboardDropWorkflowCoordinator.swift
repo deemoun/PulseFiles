@@ -3,6 +3,7 @@
 
 import PulseFilesCapabilities
 import AppKit
+import PulseFilesPresentationSupport
 import Foundation
 
 /// Owns the pasteboard session, including transient feedback and cut markers.

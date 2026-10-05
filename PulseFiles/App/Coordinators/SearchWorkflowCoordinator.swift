@@ -3,6 +3,9 @@
 
 import PulseFilesCapabilities
 import AppKit
+import PulseFilesUtilities
+import PulseFilesWorkflows
+import PulseFilesServices
 import Foundation
 import PulseFilesModels
 

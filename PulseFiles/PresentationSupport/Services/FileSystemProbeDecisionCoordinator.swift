@@ -21,7 +21,7 @@ package struct FileSystemProbeDecisionCoordinator {
         switch directoryAnswer {
         case .value(true): return .directory(target)
         case .value(false): return .file(target)
-        case .unavailable: return .unavailable
+        case .timedOut, .unavailable: return .unavailable
         }
     }
 
@@ -45,7 +45,7 @@ package struct FileSystemProbeDecisionCoordinator {
             switch answer {
             case .value(false): return candidate
             case .value(true): continue
-            case .unavailable: return nil
+            case .timedOut, .unavailable: return nil
             }
         }
         return nil

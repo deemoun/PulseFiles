@@ -9,4 +9,6 @@ package protocol WindowSessionStateProviding: AnyObject {
 
 package final class WindowSessionState: WindowSessionStateProviding {
     package var runtimeTerminalVisible: Bool?
+
+    package init() {}
 }

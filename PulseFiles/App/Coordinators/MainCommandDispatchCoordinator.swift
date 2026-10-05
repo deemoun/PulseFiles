@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
 import Foundation
 
 /// Narrow seams used by the window workflow coordinators. They intentionally

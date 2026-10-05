@@ -54,8 +54,8 @@ package struct DiagnosticsExportService: DiagnosticsExportCapability, @unchecked
 
     package init(
         fileManager: FileManager = .default,
-        dateProvider: @escaping @Sendable () -> Date = Date.init,
-        appInfoProvider: @escaping @Sendable () -> AppInfo = Self.currentAppInfo
+        dateProvider: @escaping @Sendable () -> Date = { Date() },
+        appInfoProvider: @escaping @Sendable () -> AppInfo = { Self.currentAppInfo() }
     ) {
         self.fileManager = fileManager
         self.dateProvider = dateProvider

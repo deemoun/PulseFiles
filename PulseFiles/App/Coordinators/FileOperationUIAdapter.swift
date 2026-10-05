@@ -4,6 +4,8 @@
 import PulseFilesCapabilities
 import PulseFilesPresentationSupport
 import AppKit
+import PulseFilesUtilities
+import PulseFilesModels
 
 @MainActor
 final class FileOperationUIAdapter {

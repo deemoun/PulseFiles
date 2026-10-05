@@ -3,6 +3,9 @@
 
 import PulseFilesCapabilities
 import AppKit
+import PulseFilesUtilities
+import PulseFilesServices
+import PulseFilesModels
 import Foundation
 import UniformTypeIdentifiers
 

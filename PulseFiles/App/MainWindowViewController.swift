@@ -1053,7 +1053,7 @@ extension MainWindowViewController {
         rightPane.refreshAppearance(style: style)
     }
 
-    @objc private func toolbarViewOptions(_ sender: Any?) {
+    @objc func toolbarViewOptions(_ sender: Any?) {
         let menu = buildViewOptionsMenu()
         if let event = NSApp.currentEvent {
             NSMenu.popUpContextMenu(menu, with: event, for: view)
@@ -1088,7 +1088,7 @@ extension MainWindowViewController {
         return item
     }
 
-    @objc private func toolbarSearchChanged(_ sender: NSSearchField) {
+    @objc func toolbarSearchChanged(_ sender: NSSearchField) {
         targetPane().setSearchQuery(sender.stringValue)
     }
 

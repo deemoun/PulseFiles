@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesPresentationSupport
+import PulseFilesServices
 
 /// Owns terminal policy and presentation state; split-view geometry stays in TerminalLayoutCoordinator.
 @MainActor

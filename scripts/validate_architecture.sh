@@ -84,7 +84,10 @@ fi
 # Keep exceptions exact and auditable. Never add directory or basename globs.
 # Persistence and the PTY descriptor adapter live in Services, so presentation
 # currently needs no mutation exception.
-mapfile -t presentation_mutation_allowlist < <(
+presentation_mutation_allowlist=()
+while IFS= read -r path; do
+  presentation_mutation_allowlist+=("$path")
+done < <(
   python3 -c 'import json,sys; [print(item) for item in json.load(open(sys.argv[1]))["presentationMutationExceptions"]]' \
     "${SCRIPT_DIR}/architecture_policy.json"
 )
@@ -92,7 +95,7 @@ mapfile -t presentation_mutation_allowlist < <(
 for directory in "${presentation_directories[@]}"; do
   [[ -d "$directory" ]] || continue
   rg_arguments=(-n -U "$mutation" "$directory" --glob '*.swift')
-  for path in "${presentation_mutation_allowlist[@]}"; do
+  for path in ${presentation_mutation_allowlist[@]+"${presentation_mutation_allowlist[@]}"}; do
     rg_arguments+=(--glob "!/$path")
   done
   if rg "${rg_arguments[@]}"; then

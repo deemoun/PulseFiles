@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesModels
 import PulseFilesServices
 import PulseFilesUtilities
 
@@ -11,7 +12,7 @@ import PulseFilesUtilities
 final class DiagnosticsWorkflow {
     private let exporter: any DiagnosticsExporting
     private let folderSelection: AuthorizedFolderSelectionCoordinator
-    private let entries: () -> [DiagnosticLogEntry]
+    private let entries: @MainActor () -> [DiagnosticLogEntry]
     private let reveal: ([URL]) -> Void
     private let showError: (String, String) -> Void
     private var operationSummaries: [DiagnosticOperationSummary] = []
@@ -19,7 +20,7 @@ final class DiagnosticsWorkflow {
     init(
         exporter: any DiagnosticsExporting,
         folderSelection: AuthorizedFolderSelectionCoordinator,
-        entries: @escaping () -> [DiagnosticLogEntry] = { DiagnosticLogService.shared.entries },
+        entries: @escaping @MainActor () -> [DiagnosticLogEntry] = { DiagnosticLogService.shared.entries },
         reveal: @escaping ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) },
         showError: @escaping (String, String) -> Void
     ) {

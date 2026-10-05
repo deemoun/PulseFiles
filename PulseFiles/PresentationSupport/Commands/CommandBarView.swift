@@ -81,7 +81,7 @@ package final class CommandBarView: NSVisualEffectView {
         transientStatusLabel.isHidden = status.isEmpty
     }
 
-    func clearOperationStatus() {
+    package func clearOperationStatus() {
         transientStatusLabel.stringValue = ""
         transientStatusLabel.toolTip = nil
         transientStatusLabel.isHidden = true

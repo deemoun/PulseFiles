@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesServices
 import PulseFilesUtilities
 import PulseFilesPresentationSupport
 

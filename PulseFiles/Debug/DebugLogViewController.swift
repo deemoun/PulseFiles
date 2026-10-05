@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesServices
+import PulseFilesPresentationSupport
+import PulseFilesUtilities
 
 @MainActor
 final class DebugLogViewController: NSViewController {

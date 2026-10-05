@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesUtilities
+import PulseFilesServices
+import PulseFilesModels
+import PulseFilesCapabilities
 import Foundation
 
 /// AppKit presentation owned by the main window. The operation coordinator never

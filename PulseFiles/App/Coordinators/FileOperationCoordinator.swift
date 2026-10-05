@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesUtilities
+import PulseFilesModels
 import Foundation
 
 /// Owns workflow state, result presentation, cancellation and safe undo capture.

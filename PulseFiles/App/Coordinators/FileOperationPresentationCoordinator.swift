@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesUtilities
+import PulseFilesServices
+import PulseFilesModels
 
 /// Owns file-operation presentation models. The window supplies only the host
 /// and typed completion closures; this type has no pane/sidebar/settings/terminal

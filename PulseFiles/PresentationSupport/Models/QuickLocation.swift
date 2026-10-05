@@ -42,6 +42,14 @@ package struct QuickLocationEntry: Identifiable, Equatable {
     package let url: URL
     package let availability: QuickLocationAvailability
 
+    package init(id: String, section: QuickLocationSection, title: String, url: URL, availability: QuickLocationAvailability) {
+        self.id = id
+        self.section = section
+        self.title = title
+        self.url = url
+        self.availability = availability
+    }
+
     package var accessibilityIdentifier: String { AccessibilityIdentifiers.QuickLocations.entry(id) }
 }
 

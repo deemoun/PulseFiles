@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesCapabilities
 import PulseFilesPresentationCommands
 import PulseFilesModels
 import PulseFilesServices
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings: SettingsService
     private let accessPolicy: SandboxFileAccessPolicy
     private let fileManager: FileManager
+    private let fileSystemProbe: any FileSystemProbing
     private let mainWindowControllerFactory: (SettingsService) -> MainWindowController
 
     private var mainWindowController: MainWindowController?
@@ -82,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings: SettingsService? = nil,
         accessPolicy: SandboxFileAccessPolicy = .current,
         fileManager: FileManager = .default,
+        fileSystemProbe: (any FileSystemProbing)? = nil,
         mainWindowControllerFactory: ((SettingsService) -> MainWindowController)? = nil
     ) {
         let productionController = settings == nil
@@ -94,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.settings = settings
         self.accessPolicy = assembledAccessPolicy
         self.fileManager = fileManager
+        self.fileSystemProbe = fileSystemProbe ?? FileSystemProbeService(fileManager: fileManager)
         var initialController = productionController
         self.mainWindowControllerFactory = mainWindowControllerFactory ?? { settings in
             if let controller = initialController {

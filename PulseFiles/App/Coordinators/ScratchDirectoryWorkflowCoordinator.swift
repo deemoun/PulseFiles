@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesPresentationSupport
+import PulseFilesServices
+import PulseFilesWorkflows
+import PulseFilesUtilities
 
 /// Owns scratch-folder configuration, access recovery, and persisted selection.
 /// The window supplies only presentation and navigation capabilities.

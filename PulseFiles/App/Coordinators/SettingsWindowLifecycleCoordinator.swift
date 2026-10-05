@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import PulseFilesSettings
 
 /// Owns settings import, propagation ordering, and the single settings-window route.
 /// Its boundaries intentionally expose actions rather than the main-window controller.
