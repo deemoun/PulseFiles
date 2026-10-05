@@ -6,6 +6,9 @@ import Foundation
 import PulseFilesCapabilities
 
 package final class PTYTerminalProcess: TerminalProcess {
+    private static let workingDirectoryBootstrap =
+        "directory=$1; shift; cd -P -- \"$directory\" || exit; exec \"$@\""
+
     private let process = Process()
     private var master: FileHandle?
     private var masterFD: Int32 = -1
@@ -17,10 +20,14 @@ package final class PTYTerminalProcess: TerminalProcess {
     package init() {}
 
     package func configure(executableURL: URL, arguments: [String], environment: [String: String], currentDirectoryURL: URL) {
-        process.executableURL = executableURL
-        process.arguments = arguments
+        // On affected macOS versions, setting Process.currentDirectoryURL can
+        // corrupt AppKit's subsequent view-layout state, even before run().
+        // Change directory in the child instead. All user paths remain argv
+        // values, never interpolated into shell source.
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", Self.workingDirectoryBootstrap, "pulsefiles-terminal",
+            currentDirectoryURL.path, executableURL.path] + arguments
         process.environment = environment
-        process.currentDirectoryURL = currentDirectoryURL
     }
 
     package func run() throws {
@@ -36,8 +43,18 @@ package final class PTYTerminalProcess: TerminalProcess {
         process.standardOutput = FileHandle(fileDescriptor: dup(slaveFD), closeOnDealloc: true)
         process.standardError = FileHandle(fileDescriptor: slaveFD, closeOnDealloc: true)
         master.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if !data.isEmpty { self?.outputHandler?(data) }
+            // Read only the currently available bytes. Foundation's counted
+            // read can wait for a full buffer; availableData can raise an
+            // Objective-C exception for the EIO returned at PTY EOF.
+            var bytes = [UInt8](repeating: 0, count: 4096)
+            let count = bytes.withUnsafeMutableBytes { buffer in
+                Darwin.read(handle.fileDescriptor, buffer.baseAddress, buffer.count)
+            }
+            if count > 0 {
+                self?.outputHandler?(Data(bytes.prefix(count)))
+            } else if count == 0 || (errno != EINTR && errno != EAGAIN) {
+                handle.readabilityHandler = nil
+            }
         }
         process.terminationHandler = { [weak self] _ in
             guard let self else { return }

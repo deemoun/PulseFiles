@@ -360,6 +360,10 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         #endif
         buildLayout()
         bindPaneCallbacks()
+        // Shell startup requires the permission and working-directory callbacks.
+        if settings.experimentalTerminalEnabled && settings.defaultTerminalVisible {
+            installTerminalPanel(showWarning: true)
+        }
         volumeChangeMonitor.onVolumesChanged = { [weak self] change in
             guard let self else { return }
             self.sidebar.refreshDevices()
@@ -455,9 +459,6 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         setSinglePaneMode(settings.defaultSinglePaneMode, focusPane: activePaneID)
 
         addChild(terminal)
-        if settings.experimentalTerminalEnabled && settings.defaultTerminalVisible {
-            installTerminalPanel(showWarning: true)
-        }
     }
 
     override func viewDidLayout() {

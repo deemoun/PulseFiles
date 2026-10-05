@@ -39,6 +39,38 @@ final class CompositionRootUITests: XCTestCase {
         XCTAssertTrue(composition.folderAccessGrants === grants)
     }
 
+    func testDefaultVisibleEnabledTerminalStartsAutomaticallyAfterCallbacksAreBound() throws {
+        let suiteName = "TerminalStartup-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let policy = SandboxFileAccessPolicy.current
+        let process = CompositionTerminalProcessSpy()
+        var starts = 0
+        let dependencies = MainWindowDependencies.production(accessPolicy: policy, folderAccessGrants: FolderAccessGrantService.shared)
+            .replacingTerminalProcessFactory { starts += 1; return process }
+        let settings = SettingsService.testing(defaults: defaults, accessPolicy: policy)
+        settings.experimentalTerminalEnabled = true
+        settings.defaultTerminalVisible = true
+        settings.hasAcknowledgedTerminalWarning = true
+        let controller = MainWindowViewController(settings: settings, dependencies: dependencies,
+            workflowDependencies: .production(from: dependencies, accessPolicy: policy), sandboxRootEnsurer: {})
+        controller.loadViewIfNeeded()
+        XCTAssertEqual(starts, 1)
+        XCTAssertTrue(process.didRun)
+        controller.startTerminalSessionForCompositionTesting()
+        XCTAssertEqual(starts, 1)
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+            styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentViewController = controller
+        defer { window.contentViewController = nil }
+        for size in [NSSize(width: 1200, height: 800), NSSize(width: 1000, height: 650), NSSize(width: 1400, height: 900)] {
+            window.setContentSize(size)
+            controller.view.layoutSubtreeIfNeeded()
+            controller.view.displayIfNeeded()
+        }
+    }
+
     func testStartingTerminalSessionUsesInjectedProcessFactory() {
         let policy = SandboxFileAccessPolicy.current
         let process = CompositionTerminalProcessSpy()
@@ -63,6 +95,33 @@ final class CompositionRootUITests: XCTestCase {
 
         XCTAssertEqual(factoryInvocationCount, 1)
         XCTAssertTrue(process.didRun)
+    }
+
+    func testOpeningRealTerminalAtRootDoesNotCrashWindowLayout() throws {
+        let suiteName = "TerminalLayout-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let policy = SandboxFileAccessPolicy(isEnabled: false, rootURL: URL(fileURLWithPath: "/"))
+        let settings = SettingsService.testing(defaults: defaults, accessPolicy: policy)
+        settings.experimentalTerminalEnabled = true
+        settings.hasAcknowledgedTerminalWarning = true
+        settings.defaultSidebarVisible = false
+        settings.liquidGlassEnabled = true
+        settings.startupLeftDirectory = URL(fileURLWithPath: "/", isDirectory: true)
+        settings.rightPanePresentationMode = .brief
+        let dependencies = MainWindowDependencies.production(accessPolicy: policy, folderAccessGrants: FolderAccessGrantService.shared)
+        let controller = MainWindowViewController(settings: settings, dependencies: dependencies,
+            workflowDependencies: .production(from: dependencies, accessPolicy: policy), sandboxRootEnsurer: {})
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+            styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentViewController = controller
+        defer { window.contentViewController = nil }
+        for index in 0..<10 {
+            controller.menuToggleTerminal(nil)
+            window.setContentSize(NSSize(width: index.isMultiple(of: 2) ? 1100 : 1200, height: 750))
+            controller.view.layoutSubtreeIfNeeded()
+            controller.view.displayIfNeeded()
+        }
     }
 }
 

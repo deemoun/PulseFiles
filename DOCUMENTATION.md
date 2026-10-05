@@ -419,6 +419,11 @@ modify or delete files and may access any locations macOS has authorized for Pul
 TerminalViewController follows an authorized active-pane directory where possible, holds
 the access scope for command lifetime, reports launch/non-zero-exit errors, and can
 best-effort stop a running process; it cannot undo shell changes.
+PTYTerminalProcess changes directory in the child through a fixed shell bootstrap;
+folder paths and executable arguments are passed separately, never interpolated into
+shell code. This avoids a macOS crash reproduced when assigning the authorized folder
+to Foundation's Process.currentDirectoryURL before terminal layout. Shell startup
+occurs only after the authorization and directory callbacks are bound.
 
 SettingsRepository owns durable preferences and the compatible v1 JSON document;
 StartupNavigationService owns launch-folder resolution and authorization. SettingsService

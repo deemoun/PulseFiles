@@ -120,7 +120,7 @@ package final class TerminalViewController: NSViewController {
             }
         }
         runningProcess = process; runningAccessScope = scope
-        do { try process.run(); viewDidLayout() } catch { runningProcess = nil; endRunningAccessScope(); appendLine("Could not start terminal: \(error.localizedDescription)") }
+        do { try process.run() } catch { runningProcess = nil; endRunningAccessScope(); appendLine("Could not start terminal: \(error.localizedDescription)") }
     }
     private func endRunningAccessScope() { guard let scope = runningAccessScope else { return }; accessPolicy.endAccess(scope); runningAccessScope = nil }
     private func queueOutput(_ text: String) { outputLock.lock(); pendingOutput += text; pendingOutput = bounded(pendingOutput); let schedule = !isOutputFlushScheduled; isOutputFlushScheduled = true; outputLock.unlock(); if schedule { DispatchQueue.main.async { [weak self] in self?.flushBufferedOutput() } } }
