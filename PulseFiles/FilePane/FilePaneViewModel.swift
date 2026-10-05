@@ -446,7 +446,6 @@ package final class FilePaneViewModel {
         onLoaded: (() -> Void)? = nil
     ) {
         loadCoordinator.cancel()
-        activeLoadID = loadID
         let loadChangeGeneration = changeGeneration ?? directoryChangeGeneration
         DiagnosticLogger.log(.info, category: "FilePane", "Directory load started: path=\(DiagnosticLogger.sanitizedPath(directory)); includeHidden=\(state.showsHiddenFiles); sort=\(state.sort.key.rawValue); ascending=\(state.sort.ascending)")
         errorMessage = nil
