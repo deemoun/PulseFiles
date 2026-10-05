@@ -5,6 +5,7 @@ import AppKit
 import PulseFilesModels
 import PulseFilesCapabilities
 import PulseFilesPresentationSupport
+import PulseFilesUtilities
 
 @MainActor
 package final class NavigationSettingsPageController: SettingsPageControllerBase {

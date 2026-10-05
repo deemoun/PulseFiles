@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import PulseFilesCapabilities
 import PulseFilesUtilities
 import PulseFilesModels
 import Foundation
@@ -27,8 +28,10 @@ package struct DiagnosticOperationSummary: Equatable {
     }
 }
 
-package struct DiagnosticsExportService: DiagnosticsExportCapability {
-    package struct AppInfo: Equatable {
+// FileManager documents its non-delegate operations as safe to call from
+// multiple threads. Provider closures are explicitly @Sendable below.
+package struct DiagnosticsExportService: DiagnosticsExportCapability, @unchecked Sendable {
+    package struct AppInfo: Equatable, Sendable {
         let name: String
         let version: String
         let build: String
@@ -46,13 +49,13 @@ package struct DiagnosticsExportService: DiagnosticsExportCapability {
     """
 
     package let fileManager: FileManager
-    package let dateProvider: () -> Date
-    package let appInfoProvider: () -> AppInfo
+    package let dateProvider: @Sendable () -> Date
+    package let appInfoProvider: @Sendable () -> AppInfo
 
     package init(
         fileManager: FileManager = .default,
-        dateProvider: @escaping () -> Date = Date.init,
-        appInfoProvider: @escaping () -> AppInfo = Self.currentAppInfo
+        dateProvider: @escaping @Sendable () -> Date = { Date() },
+        appInfoProvider: @escaping @Sendable () -> AppInfo = { DiagnosticsExportService.currentAppInfo() }
     ) {
         self.fileManager = fileManager
         self.dateProvider = dateProvider

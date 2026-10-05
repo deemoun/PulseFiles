@@ -814,6 +814,10 @@ package final class FilePaneViewController: NSViewController {
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
     }
 
+    package func recordSelectionForRestoration(_ urls: [URL]) {
+        selectionRestoration.record(urls)
+    }
+
     package func configureStatusView() {
         volumeStatusCache.resolveIfNeeded(
             for: viewModel.currentDirectory,
