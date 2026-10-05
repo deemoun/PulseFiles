@@ -5,6 +5,16 @@ import AppKit
 import PulseFilesCapabilities
 import PulseFilesPresentationSupport
 
+private extension StandardFolder {
+    var title: String {
+        switch self {
+        case .desktop: return "Desktop".localized
+        case .documents: return "Documents".localized
+        case .downloads: return "Downloads".localized
+        }
+    }
+}
+
 @MainActor
 package final class AccessSettingsPageController: SettingsPageControllerBase {
     private let accessPolicy: any AccessPolicyStatusProviding

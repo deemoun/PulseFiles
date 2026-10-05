@@ -1,37 +1,17 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import PulseFilesUtilities
-import PulseFilesModels
+import PulseFilesCapabilities
 import Foundation
 
-package enum StandardFolder: String, CaseIterable {
-    case desktop
-    case documents
-    case downloads
-
-    package var searchPathDirectory: FileManager.SearchPathDirectory {
+private extension StandardFolder {
+    var searchPathDirectory: FileManager.SearchPathDirectory {
         switch self {
         case .desktop: return .desktopDirectory
         case .documents: return .documentDirectory
         case .downloads: return .downloadsDirectory
         }
     }
-
-    package var title: String {
-        switch self {
-        case .desktop: return "Desktop".localized
-        case .documents: return "Documents".localized
-        case .downloads: return "Downloads".localized
-        }
-    }
-}
-
-package enum StandardFolderAccessState: Equatable {
-    case accessible
-    case deniedOrUnavailable
-    case requiresSystemSettingsReview
-    case blockedByExperimentalSandbox
 }
 
 /// Resolves protected user folders and performs the small read that lets macOS

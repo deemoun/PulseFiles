@@ -32,13 +32,13 @@ package final class FilePaneViewModel {
         set { navigation.state = newValue }
     }
     private(set) var items: [FileItem] = []
-    private(set) var isLoading: Bool { loadCoordinator.isLoading }
+    package var isLoading: Bool { loadCoordinator.isLoading }
     private(set) var errorMessage: String?
     private(set) var loadFailure: DirectoryLoadFailure?
     /// Non-nil when a directory enumeration omitted children because their metadata
     /// could not be read. The visible items are not a confirmed-current snapshot.
     private(set) var partialRefreshFailure: DirectoryContentsReadError?
-    private(set) var isPartialRefreshRetryScheduled: Bool { loadCoordinator.isRetryScheduled }
+    package var isPartialRefreshRetryScheduled: Bool { loadCoordinator.isRetryScheduled }
     package private(set) var searchQuery = ""
     private(set) var quickSearchMatchMode: QuickSearchMatchMode
     private(set) var quickSearchPresentation: QuickSearchPresentation
@@ -83,7 +83,7 @@ package final class FilePaneViewModel {
         probe: (any FileSystemProbing)? = nil,
         directoryLoadTimeout: TimeInterval = 15,
         directoryMonitor: DirectoryMonitor = DirectoryMonitor(),
-        snapshotCache: DirectorySnapshotCache = DirectorySnapshotCache(),
+        snapshotCache: DirectorySnapshotCache? = nil,
         quickSearchMatchMode: QuickSearchMatchMode = .contains,
         quickSearchPresentation: QuickSearchPresentation = .filterMatches
     ) {
@@ -446,7 +446,6 @@ package final class FilePaneViewModel {
         onLoaded: (() -> Void)? = nil
     ) {
         loadCoordinator.cancel()
-        activeLoadID = loadID
         let loadChangeGeneration = changeGeneration ?? directoryChangeGeneration
         DiagnosticLogger.log(.info, category: "FilePane", "Directory load started: path=\(DiagnosticLogger.sanitizedPath(directory)); includeHidden=\(state.showsHiddenFiles); sort=\(state.sort.key.rawValue); ascending=\(state.sort.ascending)")
         errorMessage = nil

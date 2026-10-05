@@ -168,7 +168,7 @@ extension FilePaneViewController: NSTableViewDataSource, NSTableViewDelegate {
         }
         if !isReloadingData {
             viewModel.setMarkedURLs(Set(selectedItems.map(\.url)))
-            previousSelectionURLs = selectedItems.map(\.url)
+            recordSelectionForRestoration(selectedItems.map(\.url))
         }
         if !isReloadingData {
             navigationDelegate?.filePane(self, didEmit: .activate)

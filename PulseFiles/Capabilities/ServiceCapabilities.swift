@@ -104,6 +104,19 @@ package protocol OperationScopeAccessPolicy: FileAccessValidating {
 }
 package protocol AccessPolicyStatusProviding: AnyObject { var rootURL: URL { get }; var isEnabled: Bool { get } }
 
+package enum StandardFolder: String, CaseIterable {
+    case desktop
+    case documents
+    case downloads
+}
+
+package enum StandardFolderAccessState: Equatable {
+    case accessible
+    case deniedOrUnavailable
+    case requiresSystemSettingsReview
+    case blockedByExperimentalSandbox
+}
+
 // MARK: - Cleanup
 
 package enum ScratchFolderCleanupAction: Equatable, Sendable { case moveToTrash, permanentlyDelete }
@@ -185,3 +198,20 @@ package struct DiagnosticsExportRequest: Sendable, Equatable {
 }
 package struct DiagnosticsExportResult: Sendable, Equatable { package let bundleURL: URL; package init(bundleURL: URL) { self.bundleURL = bundleURL } }
 package protocol DiagnosticsExportCapability: Sendable { func export(_ request: DiagnosticsExportRequest) throws -> DiagnosticsExportResult }
+
+// MARK: - Terminal process
+
+/// Narrow process capability used by the opt-in terminal presentation. The
+/// service implementation keeps writable descriptor construction behind the
+/// services boundary.
+package protocol TerminalProcess: AnyObject {
+    var isRunning: Bool { get }
+    var terminationStatus: Int32 { get }
+    var outputHandler: ((Data) -> Void)? { get set }
+    var terminationHandler: ((TerminalProcess) -> Void)? { get set }
+    func configure(executableURL: URL, arguments: [String], environment: [String: String], currentDirectoryURL: URL)
+    func run() throws
+    func write(_ data: Data)
+    func resize(columns: Int, rows: Int)
+    func terminate()
+}
