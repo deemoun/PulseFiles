@@ -47,13 +47,13 @@ package struct DiagnosticsExportService: DiagnosticsExportCapability {
     """
 
     package let fileManager: FileManager
-    package let dateProvider: () -> Date
-    package let appInfoProvider: () -> AppInfo
+    package let dateProvider: @Sendable () -> Date
+    package let appInfoProvider: @Sendable () -> AppInfo
 
     package init(
         fileManager: FileManager = .default,
-        dateProvider: @escaping () -> Date = Date.init,
-        appInfoProvider: @escaping () -> AppInfo = Self.currentAppInfo
+        dateProvider: @escaping @Sendable () -> Date = Date.init,
+        appInfoProvider: @escaping @Sendable () -> AppInfo = Self.currentAppInfo
     ) {
         self.fileManager = fileManager
         self.dateProvider = dateProvider
