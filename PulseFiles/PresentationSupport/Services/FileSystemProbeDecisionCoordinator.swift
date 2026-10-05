@@ -18,9 +18,11 @@ package struct FileSystemProbeDecisionCoordinator {
         target: URL,
         directoryAnswer: FileSystemProbeAnswer<Bool>
     ) -> SymbolicLinkDestination {
-        if directoryAnswer == .value(true) { return .directory(target) }
-        if directoryAnswer == .value(false) { return .file(target) }
-        return .unavailable
+        switch directoryAnswer {
+        case .value(true): return .directory(target)
+        case .value(false): return .file(target)
+        case .unavailable: return .unavailable
+        }
     }
 
     package static func conflictCandidateIsOccupied(_ answer: FileSystemProbeAnswer<Bool>) -> Bool {
@@ -40,8 +42,11 @@ package struct FileSystemProbeDecisionCoordinator {
             let name = ext.isEmpty ? "\(base)\(suffix)" : "\(base)\(suffix).\(ext)"
             let candidate = destination.deletingLastPathComponent().appendingPathComponent(name)
             let answer = await probe.exists(candidate, deadline: .milliseconds(250))
-            if answer == .value(false) { return candidate }
-            guard answer == .value(true) else { return nil }
+            switch answer {
+            case .value(false): return candidate
+            case .value(true): continue
+            case .unavailable: return nil
+            }
         }
         return nil
     }
