@@ -4,6 +4,7 @@
 import XCTest
 @testable import PulseFiles
 @testable import PulseFilesAppCoordination
+import PulseFilesPresentationSupport
 
 final class MainWindowCoordinatorTests: XCTestCase {
     @MainActor
