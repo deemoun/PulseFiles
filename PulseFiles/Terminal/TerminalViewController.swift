@@ -69,7 +69,7 @@ package final class TerminalViewController: NSViewController {
     /// terminal presents a prompt instead of looking like a non-functional log.
     /// The experiment flag and first-use acknowledgement are still authoritative.
     package func startSessionIfAllowed() {
-        guard runningProcess == nil, isShellInteractionAllowedProvider?() ?? true else { return }
+        guard runningProcess == nil, isShellInteractionAllowedProvider?() ?? false else { return }
         startSession()
     }
 
@@ -96,11 +96,16 @@ package final class TerminalViewController: NSViewController {
     }
     private func sendInput(_ data: Data) {
         guard !data.isEmpty else { return }
+        guard isShellInteractionAllowedProvider?() == true else {
+            stopRunningCommand()
+            appendLine("Acknowledge the Beta Terminal warning before running shell commands.".localized)
+            return
+        }
         if runningProcess == nil { startSession() }
         runningProcess?.write(data)
     }
     private func startSession() {
-        guard isShellInteractionAllowedProvider?() ?? true else { appendLine("Acknowledge the Beta Terminal warning before running shell commands.".localized); return }
+        guard isShellInteractionAllowedProvider?() ?? false else { appendLine("Acknowledge the Beta Terminal warning before running shell commands.".localized); return }
         if let workingDirectoryProvider { suggestedWorkingDirectory = workingDirectoryProvider() }
         do { try accessPolicy.validateAccess(to: suggestedWorkingDirectory) } catch {
             appendLine("Could not start terminal: working directory is not authorized."); return

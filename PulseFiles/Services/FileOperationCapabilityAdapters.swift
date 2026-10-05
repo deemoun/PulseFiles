@@ -126,14 +126,15 @@ package struct FileOperationTrashDeleteExecutor {
 /// Centralizes the conditions under which the facade publishes an undo plan.
 /// Partial and identity-less operations intentionally produce no recovery.
 package struct FileOperationUndoPlanBuilder {
-    package func rename(from source: URL, to destination: URL) -> FileOperationRecovery {
-        .init(kind: .rename, items: [.init(originalURL: source, destinationURL: destination)])
+    package func rename(from source: URL, to destination: URL, identity: String?) -> FileOperationRecovery? {
+        guard let identity else { return nil }
+        return .init(kind: .rename, items: [.init(originalURL: source, destinationURL: destination, destinationIdentity: identity)])
     }
 
-    package func move(_ pairs: [(source: URL, destination: URL)]) -> FileOperationRecovery {
-        .init(kind: .move, items: pairs.map {
-            .init(originalURL: $0.source, destinationURL: $0.destination)
-        })
+    package func move(_ pairs: [(source: URL, destination: URL)], identity: (URL) -> String?) -> FileOperationRecovery? {
+        let items = pairs.map { FileOperationRecovery.Item(originalURL: $0.source, destinationURL: $0.destination, destinationIdentity: identity($0.destination)) }
+        guard items.allSatisfy({ $0.destinationIdentity != nil }) else { return nil }
+        return .init(kind: .move, items: items)
     }
 
     package func copy(_ items: [FileOperationRecovery.Item]) -> FileOperationRecovery? {

@@ -71,6 +71,7 @@ package final class SandboxFileAccessPolicy: BrowseAccessPolicy, OperationScopeA
     }
 
     package func canAccess(_ url: URL, logDecision shouldLogDecision: Bool = true) -> Bool {
+        guard url.isFileURL else { return false }
         let allowed: Bool
         let reason: String
         if isEnabled {
@@ -106,11 +107,13 @@ package final class SandboxFileAccessPolicy: BrowseAccessPolicy, OperationScopeA
     /// Normal mode leaves the actual decision to macOS/TCC; experimental sandbox
     /// mode must still reject paths outside its root unless separately granted.
     package func canAttemptProtectedFolderAccess(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
         guard isEnabled else { return true }
         return canAccess(url)
     }
 
     package func validateDestinationAccess(to destination: URL) throws {
+        guard destination.isFileURL else { throw SandboxAccessError.unauthorized(destination) }
         let parentDirectory = destination.deletingLastPathComponent()
         let allowed: Bool
         let reason: String
@@ -144,6 +147,7 @@ package final class SandboxFileAccessPolicy: BrowseAccessPolicy, OperationScopeA
     /// already-authorized destination. The caller additionally verifies
     /// operation ownership before removing anything in the directory.
     package func validateManagedStagingArea(_ stagingURL: URL, appropriateFor destination: URL) throws {
+        guard stagingURL.isFileURL else { throw SandboxAccessError.unauthorized(stagingURL) }
         try validateDestinationAccess(to: destination)
         guard hasProcessAccess(to: stagingURL.deletingLastPathComponent(), requireWritable: true) else {
             throw isEnabled ? SandboxAccessError.outsideExperimentalSandbox(stagingURL) : SandboxAccessError.unauthorized(stagingURL)
@@ -173,6 +177,7 @@ package final class SandboxFileAccessPolicy: BrowseAccessPolicy, OperationScopeA
     /// containment and post-grant validation are testable.
     @discardableResult
     package func grantSelectedFolder(_ selectedFolder: URL, for requestedDirectory: URL) -> Bool {
+        guard selectedFolder.isFileURL, requestedDirectory.isFileURL else { return false }
         do {
             let grant = try grantService.grantAccess(to: selectedFolder)
             guard contains(requestedDirectory, within: grant.url), canAccess(requestedDirectory) else {
@@ -372,7 +377,7 @@ package struct OpenDirectoryCapability {
     package func renameItem(named name: String, to destination: OpenDirectoryCapability, named destinationName: String) throws {
         try requireItem(named: name)
         try destination.revalidate(); try Self.validateName(destinationName)
-        guard name.withCString({ source in destinationName.withCString { Darwin.renameat(fileDescriptor, source, destination.fileDescriptor, $0) } }) == 0 else {
+        guard name.withCString({ source in destinationName.withCString { Darwin.renameatx_np(fileDescriptor, source, destination.fileDescriptor, $0, UInt32(RENAME_EXCL)) } }) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }

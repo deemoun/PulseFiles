@@ -50,10 +50,21 @@ package final class FileHandleStreamingCopier: FileOperationStreamingCopying {
         try OpenDirectoryCapability.validateName(name)
         let destinationFD = try parent.openNewRegularFile(named: name)
         let worker = Task.detached(priority: .utility) { [chunkSize = self.chunkSize] in
-            let reader = try FileHandle(forReadingFrom: source)
-            defer { try? reader.close() }
             let writer = FileHandle(fileDescriptor: destinationFD, closeOnDealloc: true)
             defer { try? writer.close() }
+            let sourceParent = try OpenDirectoryCapability(directory: source.deletingLastPathComponent())
+            defer { sourceParent.close() }
+            try OpenDirectoryCapability.validateName(source.lastPathComponent)
+            let sourceFD = source.lastPathComponent.withCString {
+                Darwin.openat(sourceParent.fileDescriptor, $0, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+            }
+            guard sourceFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            let reader = FileHandle(fileDescriptor: sourceFD, closeOnDealloc: true)
+            defer { try? reader.close() }
+            var status = stat()
+            guard Darwin.fstat(sourceFD, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else {
+                throw CocoaError(.fileReadUnsupportedScheme)
+            }
             while true {
                 try Task.checkCancellation()
                 guard let data = try reader.read(upToCount: chunkSize), !data.isEmpty else { break }

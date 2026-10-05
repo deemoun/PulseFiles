@@ -128,6 +128,7 @@ package final class FileTransferExecutor {
                     let warnings = try await safelyCopy(
                         source: plan.source,
                         to: plan.destination,
+                        replacingExistingDestination: plan.replacesExistingDestination,
                         completedCount: completedCount,
                         totalCount: totalCount,
                         recursiveProgress: recursiveProgress,
@@ -197,7 +198,7 @@ package final class FileTransferExecutor {
         let recovery: FileOperationRecovery?
         switch kind {
         case .move where canRecover:
-            recovery = undoPlanBuilder.move(activePlans.map { (source: $0.source, destination: $0.destination) })
+            recovery = undoPlanBuilder.move(activePlans.map { (source: $0.source, destination: $0.destination) }, identity: preflightValidator.itemIdentity)
         case .copy where canRecover:
             let items = activePlans.map { plan in
                 FileOperationRecovery.Item(originalURL: plan.source, destinationURL: plan.destination, destinationIdentity: preflightValidator.itemIdentity(at: plan.destination))
@@ -227,6 +228,7 @@ package final class FileTransferExecutor {
     private func safelyCopy(
         source: URL,
         to destination: URL,
+        replacingExistingDestination: Bool,
         completedCount: Int,
         totalCount: Int,
         recursiveProgress: RecursiveProgressState,
@@ -238,11 +240,11 @@ package final class FileTransferExecutor {
                 source: source, to: staging.stagedItem, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
                 recursiveProgress: recursiveProgress, progressHandler: progressHandler
             )
-            warnings.append(contentsOf: try placeStagedItem(staging, at: destination))
+            warnings.append(contentsOf: try placeStagedItem(staging, at: destination, replacingExistingDestination: replacingExistingDestination))
             warnings.append(contentsOf: cleanupWarnings(for: staging))
             return warnings
         } catch {
-            let cleanupWarnings = cleanupWarnings(for: staging)
+            let cleanupWarnings = cleanupWarnings(for: staging, preservingBackup: true)
             throw TransferFailure(underlyingError: error, cleanupWarnings: cleanupWarnings)
         }
     }
@@ -280,6 +282,7 @@ package final class FileTransferExecutor {
                 return try await copyThenDeleteMove(
                     source: source,
                     to: destination,
+                    replacingExistingDestination: replacingExistingDestination,
                     completedCount: completedCount,
                     totalCount: totalCount,
                     recursiveProgress: recursiveProgress,
@@ -291,6 +294,7 @@ package final class FileTransferExecutor {
         return try await copyThenDeleteMove(
             source: source,
             to: destination,
+            replacingExistingDestination: replacingExistingDestination,
             completedCount: completedCount,
             totalCount: totalCount,
             recursiveProgress: recursiveProgress,
@@ -301,6 +305,7 @@ package final class FileTransferExecutor {
     private func copyThenDeleteMove(
         source: URL,
         to destination: URL,
+        replacingExistingDestination: Bool,
         completedCount: Int,
         totalCount: Int,
         recursiveProgress: RecursiveProgressState,
@@ -312,7 +317,7 @@ package final class FileTransferExecutor {
                 source: source, to: staging.stagedItem, topLevelCompletedCount: completedCount, topLevelTotalCount: totalCount,
                 recursiveProgress: recursiveProgress, progressHandler: progressHandler
             )
-            warnings.append(contentsOf: try placeStagedItem(staging, at: destination))
+            warnings.append(contentsOf: try placeStagedItem(staging, at: destination, replacingExistingDestination: replacingExistingDestination))
             do {
                 try descriptorOperator.remove(source)
             } catch {
@@ -324,15 +329,22 @@ package final class FileTransferExecutor {
             warnings.append(contentsOf: cleanupWarnings(for: staging))
             return warnings
         } catch {
-            let cleanupWarnings = cleanupWarnings(for: staging)
+            let cleanupWarnings = cleanupWarnings(for: staging, preservingBackup: true)
             throw TransferFailure(underlyingError: error, cleanupWarnings: cleanupWarnings)
         }
     }
 
-    private func cleanupWarnings(for staging: StagingArea) -> [FileOperationCleanupWarning] {
+    private func cleanupWarnings(for staging: StagingArea, preservingBackup: Bool = false) -> [FileOperationCleanupWarning] {
         // Refuse to remove an unmarked directory, even if a provider recycled
         // or redirected the URL after allocation.
         guard staging.isOwned(using: fileManager) else { return [] }
+        if preservingBackup, fileManager.fileExists(atPath: staging.backupItem.path) {
+            // Leave the registry active so startup cleanup cannot remove recovery data.
+            return [FileOperationCleanupWarning(
+                url: staging.backupItem,
+                message: "The replaced item could not be restored safely. Its backup remains at %@. Review it before removing the staging folder.".localized(with: staging.backupItem.path)
+            )]
+        }
         do {
             try stagingRegistry.setState(.completed, operationID: staging.operationID)
         } catch {
@@ -552,7 +564,7 @@ package final class FileTransferExecutor {
         return false
     }
 
-    private func placeStagedItem(_ staging: StagingArea, at destination: URL) throws -> [FileOperationCleanupWarning] {
+    private func placeStagedItem(_ staging: StagingArea, at destination: URL, replacingExistingDestination: Bool) throws -> [FileOperationCleanupWarning] {
         guard staging.isOwned(using: fileManager) else {
             throw FileOperationError.temporarySiblingUnavailable(destination: destination, prefix: "managed")
         }
@@ -562,6 +574,7 @@ package final class FileTransferExecutor {
             return []
         }
 
+        guard replacingExistingDestination else { throw CocoaError(.fileWriteFileExists) }
         let backupURL = staging.backupItem
         try descriptorOperator.rename(destination, to: backupURL)
         do {

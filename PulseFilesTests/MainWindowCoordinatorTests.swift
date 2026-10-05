@@ -112,9 +112,43 @@ final class MainWindowCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.isActive)
         XCTAssertNil(coordinator.begin())
         XCTAssertEqual(coordinator.detach(), first)
-        XCTAssertFalse(coordinator.isActive)
+        XCTAssertTrue(coordinator.isActive)
         XCTAssertFalse(coordinator.acceptsUpdates(for: first!))
+        XCTAssertNil(coordinator.begin())
+        coordinator.finish(generation: first!, result: nil, captureRecovery: false)
+        XCTAssertFalse(coordinator.isActive)
         XCTAssertEqual(coordinator.begin(), 3)
+    }
+
+    @MainActor
+    func testDetachedCancellationResistantWorkerBlocksMutationsUntilActualExit() async throws {
+        let state = FileOperationCoordinator()
+        let presenter = RecordingFileOperationPresenter()
+        let gate = CancellationResistantOperationGate()
+        let started = expectation(description: "worker entered")
+        let coordinator = MainWindowFileOperationCoordinator(
+            fileOperations: CoordinatorOperationSpy(), state: state,
+            accessPolicy: SandboxFileAccessPolicy(isEnabled: true, rootURL: URL(fileURLWithPath: "/sandbox")),
+            presenter: presenter, onActivityChanged: {}, onDefaultRefresh: {},
+            onResult: { _, _ in XCTFail("Detached result reached UI") }, onOperationStarted: {}
+        )
+        coordinator.start(named: "Held copy") { _ in
+            await gate.wait { started.fulfill() }
+        }
+        let task = try XCTUnwrap(state.activeTask)
+        await fulfillment(of: [started], timeout: 1)
+        coordinator.detach()
+        XCTAssertTrue(coordinator.isActive)
+        coordinator.start(named: "Overlapping move") { _ in
+            XCTFail("Second mutation started while worker was alive")
+            return .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: false)
+        }
+        XCTAssertTrue(state.isActive)
+        await gate.release()
+        await task.value
+        XCTAssertFalse(coordinator.isActive)
+        XCTAssertTrue(presenter.results.isEmpty)
+        XCTAssertNotNil(state.begin())
     }
 
     @MainActor
@@ -310,6 +344,20 @@ final class MainWindowCoordinatorTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testSearchCoordinatorRejectsUnauthorizedRootBeforeCallingService() async {
+        let root = URL(fileURLWithPath: "/sandbox")
+        let coordinator = SearchWorkflowCoordinator(service: NeverCalledDescendantSearch(),
+            accessPolicy: SandboxFileAccessPolicy(isEnabled: true, rootURL: root), probe: NeverCalledFileSystemProbe())
+        let finished = expectation(description: "access rejection")
+        coordinator.search(root: URL(fileURLWithPath: "/outside"), text: "report") { result in
+            guard case .failure(let error) = result else { XCTFail("Expected access rejection"); finished.fulfill(); return }
+            XCTAssertTrue(error is SandboxAccessError)
+            finished.fulfill()
+        }
+        await fulfillment(of: [finished], timeout: 1)
+    }
+
     func testGoToFolderCoordinatorRejectsEmptyPathBeforeProbing() async {
         do {
             _ = try await GoToFolderWorkflowCoordinator.resolvePath(
@@ -378,4 +426,27 @@ private actor SequenceFileSystemProbe: FileSystemProbing {
 
     func isDirectory(_ url: URL, deadline: Duration) -> FileSystemProbeAnswer<Bool> { .unavailable }
     func volumeIdentifier(_ url: URL, deadline: Duration) -> FileSystemProbeAnswer<String?> { .unavailable }
+}
+
+private struct NeverCalledDescendantSearch: DescendantSearching {
+    func search(query: DescendantSearchQuery, limits: DescendantSearchLimits, onBatch: DescendantSearchBatchHandler?) async throws -> DescendantSearchResult {
+        XCTFail("Unauthorized search reached service")
+        throw CocoaError(.fileReadNoPermission)
+    }
+}
+
+private actor CancellationResistantOperationGate {
+    private var continuation: CheckedContinuation<FileOperationResult, Never>?
+
+    func wait(started: () -> Void) async -> FileOperationResult {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            started()
+        }
+    }
+
+    func release() {
+        continuation?.resume(returning: .init(completedItems: [], skippedItems: [], failedItems: [], wasCancelled: false))
+        continuation = nil
+    }
 }

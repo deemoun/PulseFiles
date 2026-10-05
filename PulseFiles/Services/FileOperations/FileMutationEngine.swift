@@ -60,6 +60,8 @@ package final class FileMutationEngine {
         try accessPolicy.validateDestinationAccess(to: url)
     }
 
+    package func itemIdentity(at url: URL) -> String? { validator.itemIdentity(at: url) }
+
     package func rename(_ source: URL, to destination: URL) throws {
         try validateDestination(destination)
         try descriptorOperator.rename(source, to: destination)
@@ -101,7 +103,7 @@ package final class FileMutationEngine {
 
     /// Publishes only after destination and staging parents have been checked.
     /// A replaced item remains in owned staging until the transaction commits.
-    package func publish(_ stagedURL: URL, to destinationURL: URL, staging: StagingArea) throws -> Publication {
+    package func publish(_ stagedURL: URL, to destinationURL: URL, staging: StagingArea, replacingExistingDestination: Bool = false) throws -> Publication {
         try Task.checkCancellation()
         try validateDestination(destinationURL)
         guard fileManager.fileExists(atPath: staging.marker.path) else {
@@ -109,6 +111,7 @@ package final class FileMutationEngine {
         }
         var backup: URL?
         if fileManager.fileExists(atPath: destinationURL.path) {
+            guard replacingExistingDestination else { throw CocoaError(.fileWriteFileExists) }
             let candidate = staging.directory.appendingPathComponent("replacement-\(UUID().uuidString)")
             try descriptorOperator.rename(destinationURL, to: candidate)
             backup = candidate
@@ -120,7 +123,10 @@ package final class FileMutationEngine {
             }
             return .init(stagedURL: stagedURL, destinationURL: destinationURL, publishedIdentity: identity, backupURL: backup)
         } catch {
-            if let backup, !fileManager.fileExists(atPath: destinationURL.path) { try? descriptorOperator.rename(backup, to: destinationURL) }
+            if let backup {
+                do { try descriptorOperator.rename(backup, to: destinationURL) }
+                catch { throw FileOperationError.unsafeReplacement(destination: destinationURL, backup: backup) }
+            }
             throw error
         }
     }

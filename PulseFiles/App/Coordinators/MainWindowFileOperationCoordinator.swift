@@ -82,9 +82,9 @@ final class MainWindowFileOperationCoordinator {
             defer {
                 if self.state.acceptsUpdates(for: generation) {
                     self.presenter?.endFileOperationProgress()
-                    self.state.finish(generation: generation, result: nil, captureRecovery: false)
-                    self.onActivityChanged()
                 }
+                self.state.finish(generation: generation, result: nil, captureRecovery: false)
+                self.onActivityChanged()
             }
             do {
                 let result = try await state.runDetached {

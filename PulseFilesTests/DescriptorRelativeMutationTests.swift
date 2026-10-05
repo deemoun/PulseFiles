@@ -18,6 +18,36 @@ final class DescriptorRelativeMutationTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
+    func testStreamingReadRejectsSymlinkedSourceParent() async throws {
+        let outside = root.appendingPathComponent("outside")
+        let redirected = root.appendingPathComponent("redirected")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let protectedFile = outside.appendingPathComponent("protected")
+        try Data("protected content".utf8).write(to: protectedFile)
+        try FileManager.default.createSymbolicLink(at: redirected, withDestinationURL: outside)
+        let destination = root.appendingPathComponent("copy")
+        do {
+            try await FileHandleStreamingCopier().copyFile(from: redirected.appendingPathComponent("protected"), to: destination) { _ in }
+            XCTFail("Redirected source should be rejected")
+        } catch { }
+        XCTAssertEqual(try String(contentsOf: protectedFile), "protected content")
+        if FileManager.default.fileExists(atPath: destination.path) {
+            XCTAssertEqual(try Data(contentsOf: destination).count, 0)
+        }
+    }
+
+    func testRenameRefusesDestinationCreatedAfterPreflight() throws {
+        let source = root.appendingPathComponent("source")
+        let destination = root.appendingPathComponent("destination")
+        try Data("source content".utf8).write(to: source)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        try Data("racing destination".utf8).write(to: destination)
+        let mutations = DescriptorRelativeFileOperator(fileManager: FileManager.default)
+        XCTAssertThrowsError(try mutations.rename(source, to: destination))
+        XCTAssertEqual(try String(contentsOf: source), "source content")
+        XCTAssertEqual(try String(contentsOf: destination), "racing destination")
+    }
+
     func testCheckedSourceSwapIsRejectedBeforeMutation() throws {
         let parent = root.appendingPathComponent("parent")
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)

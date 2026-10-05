@@ -322,7 +322,7 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
                 try descriptorOperator.rename(source, to: destination)
             }
             await progressHandler?(FileOperationProgress(currentItemName: destination.lastPathComponent, completedCount: 1, totalCount: 1))
-            let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false, recovery: undoPlanBuilder.rename(from: source, to: destination))
+            let result = FileOperationResult(completedItems: [destination], skippedItems: [], failedItems: [], wasCancelled: false, recovery: undoPlanBuilder.rename(from: source, to: destination, identity: preflightValidator.itemIdentity(at: destination)))
             logCompletion(operation: "rename", result: result)
             return result
         } catch {
@@ -370,9 +370,8 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
         }
         try await prepareCloudPlaceholders(for: recovery.items.map(\.destinationURL), progressHandler: progressHandler)
         for item in recovery.items {
-            if recovery.kind == .trash,
-               let expectedIdentity = item.destinationIdentity,
-               preflightValidator.itemIdentity(at: item.destinationURL) != expectedIdentity {
+            guard let expectedIdentity = item.destinationIdentity,
+                  preflightValidator.itemIdentity(at: item.destinationURL) == expectedIdentity else {
                 throw FileOperationError.undoUnavailable
             }
             try preflightValidator.validateExistingSource(item.destinationURL)
@@ -392,7 +391,7 @@ package final class FileOperationService: FileOperationServicing, FileOperationA
                 if Task.isCancelled { wasCancelled = true; break }
                 await progressHandler?(FileOperationProgress(currentItemName: item.destinationURL.lastPathComponent, completedCount: index, totalCount: recovery.items.count))
                 do {
-                    if recovery.kind == .trash, preflightValidator.itemIdentity(at: item.destinationURL) != item.destinationIdentity { throw FileOperationError.undoUnavailable }
+                    if preflightValidator.itemIdentity(at: item.destinationURL) != item.destinationIdentity { throw FileOperationError.undoUnavailable }
                     try descriptorOperator.rename(item.destinationURL, to: item.originalURL)
                     completed.append(item.originalURL)
                 } catch {

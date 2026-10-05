@@ -7,6 +7,22 @@ import XCTest
 @testable import PulseFilesUtilities
 
 final class SandboxFileAccessPolicyTests: XCTestCase {
+    func testNonFileURLsCannotAuthorizeLocalPathsInEitherMode() throws {
+        let root = URL(fileURLWithPath: "/tmp")
+        let external = try XCTUnwrap(URL(string: "https://example.com/tmp/item"))
+        for restricted in [true, false] {
+            let policy = SandboxFileAccessPolicy(isEnabled: restricted, rootURL: root,
+                accessProbe: .init(fileExists: { _ in XCTFail("Non-file URL reached filesystem probe"); return true },
+                                   isReadableFile: { _ in true }, isWritableFile: { _ in true }))
+            XCTAssertFalse(policy.canAccess(external))
+            XCTAssertFalse(policy.canAttemptProtectedFolderAccess(external))
+            XCTAssertThrowsError(try policy.validateAccess(to: external))
+            XCTAssertThrowsError(try policy.validateDestinationAccess(to: external))
+            XCTAssertThrowsError(try policy.validateManagedStagingArea(external, appropriateFor: root.appendingPathComponent("item")))
+            XCTAssertFalse(policy.grantSelectedFolder(external, for: root))
+        }
+    }
+
     func testAppSandboxRootURLsAreAllowedWhenRestrictionIsEnabled() {
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: ExperimentalFlags.appSandboxRoot)
         let child = ExperimentalFlags.appSandboxRoot.appendingPathComponent("Nested/File.txt")

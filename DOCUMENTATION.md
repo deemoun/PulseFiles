@@ -487,3 +487,30 @@ These types are implementation details, not alternate mutation entry points.
 Archive and batch-rename capabilities remain reachable through the same façade,
 so partial results, recovery plans, staging cleanup warnings, and cancellation
 semantics continue to be enforced at one boundary.
+
+### Safety invariants for mutation lifetime and shell input
+
+Descriptor-relative renames refuse an existing destination atomically. Approved
+replacement stages the old destination separately; publication and rollback must
+also refuse a destination that appeared concurrently rather than overwrite it.
+Cancellation is a request, not proof that filesystem work has stopped. Detaching
+progress leaves mutation commands disabled until the retained worker exits, and
+its completion releases ownership without publishing stale UI results.
+Terminal startup and every input write require an explicit permission callback
+that confirms enablement and warning acknowledgement. Missing or revoked
+permission rejects input; revocation stops an existing shell on the next input.
+
+Failed replacement restoration retains the backup and active staging ownership
+record, reports its location as a cleanup warning, and never marks it eligible
+for automatic startup cleanup. Recovery data may be removed only after successful
+restoration or explicit review.
+
+Move and rename recovery records require a stable destination identity, just as
+copy recovery does. Undo refuses a path whose item no longer matches that record;
+providers without stable identities do not offer automatic undo. Streaming file
+reads reject final-component symbolic links and non-regular source descriptors.
+
+Batch rename rollback evacuates published names into owned staging before restoring
+original names, so rename cycles remain recoverable after partial publication.
+It checks captured identities during recovery and preserves staging with warnings
+when an item is missing, replaced, or cannot be restored.

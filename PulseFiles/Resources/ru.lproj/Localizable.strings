@@ -433,3 +433,5 @@
 "Archive entries will be safety-checked and extracted into the current folder. Existing items require a conflict decision." = "Содержимое архива будет проверено на безопасность и извлечено в текущую папку. При совпадении с существующими объектами потребуется выбрать способ разрешения конфликта.";
 "%@ is a Finder alias and cannot be changed in PulseFiles." = "%@ — это псевдоним Finder, который нельзя изменить в PulseFiles.";
 "Use Finder to manage %@, or select its original item. PulseFiles did not change the alias or its target." = "Используйте Finder для управления %@ или выберите исходный объект. PulseFiles не изменил псевдоним или его цель.";
+
+"The replaced item could not be restored safely. Its backup remains at %@. Review it before removing the staging folder." = "Не удалось безопасно восстановить заменённый объект. Его резервная копия находится в %@. Проверьте её перед удалением временной папки.";

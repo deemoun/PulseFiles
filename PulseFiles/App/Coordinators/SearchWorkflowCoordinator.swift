@@ -46,24 +46,28 @@ final class SearchWorkflowCoordinator {
 
     func search(root: URL, text: String, completion: @escaping (Result<DescendantSearchResult, Error>) -> Void) {
         task?.cancel()
-        task = Task { [service] in
+        task = Task { [service, accessPolicy] in
             do {
                 let query = DescendantSearchQuery(nameMatcher: .glob("*\(text)*"), scopes: [.folder(root, includeDescendants: true)])
-                let result = try await service.search(query: query)
+                let result = try await accessPolicy.withValidatedAccess(to: root) {
+                    try await service.search(query: query)
+                }
                 guard !Task.isCancelled else { return }
                 completion(.success(result))
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 completion(.failure(error))
             }
         }
     }
 
     func route(_ action: DescendantSearchResultsViewController.Action, item: DescendantSearchItem, root: URL) async throws -> URL {
-        try accessPolicy.validateAccess(to: root); try accessPolicy.validateAccess(to: item.url)
         let command: SearchResultAction = action == .open ? .open : (action == .reveal ? .reveal : .navigate)
-        let existence = await probe.exists(item.url, deadline: .milliseconds(250))
+        let existence = try await accessPolicy.withValidatedAccess(to: [root, item.url]) {
+            await probe.exists(item.url, deadline: .milliseconds(250))
+        }
         guard case .value(let itemExists) = existence else { throw SearchResultRoutingError.probeUnavailable }
         let route = SearchResultActionRouter().route(command, item: item, root: root,
             canAccess: { accessPolicy.canAccess($0, logDecision: false) }, itemExists: itemExists)

@@ -16,6 +16,7 @@ final class FileOperationCoordinator {
     private(set) var currentGeneration: Int?
     private(set) var undoRecovery: FileOperationRecovery?
     private(set) var isActive = false
+    private var detachedGeneration: Int?
 
     func captureRecovery(from result: FileOperationResult) {
         undoRecovery = result.succeededCompletely ? result.recovery : nil
@@ -50,6 +51,11 @@ final class FileOperationCoordinator {
 
     func finish(generation: Int, result: FileOperationResult?, captureRecovery: Bool) {
         retainedTasks[generation] = nil
+        if detachedGeneration == generation {
+            detachedGeneration = nil
+            isActive = false
+            return
+        }
         guard currentGeneration == generation else { return }
         if captureRecovery, let result { self.captureRecovery(from: result) }
         activeTask = nil
@@ -64,7 +70,7 @@ final class FileOperationCoordinator {
         generation += 1
         activeTask = nil
         currentGeneration = nil
-        isActive = false
+        detachedGeneration = detached
         undoRecovery = nil
         return detached
     }

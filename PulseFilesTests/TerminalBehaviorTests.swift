@@ -106,6 +106,7 @@ final class TerminalBehaviorTests: XCTestCase {
     func testStopTerminatesPersistentSessionAndReportsTermination() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: .current)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.loadView()
         controller.viewDidLoad()
 
@@ -126,6 +127,7 @@ final class TerminalBehaviorTests: XCTestCase {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
         controller.isShellInteractionAllowedProvider = { true }
+        controller.isShellInteractionAllowedProvider = { true }
         controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
         controller.loadView()
         controller.viewDidLoad()
@@ -135,6 +137,35 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertTrue(process.didRun)
         XCTAssertTrue(process.writes.isEmpty)
         XCTAssertEqual(process.currentDirectoryURL, sandboxFixture.allowedDirectory)
+    }
+
+    @MainActor
+    func testMissingPermissionProviderCannotLaunchShell() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+        controller.startSessionIfAllowed()
+        controller.runCommandForTesting("pwd")
+        XCTAssertFalse(process.didRun)
+        XCTAssertTrue(process.writes.isEmpty)
+    }
+
+    @MainActor
+    func testRevokedPermissionStopsExistingShellAndRejectsInput() {
+        let process = FakeTerminalProcess()
+        let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.isShellInteractionAllowedProvider = { true }
+        controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
+        controller.loadView()
+        controller.viewDidLoad()
+        controller.runCommandForTesting("pwd")
+        controller.isShellInteractionAllowedProvider = { false }
+        controller.runCommandForTesting("touch forbidden")
+        XCTAssertTrue(process.didTerminate)
+        XCTAssertEqual(process.writes, ["pwd\n"])
+        XCTAssertFalse(controller.hasRunningAccessScopeForTesting)
     }
 
     func testTerminalKeyboardNavigationUsesStandardANSISequences() {
@@ -157,6 +188,7 @@ final class TerminalBehaviorTests: XCTestCase {
         let process = FakeTerminalProcess()
         process.isRunning = false
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: .current)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.loadView()
         controller.viewDidLoad()
 
@@ -171,6 +203,7 @@ final class TerminalBehaviorTests: XCTestCase {
     func testResetSessionStopsCommandAndClearsPriorTerminalOutput() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: .current)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.loadView()
         controller.viewDidLoad()
 
@@ -189,6 +222,7 @@ final class TerminalBehaviorTests: XCTestCase {
     func testTerminalCommandDoesNotLaunchBeforeFirstUseWarningAcknowledgement() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.isShellInteractionAllowedProvider = { false }
         controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
         controller.loadView()
@@ -205,6 +239,7 @@ final class TerminalBehaviorTests: XCTestCase {
     func testTerminalCommandDoesNotLaunchWhenWorkingDirectoryIsDenied() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.suggestedWorkingDirectory = sandboxFixture.externalDirectory
         controller.loadView()
         controller.viewDidLoad()
@@ -225,6 +260,7 @@ final class TerminalBehaviorTests: XCTestCase {
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: sandboxFixture.root, grantService: grantService)
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: policy)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.suggestedWorkingDirectory = sandboxFixture.externalDirectory
         controller.loadView()
         controller.viewDidLoad()
@@ -239,6 +275,7 @@ final class TerminalBehaviorTests: XCTestCase {
     func testHighVolumeOutputIsBoundedAndReturnsToPromptAfterCompletion() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
         controller.loadView()
         controller.viewDidLoad()
@@ -264,6 +301,7 @@ final class TerminalBehaviorTests: XCTestCase {
     func testStoppingNoisyCommandClearsHandlersAndAccessScope() {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
+        controller.isShellInteractionAllowedProvider = { true }
         controller.suggestedWorkingDirectory = sandboxFixture.allowedDirectory
         controller.loadView()
         controller.viewDidLoad()

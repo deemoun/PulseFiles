@@ -179,6 +179,28 @@ final class ArchiveAndBatchRenameTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: b), "A")
     }
 
+    func testCancelledRenameCycleRestoresOriginalNamesAndContents() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = root.appendingPathComponent("a"), b = root.appendingPathComponent("b")
+        try Data("A".utf8).write(to: a)
+        try Data("B".utf8).write(to: b)
+        let service = BatchRenameService(accessPolicy: .init(isEnabled: true, rootURL: root))
+        let plan = try service.plan(.init(sources: [a, b], proposedNames: ["b", "a"]))
+        let task = Task {
+            await service.execute(plan) { progress in
+                if progress.completedCount == 2 { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        let result = await task.value
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertTrue(result.cleanupWarnings.isEmpty)
+        XCTAssertTrue(result.completedItems.isEmpty)
+        XCTAssertEqual(try String(contentsOf: a), "A")
+        XCTAssertEqual(try String(contentsOf: b), "B")
+    }
+
     func testBatchRenameRejectsFinderAliasWithOrdinaryMutationError() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

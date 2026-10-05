@@ -989,6 +989,26 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: source), "new")
     }
 
+    func testFailedReplacementRestorationRetainsBackupForRecovery() async throws {
+        let fixture = try makeFixture(useFailingManager: true)
+        let source = fixture.left.appendingPathComponent("Report.txt")
+        let destination = fixture.right.appendingPathComponent("Report.txt")
+        try Data("new".utf8).write(to: source)
+        try Data("original".utf8).write(to: destination)
+        // Both publication and restoration fail at the destination.
+        fixture.failingFileManager?.failRestore = true
+        fixture.failingFileManager?.failMoveToURL = destination
+        let result = try await fixture.service.copy(
+            .init(sources: [source], destinationDirectory: fixture.right),
+            conflictHandler: { _ in .replace }, progressHandler: nil
+        )
+        XCTAssertEqual(result.failedItems.count, 1)
+        let warning = try XCTUnwrap(result.cleanupWarnings.first { $0.url.lastPathComponent == "backup" })
+        XCTAssertEqual(try String(contentsOf: warning.url), "original")
+        XCTAssertEqual(try String(contentsOf: source), "new")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: warning.url.deletingLastPathComponent().path))
+    }
+
     func testBackupCleanupFailureIsReportedWithoutFailingReplacement() async throws {
         let fixture = try makeFixture(useFailingManager: true)
         let source = fixture.left.appendingPathComponent("Report.txt")
@@ -1780,6 +1800,25 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
     }
 
+    func testUndoMoveRejectsUnrelatedItemAtDestination() async throws {
+        let fixture = try makeFixture()
+        let source = fixture.left.appendingPathComponent("Moved.txt")
+        let destination = fixture.right.appendingPathComponent("Moved.txt")
+        try Data("original".utf8).write(to: source)
+        let moved = try await fixture.service.move(.init(sources: [source], destinationDirectory: fixture.right), conflictHandler: { _ in .cancel }, progressHandler: nil)
+        let recovery = try XCTUnwrap(moved.recovery)
+        XCTAssertNotNil(recovery.items.first?.destinationIdentity)
+        // Keep the original inode alive so the replacement cannot reuse it.
+        try FileManager.default.moveItem(at: destination, to: fixture.right.appendingPathComponent("retained-original"))
+        try Data("unrelated".utf8).write(to: destination)
+        do {
+            _ = try await fixture.service.undo(recovery, progressHandler: nil)
+            XCTFail("Expected identity rejection")
+        } catch FileOperationError.undoUnavailable { }
+        XCTAssertEqual(try String(contentsOf: destination), "unrelated")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+    }
+
     func testUndoRemovesOnlyTheUnchangedCopyDestination() async throws {
         let fixture = try makeFixture()
         let source = fixture.left.appendingPathComponent("Copy undo.txt")
@@ -2043,6 +2082,7 @@ private final class PartialFailureStreamingCopier: FileOperationStreamingCopying
 private final class FailingFileManager: FileOperationFileManaging {
     var failCopyFromURL: URL?
     var failMoveToURL: URL?
+    var failRestore = false
     var moveFailureError: Error = CocoaError(.fileWriteUnknown)
     var failRemoveURL: URL?
     var failBackupRemoval = false
@@ -2093,7 +2133,8 @@ private final class FailingFileManager: FileOperationFileManaging {
     }
 
     func moveItem(at srcURL: URL, to dstURL: URL) throws {
-        if let failMoveToURL, dstURL.standardizedFileURL == failMoveToURL.standardizedFileURL {
+        if let failMoveToURL, dstURL.standardizedFileURL == failMoveToURL.standardizedFileURL,
+           srcURL.lastPathComponent != "backup" || failRestore {
             throw moveFailureError
         }
         movedItems.append(RecordedFileOperation(source: srcURL, destination: dstURL))

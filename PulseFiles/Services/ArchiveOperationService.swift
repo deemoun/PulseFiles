@@ -114,7 +114,7 @@ package final class ArchiveOperationService {
             return .init(completedItems: [request.destinationURL], skippedItems: [], failedItems: [],
                          cleanupWarnings: mutations.cleanup(staging), wasCancelled: false)
         } catch {
-            let warnings = mutations.cleanup(staging)
+            let warnings = recoveryWarnings(for: error) ?? mutations.cleanup(staging)
             if !warnings.isEmpty {
                 return .init(completedItems: [], skippedItems: [], failedItems: [.init(url: request.destinationURL, error: error)],
                              cleanupWarnings: warnings, wasCancelled: error is CancellationError)
@@ -159,29 +159,37 @@ package final class ArchiveOperationService {
             }
             let children = try fileManager.contentsOfDirectory(at: staging.directory, includingPropertiesForKeys: nil, options: [])
                 .filter { $0 != staging.marker }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-            var decisions: [(URL, URL, FileConflictResolution)] = []
+            var decisions: [(URL, URL, FileConflictResolution, Bool)] = []
             for child in children {
                 let destination = request.destinationDirectory.appendingPathComponent(child.lastPathComponent)
-                let decision: FileConflictResolution = fileManager.fileExists(atPath: destination.path) ? await conflictHandler(destination) : .replace
+                let existed = fileManager.fileExists(atPath: destination.path)
+                let decision: FileConflictResolution = existed ? await conflictHandler(destination) : .replace
                 if decision == .cancel { throw CancellationError() }
                 let resolved = (decision == .keepBoth || decision == .applyToRemainingKeepBoth) ? FileOperationService.keepBothDestination(for: destination, fileExists: { self.fileManager.fileExists(atPath: $0.path) }) : destination
-                decisions.append((child, resolved, decision))
+                decisions.append((child, resolved, decision, existed && (decision == .replace || decision == .applyToRemainingReplace)))
             }
-            for (child, destination, decision) in decisions {
+            for (child, destination, decision, replacing) in decisions {
                 try Task.checkCancellation(); if decision == .skip || decision == .applyToRemainingSkip { skipped.append(destination); continue }
-                published.append(try mutations.publish(child, to: destination, staging: staging)); completed.append(destination)
+                published.append(try mutations.publish(child, to: destination, staging: staging, replacingExistingDestination: replacing)); completed.append(destination)
             }
             let warnings = mutations.cleanup(staging)
             return .init(completedItems: completed, skippedItems: skipped, failedItems: [], cleanupWarnings: warnings, wasCancelled: false)
         } catch {
             let rollback = mutations.rollback(published)
-            var warnings = rollback.warnings
+            var warnings = rollback.warnings + (recoveryWarnings(for: error) ?? [])
             completed.removeAll { !rollback.retainedDestinations.contains($0.standardizedFileURL) }
             if warnings.isEmpty { warnings.append(contentsOf: mutations.cleanup(staging)) }
             if !warnings.isEmpty { return .init(completedItems: completed, skippedItems: skipped, failedItems: [.init(url: request.archiveURL, error: error)], cleanupWarnings: warnings, wasCancelled: error is CancellationError) }
             if error is CancellationError { return .init(completedItems: [], skippedItems: skipped, failedItems: [], wasCancelled: true) }
             throw error
         }
+    }
+
+    private func recoveryWarnings(for error: Error) -> [FileOperationCleanupWarning]? {
+        guard let operationError = error as? FileOperationError,
+              case let .unsafeReplacement(_, backup) = operationError else { return nil }
+        // Keep active recovery metadata and all staged content for manual review.
+        return [.init(url: backup, message: "The replaced item could not be restored safely. Its backup remains at %@. Review it before removing the staging folder.".localized(with: backup.path))]
     }
 
     private func collect(_ url: URL, relative: String, limits: ArchiveSafetyLimits, sources: inout [Source], bytes: inout UInt64) throws {

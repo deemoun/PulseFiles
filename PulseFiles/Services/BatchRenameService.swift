@@ -76,7 +76,7 @@ package final class BatchRenameService {
         guard !changing.isEmpty else { return .init(completedItems: plan.items.map(\.destinationURL), skippedItems: [], failedItems: [], wasCancelled: false) }
         let directory = changing[0].sourceURL.deletingLastPathComponent()
         var staging: FileMutationEngine.StagingArea?
-        var staged: [(item: BatchRenameItem, temporary: URL)] = []
+        var staged: [(item: BatchRenameItem, temporary: URL, identity: String)] = []
         var completed: [URL] = []
         var warnings: [FileOperationCleanupWarning] = []
         do {
@@ -86,9 +86,10 @@ package final class BatchRenameService {
                 for (index, item) in changing.enumerated() {
                     try Task.checkCancellation()
                     try self.mutations.validateReadableSource(item.sourceURL)
+                    guard let identity = self.mutations.itemIdentity(at: item.sourceURL) else { throw FileOperationError.undoUnavailable }
                     let temporary = owned.directory.appendingPathComponent(UUID().uuidString)
                     try self.mutations.rename(item.sourceURL, to: temporary)
-                    staged.append((item, temporary))
+                    staged.append((item, temporary, identity))
                     await progressHandler?(.init(currentItemName: item.sourceURL.lastPathComponent, completedCount: index, totalCount: changing.count * 2))
                 }
                 for (index, entry) in staged.enumerated() {
@@ -101,14 +102,24 @@ package final class BatchRenameService {
                 return .init(completedItems: completed, skippedItems: [], failedItems: [], cleanupWarnings: cleanup, wasCancelled: false)
             }
         } catch {
-            for entry in staged.reversed() {
-                let current = fileManager.fileExists(atPath: entry.temporary.path) ? entry.temporary : entry.item.destinationURL
-                guard fileManager.fileExists(atPath: current.path) else { continue }
+            // Evacuate published names first: restoring a cycle directly would
+            // collide with another original item still at its new name.
+            var blocked = Set<URL>()
+            for entry in staged where completed.contains(entry.item.destinationURL) {
                 do {
-                    try mutations.rename(current, to: entry.item.sourceURL)
-                    completed.removeAll { $0.standardizedFileURL == entry.item.destinationURL.standardizedFileURL }
+                    guard mutations.itemIdentity(at: entry.item.destinationURL) == entry.identity else { throw FileOperationError.undoUnavailable }
+                    try mutations.rename(entry.item.destinationURL, to: entry.temporary)
+                    completed.removeAll { $0 == entry.item.destinationURL }
+                } catch {
+                    blocked.insert(entry.temporary)
+                    warnings.append(.init(url: entry.item.destinationURL, message: error.localizedDescription))
                 }
-                catch { warnings.append(.init(url: current, message: error.localizedDescription)) }
+            }
+            for entry in staged.reversed() where !blocked.contains(entry.temporary) {
+                do {
+                    guard mutations.itemIdentity(at: entry.temporary) == entry.identity else { throw FileOperationError.undoUnavailable }
+                    try mutations.rename(entry.temporary, to: entry.item.sourceURL)
+                } catch { warnings.append(.init(url: entry.temporary, message: error.localizedDescription)) }
             }
             if warnings.isEmpty, let staging { warnings.append(contentsOf: mutations.cleanup(staging)) }
             let failures: [FileOperationItemFailure] = error is CancellationError && warnings.isEmpty
