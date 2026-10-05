@@ -28,7 +28,9 @@ package struct DiagnosticOperationSummary: Equatable {
     }
 }
 
-package struct DiagnosticsExportService: DiagnosticsExportCapability {
+// FileManager documents its non-delegate operations as safe to call from
+// multiple threads. Provider closures are explicitly @Sendable below.
+package struct DiagnosticsExportService: DiagnosticsExportCapability, @unchecked Sendable {
     package struct AppInfo: Equatable {
         let name: String
         let version: String

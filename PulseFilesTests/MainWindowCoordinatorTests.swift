@@ -214,10 +214,11 @@ final class MainWindowCoordinatorTests: XCTestCase {
         ))
     }
 
-    func testProbeDecisionsCoverTrueFalseAndUnavailable() {
+    func testProbeDecisionsCoverTrueFalseTimedOutAndUnavailable() {
         let target = URL(fileURLWithPath: "/tmp/target")
         XCTAssertTrue(FileSystemProbeDecisionCoordinator.inlineRenameItemExists(.value(true)))
         XCTAssertFalse(FileSystemProbeDecisionCoordinator.inlineRenameItemExists(.value(false)))
+        XCTAssertFalse(FileSystemProbeDecisionCoordinator.inlineRenameItemExists(.timedOut))
         XCTAssertFalse(FileSystemProbeDecisionCoordinator.inlineRenameItemExists(.unavailable))
         XCTAssertEqual(
             FileSystemProbeDecisionCoordinator.symbolicLinkDestination(target: target, directoryAnswer: .value(true)),
@@ -228,18 +229,25 @@ final class MainWindowCoordinatorTests: XCTestCase {
             .file(target)
         )
         XCTAssertEqual(
+            FileSystemProbeDecisionCoordinator.symbolicLinkDestination(target: target, directoryAnswer: .timedOut),
+            .unavailable
+        )
+        XCTAssertEqual(
             FileSystemProbeDecisionCoordinator.symbolicLinkDestination(target: target, directoryAnswer: .unavailable),
             .unavailable
         )
     }
 
-    func testKeepBothProbeReturnsFirstMissingCandidateAndStopsWhenUnavailable() async {
+    func testKeepBothProbeReturnsFirstMissingCandidateAndStopsWhenProbeIsInconclusive() async {
         let destination = URL(fileURLWithPath: "/tmp/report.txt")
         let available = FileSystemProbeDecisionCoordinator(probe: SequenceFileSystemProbe(existence: [.value(true), .value(false)]))
         XCTAssertEqual(await available.keepBothDestination(for: destination)?.lastPathComponent, "report copy 2.txt")
 
         let unavailable = FileSystemProbeDecisionCoordinator(probe: SequenceFileSystemProbe(existence: [.unavailable]))
         XCTAssertNil(await unavailable.keepBothDestination(for: destination))
+
+        let timedOut = FileSystemProbeDecisionCoordinator(probe: SequenceFileSystemProbe(existence: [.timedOut]))
+        XCTAssertNil(await timedOut.keepBothDestination(for: destination))
     }
 
     func testTransferWorkflowBuildsTypedRequest() throws {
