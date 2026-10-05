@@ -104,6 +104,19 @@ package protocol OperationScopeAccessPolicy: FileAccessValidating {
 }
 package protocol AccessPolicyStatusProviding: AnyObject { var rootURL: URL { get }; var isEnabled: Bool { get } }
 
+package enum StandardFolder: String, CaseIterable {
+    case desktop
+    case documents
+    case downloads
+}
+
+package enum StandardFolderAccessState: Equatable {
+    case accessible
+    case deniedOrUnavailable
+    case requiresSystemSettingsReview
+    case blockedByExperimentalSandbox
+}
+
 // MARK: - Cleanup
 
 package enum ScratchFolderCleanupAction: Equatable, Sendable { case moveToTrash, permanentlyDelete }
