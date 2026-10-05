@@ -5,11 +5,11 @@ import Foundation
 import PulseFilesModels
 
 /// AppKit-free description of which pane views belong in the pane split view.
-public struct PaneArrangementRoute: Equatable, Sendable {
-    public let visiblePanes: [PaneID]
-    public let hasOppositePane: Bool
+package struct PaneArrangementRoute: Equatable, Sendable {
+    package let visiblePanes: [PaneID]
+    package let hasOppositePane: Bool
 
-    public init(singlePane: Bool, focusedPane: PaneID) {
+    package init(singlePane: Bool, focusedPane: PaneID) {
         visiblePanes = singlePane ? [focusedPane] : [.left, .right]
         hasOppositePane = !singlePane
     }
