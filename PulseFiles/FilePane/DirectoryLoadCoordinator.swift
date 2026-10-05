@@ -50,12 +50,12 @@ package final class DirectoryLoadCoordinator {
     private var retry: Task<Void, Never>?
 
     package init(fileSystem: FileSystemServicing, accessPolicy: any BrowseAccessPolicy,
-                 snapshotCache: DirectorySnapshotCache = DirectorySnapshotCache(),
+                 snapshotCache: DirectorySnapshotCache? = nil,
                  monitor: any DirectoryMonitoring = DirectoryMonitor(), timeout: TimeInterval = 15) {
         precondition(timeout > 0 && timeout.isFinite)
         self.fileSystem = fileSystem
         self.accessPolicy = accessPolicy
-        self.snapshotCache = snapshotCache
+        self.snapshotCache = snapshotCache ?? DirectorySnapshotCache()
         self.monitor = monitor
         self.timeout = timeout
         monitor.onChange = { [weak self] in
