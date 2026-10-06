@@ -117,7 +117,7 @@ package struct SelectionInspectorPresentation {
     }()
 
     private static func displayPath(for url: URL) -> String {
-        url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        PathUtilities.displayPath(for: url, homeDirectory: NSHomeDirectory())
     }
 }
 

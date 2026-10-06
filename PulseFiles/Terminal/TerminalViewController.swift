@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AppKit
+import SwiftTerm
 import PulseFilesPresentationSupport
 import PulseFilesCapabilities
 import PulseFilesUtilities
@@ -10,14 +11,11 @@ import PulseFilesUtilities
 /// for every Return key press. The PTY is important: programs see a terminal,
 /// so prompts, stderr, and interactive input behave as they do in Terminal.
 package final class TerminalViewController: NSViewController {
-    package static let maximumRetainedOutputBytes = 256 * 1024
-    package static let maximumRetainedOutputCharacters = 128 * 1024
-    package static let maximumRetainedOutputLines = 2_000
+    package static let maximumPendingOutputBytes = 256 * 1024
     private static let truncationNotice = "[Earlier terminal output truncated]\n"
 
     private let terminalService: any TerminalSessionProviding
-    private let terminalView = TerminalTextView()
-    private let scrollView = NSScrollView()
+    private let terminalView = TerminalTextView(frame: NSRect(x: 0, y: 0, width: 640, height: 180), font: .monospacedSystemFont(ofSize: 13, weight: .regular))
     private let processFactory: () -> TerminalProcess
     private let accessPolicy: any OperationScopeAccessPolicy
     private var liquidGlassStyle: LiquidGlassStyle
@@ -25,7 +23,8 @@ package final class TerminalViewController: NSViewController {
     private var runningProcess: TerminalProcess?
     private var runningAccessScope: FolderAccessScope?
     private let outputLock = NSLock()
-    private var pendingOutput = ""
+    private var pendingOutput = Data()
+    private var didDropOutput = false
     private var isOutputFlushScheduled = false
     package var workingDirectoryProvider: (() -> URL)?
     package var isShellInteractionAllowedProvider: (() -> Bool)?
@@ -56,8 +55,8 @@ package final class TerminalViewController: NSViewController {
     }
     package override func viewDidLayout() {
         super.viewDidLayout()
-        let size = terminalView.bounds.size
-        runningProcess?.resize(columns: max(1, Int(size.width / 7.8)), rows: max(1, Int(size.height / 16)))
+        let terminal = terminalView.getTerminal()
+        runningProcess?.resize(columns: terminal.cols, rows: terminal.rows)
     }
     package func refreshAppearance(style: LiquidGlassStyle) { liquidGlassStyle = style; view.layer?.cornerRadius = liquidGlassStyle.isEnabled ? LiquidGlassStyle.cornerRadius : LiquidGlassStyle.compactCornerRadius; view.layer?.borderColor = liquidGlassStyle.panelStroke.cgColor }
     package func focusCommandField() {
@@ -81,18 +80,34 @@ package final class TerminalViewController: NSViewController {
         if process.isRunning { process.terminate(); appendLine("[terminated]") }
         runningProcess = nil; endRunningAccessScope(); flushBufferedOutput()
     }
-    package func resetSession() { stopRunningCommand(); discardBufferedOutput(); terminalView.string = ""; appendLine("[terminal reset]") }
+    package func resetSession() { stopRunningCommand(); discardBufferedOutput(); terminalView.getTerminal().resetToInitialState(); appendLine("[terminal reset]") }
     package func runCommandForTesting(_ command: String) { sendInput(Data((command + "\n").utf8)) }
-    package var terminalTextForTesting: String { terminalView.string }
+    package var terminalTextForTesting: String { String(decoding: terminalView.getTerminal().getBufferAsData(), as: UTF8.self) }
     package var hasRunningAccessScopeForTesting: Bool { runningAccessScope != nil }
-    package func receiveOutputForTesting(_ text: String) { queueOutput(text) }
+    package func receiveOutputForTesting(_ text: String) { queueOutput(Data(text.utf8)) }
+    package func receiveOutputDataForTesting(_ data: Data) { queueOutput(data) }
     package func flushOutputForTesting() { flushBufferedOutput() }
+    package var pendingOutputByteCountForTesting: Int {
+        outputLock.lock(); defer { outputLock.unlock() }; return pendingOutput.count
+    }
 
     private func buildLayout() {
-        terminalView.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.textView); terminalView.isEditable = true; terminalView.isSelectable = true
-        terminalView.font = .monospacedSystemFont(ofSize: 13, weight: .regular); terminalView.textColor = .textColor; terminalView.insertionPointColor = .textColor; terminalView.backgroundColor = .textBackgroundColor; terminalView.drawsBackground = true; terminalView.textContainerInset = NSSize(width: 12, height: 10)
-        scrollView.documentView = terminalView; scrollView.hasVerticalScroller = true; scrollView.borderType = .noBorder; scrollView.drawsBackground = false; scrollView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scrollView); NSLayoutConstraint.activate([scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor), scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor), scrollView.topAnchor.constraint(equalTo: view.topAnchor), scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor)])
+        terminalView.setAccessibilityIdentifier(AccessibilityIdentifiers.Terminal.textView)
+        terminalView.setAccessibilityLabel("Beta Terminal".localized)
+        terminalView.terminalDelegate = terminalView
+        terminalView.nativeForegroundColor = .textColor
+        terminalView.nativeBackgroundColor = .textBackgroundColor
+        terminalView.onResize = { [weak self] columns, rows in
+            self?.runningProcess?.resize(columns: columns, rows: rows)
+        }
+        terminalView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(terminalView)
+        NSLayoutConstraint.activate([
+            terminalView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            terminalView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            terminalView.topAnchor.constraint(equalTo: view.topAnchor),
+            terminalView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
     }
     private func sendInput(_ data: Data) {
         guard !data.isEmpty else { return }
@@ -112,7 +127,7 @@ package final class TerminalViewController: NSViewController {
         }
         let process = processFactory(); let scope = accessPolicy.beginAccess(to: [suggestedWorkingDirectory])
         process.configure(executableURL: URL(fileURLWithPath: terminalService.shellPath), arguments: ["-i"], environment: terminalService.defaultEnvironment.merging(["TERM": "xterm-256color"], uniquingKeysWith: { _, new in new }), currentDirectoryURL: suggestedWorkingDirectory)
-        process.outputHandler = { [weak self] data in self?.queueOutput(String(decoding: data, as: UTF8.self)) }
+        process.outputHandler = { [weak self] data in self?.queueOutput(data) }
         process.terminationHandler = { [weak self] terminatedProcess in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.runningProcess === terminatedProcess else { return }
@@ -120,79 +135,60 @@ package final class TerminalViewController: NSViewController {
             }
         }
         runningProcess = process; runningAccessScope = scope
+        let terminal = terminalView.getTerminal()
+        process.resize(columns: terminal.cols, rows: terminal.rows)
         do { try process.run() } catch { runningProcess = nil; endRunningAccessScope(); appendLine("Could not start terminal: \(error.localizedDescription)") }
     }
     private func endRunningAccessScope() { guard let scope = runningAccessScope else { return }; accessPolicy.endAccess(scope); runningAccessScope = nil }
-    private func queueOutput(_ text: String) { outputLock.lock(); pendingOutput += text; pendingOutput = bounded(pendingOutput); let schedule = !isOutputFlushScheduled; isOutputFlushScheduled = true; outputLock.unlock(); if schedule { DispatchQueue.main.async { [weak self] in self?.flushBufferedOutput() } } }
-    private func flushBufferedOutput() { outputLock.lock(); let output = pendingOutput; pendingOutput = ""; isOutputFlushScheduled = false; outputLock.unlock(); if !output.isEmpty { append(TerminalControlSequenceRenderer.render(output)) } }
-    private func discardBufferedOutput() { outputLock.lock(); pendingOutput = ""; outputLock.unlock() }
-    private func appendLine(_ text: String) { append(text + "\n") }
-    private func append(_ text: String) { let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor.textColor, .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]; terminalView.textStorage?.setAttributedString(NSAttributedString(string: bounded(terminalView.string + text), attributes: attributes)); let end = terminalView.string.utf16.count; terminalView.setSelectedRange(NSRange(location: end, length: 0)); terminalView.scrollRangeToVisible(NSRange(location: end, length: 0)) }
-    private func bounded(_ text: String) -> String {
-        func exceeds(_ value: String) -> Bool {
-            value.utf8.count > Self.maximumRetainedOutputBytes
-                || value.count > Self.maximumRetainedOutputCharacters
-                || value.filter({ $0 == "\n" }).count > Self.maximumRetainedOutputLines
+    private func queueOutput(_ data: Data) {
+        outputLock.lock()
+        pendingOutput.append(data)
+        if pendingOutput.count > Self.maximumPendingOutputBytes {
+            pendingOutput.removeFirst(pendingOutput.count - Self.maximumPendingOutputBytes)
+            didDropOutput = true
         }
-        guard exceeds(text) else { return text }
-        var value = text
-        while exceeds(Self.truncationNotice + value), let newline = value.firstIndex(of: "\n") {
-            value.removeSubrange(...newline)
+        let schedule = !isOutputFlushScheduled
+        isOutputFlushScheduled = true
+        outputLock.unlock()
+        if schedule {
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(8)) { [weak self] in self?.flushBufferedOutput() }
         }
-        while exceeds(Self.truncationNotice + value), !value.isEmpty { value.removeFirst() }
-        return Self.truncationNotice + value
+    }
+    private func flushBufferedOutput() {
+        outputLock.lock()
+        let output = pendingOutput
+        let dropped = didDropOutput
+        pendingOutput = Data()
+        didDropOutput = false
+        isOutputFlushScheduled = false
+        outputLock.unlock()
+        if dropped { terminalView.getTerminal().resetToInitialState() }
+        if !output.isEmpty { terminalView.feed(byteArray: Array(output)[...]) }
+        if dropped { appendLine(Self.truncationNotice.trimmingCharacters(in: .newlines)) }
+    }
+    private func discardBufferedOutput() {
+        outputLock.lock(); pendingOutput = Data(); didDropOutput = false; outputLock.unlock()
+    }
+    private func appendLine(_ text: String) {
+        let prefix = terminalView.getTerminal().getCursorLocation().x == 0 ? "" : "\r\n"
+        terminalView.feed(text: prefix + text + "\r\n")
     }
 }
 
-private enum TerminalControlSequenceRenderer {
-    /// Preserve terminal line semantics while removing non-printing CSI/OSC
-    /// controls. This keeps scrollback legible without pretending NSTextView is
-    /// a full terminal emulator.
-    static func render(_ text: String) -> String {
-        var result = "", iterator = text.makeIterator()
-        while let character = iterator.next() {
-            if character == "\u{1B}", let next = iterator.next() { if next == "[" { while let item = iterator.next(), !(item >= "@" && item <= "~") {} } else if next == "]" { while let item = iterator.next(), item != "\u{7}" {} }; continue }
-            if character == "\r" { continue }
-            if character == "\u{8}" { if !result.isEmpty { result.removeLast() }; continue }
-            if character.unicodeScalars.allSatisfy({ $0.value >= 0x20 || $0.value == 0x0A || $0.value == 0x09 }) { result.append(character) }
-        }; return result
-    }
-}
-
-package final class TerminalTextView: NSTextView {
+/// Native VT/xterm rendering and keyboard interpretation. Shell control sequences
+/// update cursor cells instead of being stripped and appended to a text log.
+package final class TerminalTextView: SwiftTerm.TerminalView, TerminalViewDelegate {
     package var onInput: ((Data) -> Void)?
-    package override func keyDown(with event: NSEvent) {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if modifiers.contains(.command) {
-            switch event.charactersIgnoringModifiers?.lowercased() {
-            case "v": paste(nil)
-            case "c", "a": super.keyDown(with: event)
-            default: nextResponder?.keyDown(with: event)
-            }
-            return
-        }
-        guard let data = Self.inputData(keyCode: event.keyCode, characters: event.characters, modifiers: modifiers) else { return }
-        onInput?(data)
-    }
-    package override func insertText(_ string: Any, replacementRange: NSRange) {
-        if let text = string as? String { onInput?(Data(text.utf8)) }
-    }
-    package override func paste(_ sender: Any?) {
-        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
-        onInput?(Data(text.utf8))
-    }
-    package override func cut(_ sender: Any?) {}
-    package override func deleteBackward(_ sender: Any?) { onInput?(Data([0x7f])) }
+    package var onResize: ((Int, Int) -> Void)?
+    package func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) { onInput?(Data(data)) }
+    package func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) { onResize?(newCols, newRows) }
+    package func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {}
+    package func hostCurrentDirectoryUpdate(source: SwiftTerm.TerminalView, directory: String?) {}
+    package func scrolled(source: SwiftTerm.TerminalView, position: Double) {}
+    // Shell output cannot navigate/open arbitrary URLs or change the clipboard.
+    package func requestOpenLink(source: SwiftTerm.TerminalView, link: String, params: [String: String]) {}
+    package func clipboardCopy(source: SwiftTerm.TerminalView, content: Data) {}
+    package func bell(source: SwiftTerm.TerminalView) {}
+    package func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
 
-    package static func inputData(keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags = []) -> Data? {
-        let escapeSequences: [UInt16: String] = [
-            123: "\u{1B}[D", 124: "\u{1B}[C", 125: "\u{1B}[B", 126: "\u{1B}[A",
-            115: "\u{1B}[H", 119: "\u{1B}[F", 116: "\u{1B}[5~", 121: "\u{1B}[6~",
-            117: "\u{1B}[3~"
-        ]
-        if let sequence = escapeSequences[keyCode] { return Data(sequence.utf8) }
-        guard var characters, !characters.isEmpty else { return nil }
-        if modifiers.contains(.option) { characters = "\u{1B}" + characters }
-        return Data(characters.utf8)
-    }
 }

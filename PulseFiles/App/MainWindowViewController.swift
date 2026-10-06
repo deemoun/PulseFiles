@@ -904,7 +904,8 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
         commandBar.setShiftPressed(event.modifierFlags.contains(.shift))
     }
 
-    private func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
+    func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
+        if event.keyCode == 53, view.window?.firstResponder is TerminalTextView { return false }
         if event.keyCode == 53 {
             if isFileOperationActive {
                 performCommand(.cancelOperation, entrySurface: .keyboard)
@@ -946,7 +947,7 @@ final class MainWindowViewController: NSViewController, WorkflowWindowProviding,
 
     private var isTextInputFirstResponder: Bool {
         guard let firstResponder = view.window?.firstResponder else { return false }
-        return firstResponder is NSTextView || firstResponder is NSTextField
+        return firstResponder is NSTextView || firstResponder is NSTextField || firstResponder is TerminalTextView
     }
 
     private func showQuickLookForFocusedItem() {

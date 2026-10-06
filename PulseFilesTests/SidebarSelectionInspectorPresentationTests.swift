@@ -7,6 +7,18 @@ import XCTest
 @testable import PulseFilesSidebar
 
 final class SidebarSelectionInspectorPresentationTests: XCTestCase {
+    @MainActor
+    func testProtectedHomePathIsReadableWithoutChangingSelectedURL() throws {
+        let url = URL(fileURLWithPath: "/.nofollow" + NSHomeDirectory() + "/Desktop", isDirectory: true)
+        let item = FileItem(url: url, filename: "Desktop", displayName: "Desktop", fileExtension: "",
+            fileType: .folder, isDirectory: true, isSymbolicLink: false, isHidden: false, size: 0,
+            creationDate: nil, modificationDate: nil, posixPermissions: nil, owner: nil, group: nil,
+            typeDescription: "Folder", localizedTypeDescription: "Folder", iconKey: FileIconKey(fileType: .folder, fileExtension: ""))
+        let presentation = try XCTUnwrap(SelectionInspectorPresentation.make(for: [item]))
+        XCTAssertEqual(presentation.subtitle, "~/Desktop")
+        XCTAssertEqual(presentation.selectedURLs, [url])
+    }
+
     func testSingleSelectionIncludesFileMetadataRows() throws {
         let created = Date(timeIntervalSince1970: 1_700_000_000)
         let modified = Date(timeIntervalSince1970: 1_700_100_000)

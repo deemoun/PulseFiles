@@ -86,6 +86,7 @@ final class SidebarLayoutCoordinator {
 /// Owns terminal view and session lifecycle as one indivisible layout operation.
 @MainActor
 final class TerminalLayoutCoordinator {
+    private var widthConstraint: NSLayoutConstraint?
     struct Inputs {
         let settings: SettingsService
         let terminal: TerminalViewController
@@ -103,7 +104,10 @@ final class TerminalLayoutCoordinator {
 
     func install(_ terminal: TerminalViewController, in splitView: NSSplitView, heightConstraint: inout NSLayoutConstraint?) {
         guard !isInstalled else { return }
+        terminal.view.translatesAutoresizingMaskIntoConstraints = false
         splitView.addArrangedSubview(terminal.view)
+        widthConstraint = terminal.view.widthAnchor.constraint(equalTo: splitView.widthAnchor)
+        widthConstraint?.isActive = true
         if heightConstraint == nil { heightConstraint = terminal.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 120) }
         heightConstraint?.isActive = true
         isInstalled = true
@@ -113,6 +117,8 @@ final class TerminalLayoutCoordinator {
     func remove(_ terminal: TerminalViewController, from splitView: NSSplitView, heightConstraint: NSLayoutConstraint?) {
         guard isInstalled else { return }
         terminal.resetSession()
+        widthConstraint?.isActive = false
+        widthConstraint = nil
         heightConstraint?.isActive = false
         splitView.removeArrangedSubview(terminal.view)
         terminal.view.removeFromSuperview()

@@ -9,6 +9,11 @@ let package = Package(
     defaultLocalization: "en",
     platforms: [.macOS(.v13)],
     products: [.executable(name: "PulseFiles", targets: ["PulseFiles"])],
+    dependencies: [
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", exact: "1.5.1"),
+        // Pin SwiftTerm's CLI dependency to retain Swift 5.9 compatibility.
+        .package(url: "https://github.com/apple/swift-argument-parser", exact: "1.3.1")
+    ],
     targets: [
         .target(name: "PulseFilesUtilities", path: "PulseFiles/Utilities"),
         .target(name: "PulseFilesModels", dependencies: ["PulseFilesUtilities"], path: "PulseFiles/Models"),
@@ -28,7 +33,7 @@ let package = Package(
         ),
         .target(
             name: "PulseFilesTerminal",
-            dependencies: ["PulseFilesCapabilities", "PulseFilesPresentationSupport", "PulseFilesUtilities"],
+            dependencies: ["PulseFilesCapabilities", "PulseFilesPresentationSupport", "PulseFilesUtilities", .product(name: "SwiftTerm", package: "SwiftTerm")],
             path: "PulseFiles/Terminal"
         ),
         .target(

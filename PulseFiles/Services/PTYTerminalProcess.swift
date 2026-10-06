@@ -12,6 +12,7 @@ package final class PTYTerminalProcess: TerminalProcess {
     private let process = Process()
     private var master: FileHandle?
     private var masterFD: Int32 = -1
+    private var windowSize = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
     package var outputHandler: ((Data) -> Void)?
     package var terminationHandler: ((TerminalProcess) -> Void)?
     package var isRunning: Bool { process.isRunning }
@@ -33,8 +34,16 @@ package final class PTYTerminalProcess: TerminalProcess {
     package func run() throws {
         var masterFD: Int32 = -1
         var slaveFD: Int32 = -1
-        guard openpty(&masterFD, &slaveFD, nil, nil, nil) == 0 else {
+        var initialSize = windowSize
+        guard openpty(&masterFD, &slaveFD, nil, nil, &initialSize) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        // Do not echo queued keystrokes before the interactive shell installs
+        // its own line editor, which would otherwise echo the same input again.
+        var attributes = termios()
+        if tcgetattr(slaveFD, &attributes) == 0 {
+            attributes.c_lflag &= ~tcflag_t(ECHO)
+            _ = tcsetattr(slaveFD, TCSANOW, &attributes)
         }
         self.masterFD = masterFD
         let master = FileHandle(fileDescriptor: masterFD, closeOnDealloc: true)
@@ -68,8 +77,10 @@ package final class PTYTerminalProcess: TerminalProcess {
 
     package func write(_ data: Data) { try? master?.write(contentsOf: data) }
     package func resize(columns: Int, rows: Int) {
-        guard masterFD >= 0 else { return }
         var size = winsize(ws_row: UInt16(clamping: rows), ws_col: UInt16(clamping: columns), ws_xpixel: 0, ws_ypixel: 0)
+        guard size.ws_col != windowSize.ws_col || size.ws_row != windowSize.ws_row else { return }
+        windowSize = size
+        guard masterFD >= 0 else { return }
         _ = ioctl(masterFD, TIOCSWINSZ, &size)
     }
     package func terminate() { process.terminate() }

@@ -333,7 +333,7 @@ Limits that must remain visible in code and UI:
 | FilePaneViewController | Table/breadcrumb/status rendering, selection and drag/drop adaptation. |
 | FileTableView | Converts native table events to delegate requests; owns no operation policy. |
 | PaneKeyboardNavigationController | Maps unmodified pane arrows to focus or horizontal navigation requests. Modified arrows remain in the command/AppKit responder chain; text editors therefore retain normal cursor movement. Horizontal arrows are consumed when their destination is unavailable, making Right Arrow on a file and Left Arrow at a root or access-policy boundary safe no-ops. |
-| BreadcrumbView | Clickable path components. |
+| BreadcrumbView | Clickable path components; uses PathUtilities presentation rules to hide the macOS root `/.nofollow/` namespace marker while retaining protected URLs for navigation. Ordinary folders with that name remain visible. |
 | PaneStatusView / PaneContentOverlayView | Selection/volume information and loading/error recovery UI. |
 | SidebarViewController | Locations/devices/recents and asynchronous selection inspection. |
 | TerminalViewController | Opt-in shell input/output, process lifecycle and working-directory access scope. |
@@ -405,6 +405,10 @@ into a general utility dumping ground.
 ## Sidebar, terminal, settings and diagnostics
 
 The sidebar supplies navigation locations, favorites, recents and mounted devices.
+Inspector labels and sidebar tooltips use the same path presentation rules as the
+breadcrumb: the root `/.nofollow/` marker is hidden, and a leading home directory
+is abbreviated as `~`. Copy Path provides the readable absolute path; filesystem
+access and navigation continue using the original URLs and access policy.
 VolumeDiscoveryService reads mounted-volume resource values; VolumeChangeMonitor
 republishes after Workspace mount/unmount notifications. If a volume disappears,
 panes refresh or fall back to an authorized directory. Expensive inspector details
@@ -419,6 +423,18 @@ modify or delete files and may access any locations macOS has authorized for Pul
 TerminalViewController follows an authorized active-pane directory where possible, holds
 the access scope for command lifetime, reports launch/non-zero-exit errors, and can
 best-effort stop a running process; it cannot undo shell changes.
+The terminal uses the native AppKit SwiftTerm emulator, pinned to version 1.5.1
+for Swift 5.9 compatibility. It interprets cursor movement, erase commands, colors,
+and UTF-8 across PTY reads, rather than appending stripped output to NSTextView.
+Raw output is coalesced for 8 ms with a 256 KiB pending-data limit and native bounded
+scrollback. Native input sends each keystroke once; PTY echo is initially disabled
+until the shell installs its line editor. Rows and columns follow the actual emulator
+viewport and are provided when the PTY is created; unchanged sizes do not retrigger
+resize requests. Installation constrains the panel to the split view's full width.
+Window shortcut routing recognizes terminal focus and leaves editing keys to the shell.
+Shell-emitted link, directory, and clipboard requests do not bypass access policy or
+trigger host actions. Copy/paste remains an explicit user action. Dependency licenses
+are packaged under Resources/ThirdPartyNotices.
 PTYTerminalProcess changes directory in the child through a fixed shell bootstrap;
 folder paths and executable arguments are passed separately, never interpolated into
 shell code. This avoids a macOS crash reproduced when assigning the authorized folder

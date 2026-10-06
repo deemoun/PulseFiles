@@ -6,6 +6,22 @@ import XCTest
 @testable import PulseFilesCapabilities
 
 final class PTYTerminalProcessTests: XCTestCase {
+    func testTerminalDimensionsAreAvailableToChildAtLaunch() throws {
+        let process = PTYTerminalProcess()
+        let output = LockedTerminalOutput()
+        let exited = expectation(description: "sized child exits")
+        process.outputHandler = { output.append($0) }
+        process.terminationHandler = { _ in exited.fulfill() }
+        process.configure(executableURL: URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "/bin/stty size; sleep 0.1"],
+            environment: ["PATH": "/usr/bin:/bin"], currentDirectoryURL: FileManager.default.temporaryDirectory)
+        process.resize(columns: 91, rows: 17)
+        try process.run()
+        wait(for: [exited], timeout: 5)
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertTrue(output.text.contains("17 91"))
+    }
+
     func testChildWorkingDirectoryAndArgumentsRemainLiteral() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let folder = root.appendingPathComponent("folder with spaces; $(touch injected)", isDirectory: true)

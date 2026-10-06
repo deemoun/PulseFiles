@@ -4,9 +4,41 @@
 import AppKit
 import XCTest
 @testable import PulseFiles
+@testable import PulseFilesTerminal
 
 @MainActor
 final class CompositionRootUITests: XCTestCase {
+    func testTerminalFocusKeepsEditingKeysOutOfPaneCommandRouting() throws {
+        let suiteName = "TerminalKeys-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let policy = SandboxFileAccessPolicy.current
+        let settings = SettingsService.testing(defaults: defaults, accessPolicy: policy)
+        settings.experimentalTerminalEnabled = true
+        settings.hasAcknowledgedTerminalWarning = true
+        let dependencies = MainWindowDependencies.production(accessPolicy: policy, folderAccessGrants: FolderAccessGrantService.shared)
+            .replacingTerminalProcessFactory { CompositionTerminalProcessSpy() }
+        let controller = MainWindowViewController(settings: settings, dependencies: dependencies,
+            workflowDependencies: .production(from: dependencies, accessPolicy: policy), sandboxRootEnsurer: {})
+        let window = NSWindow(contentViewController: controller)
+        defer { window.contentViewController = nil }
+        controller.menuToggleTerminal(nil)
+        func surface(in view: NSView) -> TerminalTextView? {
+            if let terminal = view as? TerminalTextView { return terminal }
+            return view.subviews.compactMap { surface(in: $0) }.first
+        }
+        let terminal = try XCTUnwrap(surface(in: controller.view))
+        XCTAssertTrue(window.makeFirstResponder(terminal))
+        for code: UInt16 in [51, 123, 124, 125, 126, 36, 48, 53] {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: code))
+            XCTAssertFalse(controller.handleGlobalKeyDown(event), "Pane routing consumed terminal key \(code)")
+            XCTAssertTrue(window.firstResponder === terminal)
+        }
+        controller.menuToggleTerminal(nil)
+    }
+
     func testNestedControllersRetainDependenciesBuiltFromTheWindowSharedPolicy() {
         let deniedRoot = URL(fileURLWithPath: "/composition-denied", isDirectory: true)
         let policy = SandboxFileAccessPolicy(isEnabled: true, rootURL: deniedRoot)

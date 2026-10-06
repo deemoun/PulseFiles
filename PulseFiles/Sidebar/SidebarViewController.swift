@@ -239,7 +239,7 @@ package final class SidebarViewController: NSViewController {
         guard let directory, accessPolicy.canAccess(directory) else { return [] }
         return [SidebarItem(
             title: "Scratch Folder".localized,
-            subtitle: directory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"),
+            subtitle: PathUtilities.displayPath(for: directory, homeDirectory: NSHomeDirectory()),
             url: directory,
             symbol: "tray.full",
             group: "Temporary Workspace".localized
@@ -528,7 +528,7 @@ package final class SidebarViewController: NSViewController {
         let button = NSButton(title: presentation.selectedURLs.count == 1 ? "Copy Path" : "Copy Paths", target: self, action: #selector(copySelectionPaths(_:)))
         button.bezelStyle = .rounded
         button.controlSize = .small
-        button.identifier = NSUserInterfaceItemIdentifier(presentation.selectedURLs.map(\.path).joined(separator: "\n"))
+        button.identifier = NSUserInterfaceItemIdentifier(presentation.selectedURLs.map { PathUtilities.displayPath(for: $0) }.joined(separator: "\n"))
         button.toolTip = "Copy selected path information".localized
         button.translatesAutoresizingMaskIntoConstraints = false
 
@@ -586,7 +586,7 @@ package final class SidebarViewController: NSViewController {
         let button = NSButton(title: urls.count == 1 ? "Copy Path" : "Copy Paths", target: self, action: #selector(copySelectionPaths(_:)))
         button.bezelStyle = .rounded
         button.controlSize = .small
-        button.identifier = NSUserInterfaceItemIdentifier(urls.map(\.path).joined(separator: "\n"))
+        button.identifier = NSUserInterfaceItemIdentifier(urls.map { PathUtilities.displayPath(for: $0) }.joined(separator: "\n"))
         button.toolTip = "Copy selected path information".localized
         button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
@@ -626,11 +626,11 @@ package final class SidebarViewController: NSViewController {
         if item.group == "Temporary Workspace".localized {
             row.setAccessibilityIdentifier(AccessibilityIdentifiers.Sidebar.scratchFolder)
         }
-        row.toolTip = item.url.path
+        row.toolTip = PathUtilities.displayPath(for: item.url)
         stack.addArrangedSubview(row)
     }
 
-    private func displayPath(for url: URL) -> String { url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
+    private func displayPath(for url: URL) -> String { PathUtilities.displayPath(for: url, homeDirectory: NSHomeDirectory()) }
 
     @objc private func openLocation(_ sender: NSControl) {
         guard sender.isEnabled, let path = sender.identifier?.rawValue else { return }

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Dmitry Yarygin
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import AppKit
 import XCTest
 @testable import PulseFiles
 
@@ -25,6 +26,25 @@ final class TerminalBehaviorTests: XCTestCase {
         sandboxFixture = nil
         defaultsFixture = nil
         try super.tearDownWithError()
+    }
+
+    @MainActor
+    func testTerminalOutputHasViewportWidthAfterOpeningAndResizing() throws {
+        let controller = TerminalViewController(terminalService: TerminalService(),
+            processFactory: { FakeTerminalProcess() }, accessPolicy: sandboxFixture.policy)
+        let window = NSWindow(contentViewController: controller)
+        defer { window.contentViewController = nil }
+        let text = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? TerminalTextView }.first)
+        controller.receiveOutputForTesting("VISIBLE_OUTPUT\n")
+        controller.flushOutputForTesting()
+        for size in [NSSize(width: 640, height: 180), NSSize(width: 900, height: 250), NSSize(width: 400, height: 140)] {
+            window.setContentSize(size)
+            controller.view.layoutSubtreeIfNeeded()
+            XCTAssertGreaterThan(text.frame.width, 100)
+            XCTAssertEqual(text.frame.width, controller.view.bounds.width, accuracy: 1)
+            XCTAssertGreaterThan(text.getTerminal().cols, 1)
+            XCTAssertTrue(controller.terminalTextForTesting.contains("VISIBLE_OUTPUT"))
+        }
     }
 
     func testTerminalRemainsDisabledByDefault() {
@@ -168,19 +188,48 @@ final class TerminalBehaviorTests: XCTestCase {
         XCTAssertFalse(controller.hasRunningAccessScopeForTesting)
     }
 
-    func testTerminalKeyboardNavigationUsesStandardANSISequences() {
-        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 126, characters: nil)!, as: UTF8.self), "\u{1B}[A")
-        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 125, characters: nil)!, as: UTF8.self), "\u{1B}[B")
-        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 123, characters: nil)!, as: UTF8.self), "\u{1B}[D")
-        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 124, characters: nil)!, as: UTF8.self), "\u{1B}[C")
-        XCTAssertEqual(String(decoding: TerminalTextView.inputData(keyCode: 117, characters: nil)!, as: UTF8.self), "\u{1B}[3~")
+    @MainActor
+    func testNativeKeyboardSendsBackspaceAndArrowsExactlyOnce() {
+        let text = TerminalTextView(frame: NSRect(x: 0, y: 0, width: 640, height: 180))
+        text.terminalDelegate = text
+        var sent = [Data]()
+        text.onInput = { sent.append($0) }
+        text.doCommand(by: #selector(NSResponder.deleteBackward(_:)))
+        text.doCommand(by: #selector(NSResponder.moveLeft(_:)))
+        text.doCommand(by: #selector(NSResponder.moveUp(_:)))
+        text.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(sent, [Data([0x7f]), Data("\u{1B}[D".utf8), Data("\u{1B}[A".utf8), Data("x".utf8)])
     }
 
-    func testTerminalOptionKeySendsMetaPrefix() {
-        XCTAssertEqual(
-            String(decoding: TerminalTextView.inputData(keyCode: 0, characters: "b", modifiers: .option)!, as: UTF8.self),
-            "\u{1B}b"
-        )
+    @MainActor
+    func testShellRedrawErasesExistingCellsAcrossOutputChunks() {
+        let controller = TerminalViewController(terminalService: TerminalService(),
+            processFactory: { FakeTerminalProcess() }, accessPolicy: sandboxFixture.policy)
+        controller.loadViewIfNeeded()
+        controller.receiveOutputForTesting("\r\nPROMPT> abc")
+        controller.flushOutputForTesting()
+        controller.receiveOutputForTesting("\u{8} ")
+        controller.flushOutputForTesting()
+        controller.receiveOutputForTesting("\u{8}\r\u{1B}[")
+        controller.flushOutputForTesting()
+        controller.receiveOutputForTesting("KEDITED")
+        controller.flushOutputForTesting()
+        XCTAssertTrue(controller.terminalTextForTesting.contains("EDITED"))
+        XCTAssertFalse(controller.terminalTextForTesting.contains("PROMPT> abc"))
+    }
+
+    @MainActor
+    func testUTF8OutputCanBeSplitAcrossPTYReads() {
+        let controller = TerminalViewController(terminalService: TerminalService(),
+            processFactory: { FakeTerminalProcess() }, accessPolicy: sandboxFixture.policy)
+        controller.loadViewIfNeeded()
+        let bytes = Data("café".utf8)
+        controller.receiveOutputDataForTesting(Data(bytes.dropLast()))
+        controller.flushOutputForTesting()
+        controller.receiveOutputDataForTesting(Data(bytes.suffix(1)))
+        controller.flushOutputForTesting()
+        XCTAssertTrue(controller.terminalTextForTesting.contains("café"))
+        XCTAssertFalse(controller.terminalTextForTesting.contains("�"))
     }
 
     @MainActor
@@ -272,7 +321,7 @@ final class TerminalBehaviorTests: XCTestCase {
     }
 
     @MainActor
-    func testHighVolumeOutputIsBoundedAndReturnsToPromptAfterCompletion() {
+    func testHighVolumeOutputIsBoundedAndReturnsToPromptAfterCompletion() throws {
         let process = FakeTerminalProcess()
         let controller = TerminalViewController(terminalService: TerminalService(), processFactory: { process }, accessPolicy: sandboxFixture.policy)
         controller.isShellInteractionAllowedProvider = { true }
@@ -282,6 +331,7 @@ final class TerminalBehaviorTests: XCTestCase {
 
         controller.runCommandForTesting("noisy-command")
         controller.receiveOutputForTesting(String(repeating: "output line\n", count: 30_000))
+        XCTAssertLessThanOrEqual(controller.pendingOutputByteCountForTesting, TerminalViewController.maximumPendingOutputBytes)
         controller.flushOutputForTesting()
         process.complete()
 
@@ -290,9 +340,9 @@ final class TerminalBehaviorTests: XCTestCase {
         wait(for: [completion], timeout: 1)
 
         let text = controller.terminalTextForTesting
-        XCTAssertLessThanOrEqual(text.utf8.count, TerminalViewController.maximumRetainedOutputBytes)
-        XCTAssertLessThanOrEqual(text.count, TerminalViewController.maximumRetainedOutputCharacters)
-        XCTAssertLessThanOrEqual(text.filter { $0 == "\n" }.count, TerminalViewController.maximumRetainedOutputLines)
+        let surface = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? TerminalTextView }.first)
+        let terminal = surface.getTerminal()
+        XCTAssertLessThanOrEqual(text.filter { $0 == "\n" }.count, terminal.options.scrollback + terminal.rows + 2)
         XCTAssertTrue(text.contains("[Earlier terminal output truncated]"))
         XCTAssertTrue(text.contains("[shell exited]"))
     }
